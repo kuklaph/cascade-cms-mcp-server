@@ -1,9 +1,11 @@
 /**
  * Unit tests for `registerCascadeResources`.
  *
- * The server exposes two MCP resources:
- *   - cascade://entity-types : static JSON listing the 56 Cascade entity types
- *   - cascade://sites        : dynamic; fetches via `client.listSites()` at read time
+ * The server exposes three MCP resources:
+ *   - cascade://entity-types  : static JSON listing the Cascade entity types
+ *   - cascade://sites         : dynamic; fetches via `client.listSites()` at read time
+ *   - cascade://text-encoding : static Markdown documenting field-category
+ *                               text encoding rules for content writes
  *
  * We verify registration metadata and both read-callback branches
  * (success + upstream error) using a lightweight mock server that
@@ -59,23 +61,27 @@ function firstContentText(result: ReadResourceResult): string {
 // =============================================================================
 
 describe("registerCascadeResources", () => {
-  test("registers exactly 2 resources", () => {
+  test("registers exactly 3 resources", () => {
     const { server, resources } = makeMockServer();
     const client = createMockClient();
 
     registerCascadeResources(server as any, client);
 
-    expect(resources).toHaveLength(2);
+    expect(resources).toHaveLength(3);
   });
 
-  test("resource URIs are cascade://entity-types and cascade://sites", () => {
+  test("resource URIs include entity-types, sites, and text-encoding", () => {
     const { server, resources } = makeMockServer();
     const client = createMockClient();
 
     registerCascadeResources(server as any, client);
 
     const uris = resources.map((r) => r.uri).sort();
-    expect(uris).toEqual(["cascade://entity-types", "cascade://sites"]);
+    expect(uris).toEqual([
+      "cascade://entity-types",
+      "cascade://sites",
+      "cascade://text-encoding",
+    ]);
   });
 
   test("each resource has a name, description, and mimeType", () => {
@@ -89,8 +95,26 @@ describe("registerCascadeResources", () => {
       expect(r.name.length).toBeGreaterThan(0);
       expect(typeof r.config.description).toBe("string");
       expect((r.config.description as string).length).toBeGreaterThan(0);
-      expect(r.config.mimeType).toBe("application/json");
+      expect(typeof r.config.mimeType).toBe("string");
     }
+  });
+
+  test("JSON resources use application/json, text-encoding uses text/markdown", () => {
+    const { server, resources } = makeMockServer();
+    const client = createMockClient();
+
+    registerCascadeResources(server as any, client);
+
+    const byUri = new Map(resources.map((r) => [r.uri, r]));
+    expect(byUri.get("cascade://entity-types")!.config.mimeType).toBe(
+      "application/json",
+    );
+    expect(byUri.get("cascade://sites")!.config.mimeType).toBe(
+      "application/json",
+    );
+    expect(byUri.get("cascade://text-encoding")!.config.mimeType).toBe(
+      "text/markdown",
+    );
   });
 });
 
@@ -148,6 +172,64 @@ describe("cascade://entity-types resource", () => {
       expect(byType.has(t)).toBe(true);
       expect((byType.get(t) as string).length).toBeGreaterThan(0);
     }
+  });
+});
+
+// =============================================================================
+// cascade://text-encoding (static)
+// =============================================================================
+
+describe("cascade://text-encoding resource", () => {
+  test("fetch returns Markdown documenting the three field categories", async () => {
+    const { server, resources } = makeMockServer();
+    const client = createMockClient();
+    registerCascadeResources(server as any, client);
+
+    const encoding = resources.find(
+      (r) => r.uri === "cascade://text-encoding",
+    );
+    expect(encoding).toBeDefined();
+
+    const result = await encoding!.readCallback(
+      new URL("cascade://text-encoding"),
+    );
+
+    expect(result.contents).toHaveLength(1);
+    const first = result.contents[0];
+    expect(first!.uri).toBe("cascade://text-encoding");
+    expect(first!.mimeType).toBe("text/markdown");
+
+    const body = firstContentText(result);
+    // Three field-category headings anchor the contract.
+    expect(body).toContain("Content fields (XHTML / XML)");
+    expect(body).toContain("Format / template source");
+    expect(body).toContain("Plain text");
+  });
+
+  test("body states the core write-side rules agents must follow", async () => {
+    const { server, resources } = makeMockServer();
+    const client = createMockClient();
+    registerCascadeResources(server as any, client);
+
+    const encoding = resources.find(
+      (r) => r.uri === "cascade://text-encoding",
+    )!;
+    const body = firstContentText(
+      await encoding.readCallback(new URL("cascade://text-encoding")),
+    );
+
+    // XML built-in entities listed explicitly so agents can find them.
+    for (const entity of ["&amp;", "&lt;", "&gt;", "&quot;", "&apos;"]) {
+      expect(body).toContain(entity);
+    }
+    // Named-entity prohibition surfaced with concrete examples.
+    expect(body).toContain("&nbsp;");
+    expect(body).toContain("&mdash;");
+    // Astral-plane restriction called out.
+    expect(body).toContain("U+FFFF");
+    // Numeric character references shown in both forms.
+    expect(body).toContain("&#160;");
+    expect(body).toContain("&#xA0;");
   });
 });
 

@@ -2,16 +2,17 @@
  * MCP resource registrations for the Cascade CMS server.
  *
  * Resources complement the 26 tools by exposing URI-addressable reference
- * data that agents can fetch without invoking a tool. Two resources are
+ * data that agents can fetch without invoking a tool. Three resources are
  * registered:
  *
- *   cascade://entity-types  (static)  — all Cascade entity type strings
- *                                       with short human-readable blurbs.
- *   cascade://sites         (dynamic) — live `client.listSites()` result.
+ *   cascade://entity-types   (static,  JSON)     — Cascade entity type strings.
+ *   cascade://sites          (dynamic, JSON)     — live `client.listSites()` result.
+ *   cascade://text-encoding  (static,  Markdown) — how to encode text for each
+ *                                                  field category (rich-text/XML,
+ *                                                  format source, plain text).
  *
- * Both emit `application/json` text content. Dynamic failures are
- * translated via `translateError` so a flaky Cascade instance yields
- * an actionable error body instead of crashing the transport.
+ * Dynamic failures are translated via `translateError` so a flaky Cascade
+ * instance yields an actionable error body instead of crashing the transport.
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -108,17 +109,72 @@ function buildEntityTypesPayload(): string {
 function textResource(
   uri: URL,
   text: string,
+  mimeType: string = "application/json",
 ): ReadResourceResult {
   const contents: TextResourceContents = {
     uri: uri.toString(),
-    mimeType: "application/json",
+    mimeType,
     text,
   };
   return { contents: [contents] };
 }
 
 /**
- * Register the two Cascade MCP resources on the given server.
+ * Markdown body of the `cascade://text-encoding` resource.
+ *
+ * Documents how agents must encode text when writing to Cascade across the
+ * three field categories. Kept here as a single const so the content is easy
+ * to edit and the resource callback is trivial. Ship as-is — no templating.
+ */
+const TEXT_ENCODING_MARKDOWN = `# Text encoding in Cascade
+
+Cascade stores text across several kinds of fields with different encoding
+requirements. The right rule depends on the field category.
+
+## Content fields (XHTML / XML)
+
+Fields: \`page.xhtml\`, \`xhtmlDataDefinitionBlock.xhtml\`, structuredData \`text\`
+nodes that hold HTML markup (WYSIWYG-bound in the data definition), and
+\`xmlBlock.xml\`.
+
+Cascade parses this content as strict XML at render time. Malformed content
+crashes the whole page template, not just the affected field.
+
+- Emit well-formed XHTML/XML: balanced tags, quoted attributes.
+- Escape \`&\`, \`<\`, \`>\`, \`"\` using ONLY the five XML built-in entities:
+  \`&amp;\`, \`&lt;\`, \`&gt;\`, \`&quot;\`, \`&apos;\`.
+- For other special characters (non-breaking space, smart quotes, em dash,
+  currency, accented letters, non-Latin scripts, ...): use numeric character
+  references (decimal \`&#160;\` or hex \`&#xA0;\`) OR literal Unicode characters.
+- Do NOT use HTML named entities (\`&nbsp;\`, \`&mdash;\`, \`&copy;\`, ...). XML
+  declares only the five built-ins above; everything else requires a DTD
+  Cascade doesn't provide, so the SAX parser crashes the render.
+- Do NOT use astral-plane Unicode (codepoints above U+FFFF — includes emoji).
+  Cascade's database rejects it.
+
+## Format / template source
+
+Fields: \`xsltFormat.xml\`, \`scriptFormat.script\`, \`dataDefinition.xml\`,
+\`sharedField.xml\`, \`template.xml\`, \`workflowDefinition.xml\`.
+
+These hold template / schema source — Velocity or XSLT with embedded HTML
+fragments, or Cascade's structured-data-definition XML. Standard Velocity /
+XSLT / XML conventions apply, including CDATA sections where useful (e.g.,
+wrapping \`<script>\` blocks in a Velocity template).
+
+## Plain text
+
+Fields: \`metadata.*\`, \`name\`, \`tags[].name\`, \`linkURL\`, \`parentFolderPath\`,
+structuredData \`text\` nodes bound to plain-text (non-WYSIWYG) data-definition
+fields.
+
+Raw strings. No escaping. Literal \`&\`, \`<\`, \`>\`, \`"\`, \`'\` are all stored and
+rendered fine — Cascade's format templates apply their own escaping at render
+time.
+`;
+
+/**
+ * Register the three Cascade MCP resources on the given server.
  *
  * Idempotent per server: the SDK throws on duplicate URIs, so call this
  * exactly once per `McpServer` instance.
@@ -138,6 +194,21 @@ export function registerCascadeResources(
       mimeType: "application/json",
     },
     async (uri: URL) => textResource(uri, buildEntityTypesPayload()),
+  );
+
+  // Static: how to encode text when writing to Cascade's various field
+  // categories. Agents should fetch this before emitting content to rich-text
+  // or XML fields. Markdown body so it reads well when displayed.
+  server.registerResource(
+    "Cascade Text Encoding Guide",
+    "cascade://text-encoding",
+    {
+      description:
+        "How to encode text for Cascade CMS field categories (XHTML/XML content, format source, plain text). Read before writing rich-text or XML content — explains which entities are safe, why HTML named entities crash the render, and Unicode limits.",
+      mimeType: "text/markdown",
+    },
+    async (uri: URL) =>
+      textResource(uri, TEXT_ENCODING_MARKDOWN, "text/markdown"),
   );
 
   // Dynamic: live list of sites fetched from Cascade on read.

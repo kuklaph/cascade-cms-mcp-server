@@ -66,12 +66,12 @@ export const FolderContainedAssetFields = {
     .string()
     .optional()
     .describe(
-      "Parent folder id. REQUIRED on create (use this or parentFolderPath); ignored on edit. Priority: parentFolderId > parentFolderPath.",
+      "Parent folder id. REQUIRED on BOTH create and edit (use this or parentFolderPath). On edit, parent-folder fields identify the asset's current location — use cascade_move to relocate, not edit. Priority: parentFolderId > parentFolderPath.",
     ),
   parentFolderPath: z
     .string()
     .optional()
-    .describe("Parent folder path. REQUIRED on create (alt to parentFolderId); ignored on edit."),
+    .describe("Parent folder path. REQUIRED on BOTH create and edit (alt to parentFolderId). See cascade_move to relocate."),
   path: z
     .string()
     .optional()
