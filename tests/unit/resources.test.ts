@@ -16,15 +16,21 @@ import { describe, test, expect, mock } from "bun:test";
 import type { ResourceMetadata } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
 import { registerCascadeResources } from "../../src/resources.js";
+import { createAssetCache } from "../../src/assetIndex.js";
 import { EntityTypeSchema } from "../../src/schemas/common.js";
 import { createMockClient } from "../fixtures/mock-client.js";
+import tabsFixture from "../fixtures/read-responses/tabs.xhtmlBlock.json";
 
 /** A captured `server.registerResource(name, uri, config, readCallback)` call. */
 interface RegisteredResource {
   name: string;
   uri: string;
   config: ResourceMetadata;
-  readCallback: (uri: URL, extra?: unknown) => Promise<ReadResourceResult>;
+  readCallback: (
+    uri: URL,
+    variables?: Record<string, string>,
+    extra?: unknown,
+  ) => Promise<ReadResourceResult>;
 }
 
 interface MockMcpServer {
@@ -38,8 +44,13 @@ function makeMockServer(): {
   const resources: RegisteredResource[] = [];
   const server: MockMcpServer = {
     registerResource: mock(
-      (name: string, uri: string, config: ResourceMetadata, readCallback: any) => {
-        resources.push({ name, uri, config, readCallback });
+      (name: string, uri: any, config: ResourceMetadata, readCallback: any) => {
+        resources.push({
+          name,
+          uri: typeof uri === "string" ? uri : uri.uriTemplate.toString(),
+          config,
+          readCallback,
+        });
         return {};
       },
     ),
@@ -61,16 +72,16 @@ function firstContentText(result: ReadResourceResult): string {
 // =============================================================================
 
 describe("registerCascadeResources", () => {
-  test("registers exactly 3 resources", () => {
+  test("registers exactly 4 resources", () => {
     const { server, resources } = makeMockServer();
     const client = createMockClient();
 
     registerCascadeResources(server as any, client);
 
-    expect(resources).toHaveLength(3);
+    expect(resources).toHaveLength(4);
   });
 
-  test("resource URIs include entity-types, sites, and text-encoding", () => {
+  test("resource URIs include entity-types, sites, text-encoding, and raw asset template", () => {
     const { server, resources } = makeMockServer();
     const client = createMockClient();
 
@@ -78,6 +89,7 @@ describe("registerCascadeResources", () => {
 
     const uris = resources.map((r) => r.uri).sort();
     expect(uris).toEqual([
+      "cascade://asset/{handle}/raw",
       "cascade://entity-types",
       "cascade://sites",
       "cascade://text-encoding",
@@ -114,6 +126,9 @@ describe("registerCascadeResources", () => {
     );
     expect(byUri.get("cascade://text-encoding")!.config.mimeType).toBe(
       "text/markdown",
+    );
+    expect(byUri.get("cascade://asset/{handle}/raw")!.config.mimeType).toBe(
+      "application/json",
     );
   });
 });
@@ -297,5 +312,51 @@ describe("cascade://sites resource", () => {
     expect(parsed.error).toContain("cascade://sites");
     expect(parsed.error.toLowerCase()).toContain("failed");
     expect(parsed.error).not.toContain("Request Failed. Request Response:");
+  });
+});
+
+// =============================================================================
+// cascade://asset/{handle}/raw (dynamic template)
+// =============================================================================
+
+describe("cascade://asset/{handle}/raw resource", () => {
+  test("fetch returns exact cached raw JSON for a valid handle", async () => {
+    const { server, resources } = makeMockServer();
+    const client = createMockClient();
+    const assetCache = createAssetCache();
+    const entry = assetCache.put(tabsFixture);
+
+    registerCascadeResources(server as any, client, { assetCache });
+
+    const raw = resources.find((r) => r.uri === "cascade://asset/{handle}/raw");
+    expect(raw).toBeDefined();
+
+    const result = await raw!.readCallback(
+      new URL(`cascade://asset/${entry.handle}/raw`),
+      { handle: entry.handle },
+    );
+
+    expect(result.contents).toHaveLength(1);
+    const first = result.contents[0]!;
+    expect(first.uri).toBe(`cascade://asset/${entry.handle}/raw`);
+    expect(first.mimeType).toBe("application/json");
+    expect(JSON.parse(firstContentText(result))).toEqual(tabsFixture);
+  });
+
+  test("fetch returns JSON error body for missing or invalid handles", async () => {
+    const { server, resources } = makeMockServer();
+    const client = createMockClient();
+    registerCascadeResources(server as any, client, {
+      assetCache: createAssetCache(),
+    });
+
+    const raw = resources.find((r) => r.uri === "cascade://asset/{handle}/raw")!;
+    const result = await raw.readCallback(
+      new URL("cascade://asset/not-a-handle/raw"),
+      { handle: "not-a-handle" },
+    );
+
+    const parsed = JSON.parse(firstContentText(result)) as { error: string };
+    expect(parsed.error).toContain("Invalid asset handle");
   });
 });

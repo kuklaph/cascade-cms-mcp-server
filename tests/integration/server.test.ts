@@ -1,8 +1,8 @@
 /**
  * Integration test for the server factory (`createServer`).
  *
- * Verifies that all 9 tool cohorts wire up correctly and produce
- * the expected 26 tools with well-formed names (25 Cascade-backed +
+ * Verifies that all tool cohorts wire up correctly and produce
+ * the expected 29 tools with well-formed names (28 Cascade-backed +
  * 1 `cascade_read_response` retrieval tool). Also exercises one
  * end-to-end handler invocation (`cascade_read`) through the real
  * pipeline that `registerCascadeTool` installs on the server, plus
@@ -34,10 +34,13 @@ function getRegisteredTools(server: unknown): Record<string, {
   return (server as { _registeredTools: Record<string, any> })._registeredTools;
 }
 
-/** All 26 expected tool names: 25 Cascade-backed tools + 1 retrieval tool. */
+/** All 29 expected tool names: 28 Cascade-backed tools + 1 retrieval tool. */
 const EXPECTED_TOOL_NAMES = [
-  // crud (6)
+  // crud and asset follow-ups (9)
   "cascade_read",
+  "cascade_asset_search_paths",
+  "cascade_asset_list_children",
+  "cascade_asset_get_node",
   "cascade_create",
   "cascade_edit",
   "cascade_remove",
@@ -75,12 +78,12 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 describe("createServer (server factory)", () => {
-  test("registers exactly 26 tools", () => {
+  test("registers exactly 29 tools", () => {
     const client = createMockClient();
     const server = createServer(client);
     const tools = getRegisteredTools(server);
 
-    expect(Object.keys(tools)).toHaveLength(26);
+    expect(Object.keys(tools)).toHaveLength(29);
   });
 
   test("all tool names use snake_case with cascade_ prefix", () => {
@@ -102,7 +105,7 @@ describe("createServer (server factory)", () => {
     const names = Object.keys(tools);
     const unique = new Set(names);
     expect(unique.size).toBe(names.length);
-    expect(unique.size).toBe(26);
+    expect(unique.size).toBe(29);
   });
 
   test("every expected tool from each cohort is present", () => {
@@ -116,7 +119,7 @@ describe("createServer (server factory)", () => {
     }
   });
 
-  test("cascade_read handler invokes client.read and returns formatted result", async () => {
+  test("cascade_read handler invokes client.read and returns preview result", async () => {
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_OK)),
     });
@@ -137,11 +140,14 @@ describe("createServer (server factory)", () => {
       identifier: { id: "abc", type: "page" },
     });
 
-    // The registerCascadeTool pipeline formats the response: expect both
-    // content (text blocks) and structuredContent (raw operation result).
+    // The registerCascadeTool pipeline formats the preview and keeps raw data
+    // out of structuredContent.
     expect(result.content).toBeDefined();
     expect(Array.isArray(result.content)).toBe(true);
-    expect(result.structuredContent).toEqual(READ_PAGE_OK);
+    const structured = result.structuredContent as Record<string, any>;
+    expect(structured.asset_handle).toMatch(/^a_[0-9a-f-]+$/);
+    expect(structured.asset_type).toBe("page");
+    expect(structured.asset).toBeUndefined();
   });
 
   test("cascade_read with oversize response mints handle, cascade_read_response retrieves slices", async () => {
@@ -159,6 +165,7 @@ describe("createServer (server factory)", () => {
     // Act 1: cascade_read with oversize result should mint a handle.
     const oversize = await readTool.handler({
       identifier: { id: "huge-page-id", type: "page" },
+      read_mode: "raw",
       response_format: "json",
     });
 
@@ -233,7 +240,7 @@ describe("createServer (server factory)", () => {
     expect(secondSliceBlock.text).not.toBe(firstSliceBlock.text);
   });
 
-  test("cascade_read with response_detail: 'summary' projects heavy fields", async () => {
+  test("cascade_read default preview omits heavy recursive fields", async () => {
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
     });
@@ -243,23 +250,19 @@ describe("createServer (server factory)", () => {
     const readTool = tools["cascade_read"];
     const result = await readTool.handler({
       identifier: { id: "huge-page-id", type: "page" },
-      response_detail: "summary",
       response_format: "json",
     });
 
     expect(result.isError).not.toBe(true);
     const structured = result.structuredContent as Record<string, any>;
-    const page = structured.asset.page;
-
-    expect(page.id).toBe("huge-page-id");
-    expect(page.name).toBe("huge-page");
-    expect(page.path).toBe("/huge");
-    expect(page.type).toBe("page");
-    expect(page.lastModifiedDate).toBe("2026-01-01T00:00:00Z");
-    expect(page.metadata).toBeDefined();
-
-    expect(page.xhtml).toBeUndefined();
-    expect(page.structuredData).toBeUndefined();
-    expect(page.pageConfigurations).toBeUndefined();
+    expect(structured.asset_identity.id).toBe("huge-page-id");
+    expect(structured.asset_identity.name).toBe("huge-page");
+    expect(structured.asset_identity.path).toBe("/huge");
+    expect(structured.asset_identity.lastModifiedDate).toBe(
+      "2026-01-01T00:00:00Z",
+    );
+    expect(structured.asset).toBeUndefined();
+    expect(structured.root_outline.length).toBeLessThanOrEqual(20);
+    expect(structured.warnings[0]).toContain("root nodelets omitted");
   });
 });

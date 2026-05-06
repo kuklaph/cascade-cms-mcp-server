@@ -16,7 +16,10 @@
  * length})` rather than being silently lost.
  */
 
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  CallToolResult,
+  ResourceLink,
+} from "@modelcontextprotocol/sdk/types.js";
 import { CHARACTER_LIMIT, PREVIEW_LIMIT } from "./constants.js";
 import type { ResponseCache } from "./cache.js";
 
@@ -69,6 +72,7 @@ export function formatResponse(
   }
 
   const structured = stripFields(toStructured(result), options?.stripFromStructured);
+  const resourceLinks = extractResourceLinks(result);
 
   // Oversize branch with cache: mint handle, return bounded preview + envelope.
   if (text.length > CHARACTER_LIMIT && options?.cache) {
@@ -81,7 +85,7 @@ export function formatResponse(
       tool: "cascade_read_response" as const,
     };
     return {
-      content: [{ type: "text", text: preview }],
+      content: [{ type: "text", text: preview }, ...resourceLinks],
       structuredContent: { ...structured, _cache: envelope },
     };
   }
@@ -90,7 +94,7 @@ export function formatResponse(
   text = truncate(text);
 
   return {
-    content: [{ type: "text", text }],
+    content: [{ type: "text", text }, ...resourceLinks],
     structuredContent: structured,
   };
 }
@@ -127,6 +131,21 @@ function stripFields(
   const out: Record<string, unknown> = { ...structured };
   for (const f of fields) delete out[f];
   return out;
+}
+
+function extractResourceLinks(result: unknown): ResourceLink[] {
+  if (typeof result !== "object" || result === null) return [];
+  const links = (result as { _resource_links?: unknown })._resource_links;
+  if (!Array.isArray(links)) return [];
+  return links.filter((link): link is ResourceLink => {
+    if (typeof link !== "object" || link === null) return false;
+    const rec = link as Record<string, unknown>;
+    return (
+      rec.type === "resource_link" &&
+      typeof rec.uri === "string" &&
+      typeof rec.name === "string"
+    );
+  });
 }
 
 function truncate(text: string): string {

@@ -25,6 +25,9 @@ import {
   ReadPreferencesRequestSchema,
   PublishUnpublishRequestSchema,
   EditPreferenceRequestSchema,
+  AssetSearchPathsRequestSchema,
+  AssetListChildrenRequestSchema,
+  AssetGetNodeRequestSchema,
 } from "../../../src/schemas/requests.js";
 
 // Reusable fixtures
@@ -475,41 +478,38 @@ describe("ReadAuditsRequestSchema pagination", () => {
   });
 });
 
-describe("ReadRequestSchema response_detail field", () => {
-  test("should accept response_detail: 'summary'", () => {
-    const res = ReadRequestSchema.safeParse({
-      identifier: ID_PAGE,
-      response_detail: "summary",
-    });
-    expect(res.success).toBe(true);
-    if (res.success) {
-      expect(res.data.response_detail).toBe("summary");
-    }
-  });
-
-  test("should accept response_detail: 'full'", () => {
-    const res = ReadRequestSchema.safeParse({
-      identifier: ID_PAGE,
-      response_detail: "full",
-    });
-    expect(res.success).toBe(true);
-    if (res.success) {
-      expect(res.data.response_detail).toBe("full");
-    }
-  });
-
-  test("should default response_detail to 'full' when omitted", () => {
+describe("ReadRequestSchema read_mode field", () => {
+  test("should default read_mode to 'preview' when omitted", () => {
     const res = ReadRequestSchema.safeParse({ identifier: ID_PAGE });
     expect(res.success).toBe(true);
     if (res.success) {
-      expect(res.data.response_detail).toBe("full");
+      expect(res.data.read_mode).toBe("preview");
     }
   });
 
-  test("should reject unknown response_detail value", () => {
+  test("should accept read_mode: 'raw'", () => {
     const res = ReadRequestSchema.safeParse({
       identifier: ID_PAGE,
-      response_detail: "verbose",
+      read_mode: "raw",
+    });
+    expect(res.success).toBe(true);
+    if (res.success) {
+      expect(res.data.read_mode).toBe("raw");
+    }
+  });
+
+  test("should reject unknown read_mode value", () => {
+    const res = ReadRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      read_mode: "full",
+    });
+    expect(res.success).toBe(false);
+  });
+
+  test("should reject removed response_detail field", () => {
+    const res = ReadRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      response_detail: "summary",
     });
     expect(res.success).toBe(false);
   });
@@ -520,5 +520,40 @@ describe("ReadRequestSchema response_detail field", () => {
       response_detail: "summary",
     });
     expect(res.success).toBe(false);
+  });
+});
+
+describe("asset follow-up request schemas", () => {
+  const HANDLE = "a_00000000-0000-0000-0000-000000000000";
+
+  test("search requires asset_handle and query", () => {
+    expect(
+      AssetSearchPathsRequestSchema.safeParse({
+        asset_handle: HANDLE,
+        query: "headline",
+      }).success,
+    ).toBe(true);
+    expect(AssetSearchPathsRequestSchema.safeParse({ query: "headline" }).success).toBe(
+      false,
+    );
+  });
+
+  test("list children accepts pointer and optional cursor", () => {
+    const res = AssetListChildrenRequestSchema.safeParse({
+      asset_handle: HANDLE,
+      pointer: "",
+      cursor: "c_25",
+    });
+    expect(res.success).toBe(true);
+  });
+
+  test("get node accepts bounded depth and include_text", () => {
+    const res = AssetGetNodeRequestSchema.safeParse({
+      asset_handle: HANDLE,
+      pointer: "/asset/page/structuredData/structuredDataNodes/0",
+      depth: 2,
+      include_text: false,
+    });
+    expect(res.success).toBe(true);
   });
 });

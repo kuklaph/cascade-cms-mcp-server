@@ -22,6 +22,7 @@ import {
 import { translateError } from "../errors.js";
 import { logToolInvocation } from "../audit.js";
 import type { ResponseCache } from "../cache.js";
+import type { AssetCache } from "../assetIndex.js";
 
 /**
  * Shared dependencies threaded through tool registration so tools can
@@ -31,6 +32,7 @@ import type { ResponseCache } from "../cache.js";
  */
 export interface CascadeDeps {
   cache: ResponseCache;
+  assetCache?: AssetCache;
 }
 
 /**
@@ -128,11 +130,11 @@ export function registerCascadeTool<TSchema extends z.ZodObject<any>>(
 
 /**
  * Compose a consistent tool description. Keeps the footer prose identical
- * across all 26 tools so agents see uniform guidance on response formats.
+ * across all tools so agents see uniform guidance on response formats.
  */
 export function buildCascadeToolDescription(base: string): string {
   const footer =
-    "Supports response_format: markdown (default, human-readable) or json (full payload).";
+    "Supports response_format: markdown (default, human-readable) or json (machine-readable structured result).";
   const trimmed = base.trim();
   const separator = trimmed.endsWith(".") ? " " : ". ";
   return `${trimmed}${separator}${footer}`;

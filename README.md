@@ -2,7 +2,7 @@
 
 An MCP (Model Context Protocol) server that exposes the Cascade CMS REST API to LLMs and agents. Wraps the [cascade-cms-api](https://github.com/kuklaph/cascade-cms-api) library and provides Zod input validation, markdown/JSON response formatting, and actionable error messages for AI consumers.
 
-Built in TypeScript on [Bun](https://bun.sh). **26 tools**: 25 Cascade tools across 9 cohorts (CRUD, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish) plus 1 retrieval tool (`cascade_read_response`) for accessing oversize responses by handle. **2 MCP resources** (`cascade://entity-types`, `cascade://sites`). Paginated results on `cascade_search`, `cascade_list_messages`, `cascade_read_audits`. Oversize responses are stored in an in-memory LRU cache and accessible by handle. Every tool invocation emits a single-line audit record to stderr.
+Built in TypeScript on [Bun](https://bun.sh). **29 tools**: 28 Cascade tools across 9 cohorts (CRUD, handle-based asset inspection, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish) plus 1 retrieval tool (`cascade_read_response`) for accessing oversize responses by handle. **4 MCP resources/templates** (`cascade://entity-types`, `cascade://sites`, `cascade://text-encoding`, `cascade://asset/{handle}/raw`). Paginated results on `cascade_search`, `cascade_list_messages`, `cascade_read_audits`. Oversize responses are stored in an in-memory LRU cache and accessible by handle. Every tool invocation emits a single-line audit record to stderr.
 
 ## Requirements
 
@@ -175,7 +175,7 @@ bunx @modelcontextprotocol/inspector --cli bunx cascade-cms-mcp-server --method 
 
 Every invocation above works with `npx` (with `-y` on the package) if Bun isn't installed. Both tools resolve the published package identically.
 
-The Inspector will list all 26 tools and 2 resources, and let you invoke them interactively.
+The Inspector will list all 29 tools and 4 resources/templates, and let you invoke them interactively.
 
 ## Audit Logging
 
@@ -192,7 +192,7 @@ Claude Desktop and similar clients typically route server stderr to a log file; 
 
 ## Tool Catalog
 
-Every tool accepts an optional `response_format` parameter (`"markdown"` or `"json"`, default `"markdown"`). Every tool returns a Cascade `OperationResult` wrapped in MCP `content` + `structuredContent`. The `structuredContent` carries the raw Cascade response (primitives are wrapped as `{ value: X }`; null/empty as `{}`).
+Every tool accepts an optional `response_format` parameter (`"markdown"` or `"json"`, default `"markdown"`). Most Cascade-backed tools return a Cascade `OperationResult` wrapped in MCP `content` + `structuredContent`. `cascade_read` is different by default: it returns a compact preview plus an `asset_handle`; use `read_mode: "raw"` only when you need the full REST payload.
 
 **Oversize handling**: When a tool's rendered text exceeds 25,000 characters, the server stores the full payload in an in-memory cache, returns a 20,000-char preview + handle in `content[0].text`, and adds a `_cache` envelope (`{handle, bytes_total, bytes_returned, tool}`) to `structuredContent`. Use [`cascade_read_response`](#response-cache) to fetch additional bytes by handle and offset. See [Response Cache](#response-cache) for the full pattern.
 
@@ -200,14 +200,17 @@ Every tool accepts an optional `response_format` parameter (`"markdown"` or `"js
 
 ### Assets (CRUD)
 
-| Tool             | Read-only | Description                                                                                    |
-| ---------------- | :-------: | ---------------------------------------------------------------------------------------------- |
-| `cascade_read`   |    Yes    | Read an asset by identifier (id or path + type). Accepts `response_detail: "summary" \| "full"` (default `full`) — `summary` strips heavy fields like `xhtml`, `structuredData`, file `data`, `pageConfigurations`. |
-| `cascade_create` |    No     | Create a new asset. Body is a typed envelope — one of 48 keys matching Cascade's `Asset` schema (e.g. `{ page: {...} }`, `{ textBlock: {...} }`, `{ site: {...} }`). |
-| `cascade_edit`   |    No     | Edit an existing asset                                                                         |
-| `cascade_remove` |    No     | Delete an asset (with optional workflow + delete parameters)                                   |
-| `cascade_move`   |    No     | Move and/or rename an asset                                                                    |
-| `cascade_copy`   |    No     | Copy an asset to a new container with a new name                                               |
+| Tool | Read-only | Description |
+| ---- | :-------: | ----------- |
+| `cascade_read` | Yes | Canonical first-step asset read. Default `read_mode: "preview"` returns `asset_handle`, identity, node counts, root outline, and raw resource URI. Use `read_mode: "raw"` for the full REST payload. |
+| `cascade_asset_search_paths` | Yes | Use after `cascade_read`. Search cached nodelet identifiers, text previews, and asset refs by `asset_handle`. |
+| `cascade_asset_list_children` | Yes | Use after `cascade_read`. List child nodelet stubs for a JSON Pointer, with cursor pagination. |
+| `cascade_asset_get_node` | Yes | Use after `cascade_read`. Fetch an exact cached nodelet or bounded subtree by JSON Pointer. |
+| `cascade_create` | No | Create a new asset. Body is a typed envelope, for example `{ page: {...} }`, `{ textBlock: {...} }`, or `{ site: {...} }`. |
+| `cascade_edit` | No | Edit an existing asset |
+| `cascade_remove` | No | Delete an asset (with optional workflow + delete parameters) |
+| `cascade_move` | No | Move and/or rename an asset |
+| `cascade_copy` | No | Copy an asset to a new container with a new name |
 
 ### Search
 
@@ -284,8 +287,10 @@ Resources expose URI-addressable reference data that agents can fetch via MCP `r
 | ------------------------ | :-----: | ---------------------------------------------------------------------------------------------------------------- |
 | `cascade://entity-types` | Static  | JSON listing all Cascade entity type strings (page, file, folder, block, template, etc.) with short descriptions |
 | `cascade://sites`        | Dynamic | Live `listSites()` result (JSON). On upstream failure, body is a JSON error envelope: `{ "error": "..." }`       |
+| `cascade://text-encoding` | Static | Markdown rules for rich text/XML, format/template source, and plain text encoding |
+| `cascade://asset/{handle}/raw` | Template | Exact raw JSON cached from a prior `cascade_read` preview. Replace `{handle}` with `structuredContent.asset_handle`. |
 
-Both resources advertise `application/json`. The error envelope on `cascade://sites` is a valid JSON object, so agents can reliably `JSON.parse` the response without checking a separate error flag.
+JSON resources advertise `application/json`. The error envelope on `cascade://sites` and missing raw asset handles is a valid JSON object, so agents can reliably `JSON.parse` the response without checking a separate error flag.
 
 ## Pagination
 
@@ -389,16 +394,45 @@ The slice text itself appears in `content[0].text` (raw, not JSON-fenced). `leng
 
 If a handle is missing or evicted, `cascade_read_response` returns `isError: true` with a message naming the handle and suggesting to re-run the originating tool.
 
-### Avoiding the cache up front
+## Cascade Read Flow
 
-For `cascade_read`, set `response_detail: "summary"` to project out heavy fields (`xhtml`, `structuredData`, `pageConfigurations`, file `data`/`text`) before rendering. The lean projection keeps `id`, `name`, `path`, `type`, `lastModifiedDate`, and `metadata`. Useful for discovery passes where you just need to know an asset exists or what it's named.
+`cascade_read` is the canonical entrypoint for inspecting assets. In default preview mode it calls Cascade once, indexes structured-data nodelets, stores the exact raw response under an `asset_handle`, and returns compact `structuredContent`:
+
+```json
+{
+  "asset_handle": "a_550e8400-e29b-41d4-a716-446655440000",
+  "asset_type": "page",
+  "asset_identity": { "id": "abc123", "name": "index", "path": "/" },
+  "raw_resource_uri": "cascade://asset/a_550e8400-e29b-41d4-a716-446655440000/raw",
+  "node_count": 62,
+  "max_depth": 4,
+  "root_outline": [ { "pointer": "/asset/page/structuredData/structuredDataNodes/0", "identifier": "page-options", "type": "group" } ],
+  "next_actions": ["cascade_asset_search_paths", "cascade_asset_list_children", "cascade_asset_get_node", "cascade://asset/{handle}/raw"]
+}
+```
+
+Follow-up tools require that `asset_handle`; they do not call Cascade again.
+
+```json
+{ "tool": "cascade_asset_search_paths", "arguments": { "asset_handle": "a_550e8400-...", "query": "headline" } }
+```
+
+```json
+{ "tool": "cascade_asset_list_children", "arguments": { "asset_handle": "a_550e8400-...", "pointer": "", "limit": 25 } }
+```
+
+```json
+{ "tool": "cascade_asset_get_node", "arguments": { "asset_handle": "a_550e8400-...", "pointer": "/asset/page/structuredData/structuredDataNodes/0", "depth": 1 } }
+```
+
+Use `read_mode: "raw"` only when you need the full Cascade REST payload for editing or external processing:
 
 ```json
 {
   "tool": "cascade_read",
   "arguments": {
     "identifier": { "id": "abc123", "type": "page" },
-    "response_detail": "summary"
+    "read_mode": "raw"
   }
 }
 ```
@@ -536,10 +570,10 @@ Add `response_format: "json"` to any call:
 
 ## Response Formats
 
-- `response_format: "markdown"` (default) — human/LLM-readable markdown with key fields highlighted. Best for agent reasoning.
-- `response_format: "json"` — pretty-printed JSON of the raw Cascade response. Best for programmatic chaining.
+- `response_format: "markdown"` (default) - human/LLM-readable markdown with key fields highlighted. Best for agent reasoning.
+- `response_format: "json"` - pretty-printed JSON of the tool's structured result. For `cascade_read` preview mode this is the compact handle-based preview; use `read_mode: "raw"` for the raw Cascade response.
 
-The raw Cascade response object is always passed through to `structuredContent` (null/empty is wrapped as `{}`; primitives as `{ value: X }`). When a rendered response exceeds 25,000 characters, the [Response Cache](#response-cache) intercepts it: `content[0].text` becomes a 20,000-char preview + handle, `structuredContent` keeps the full raw object plus a `_cache` envelope, and the agent can fetch additional bytes via `cascade_read_response`.
+For tools other than `cascade_read` preview mode, the Cascade response object is passed through to `structuredContent` (null/empty is wrapped as `{}`; primitives as `{ value: X }`). When a rendered response exceeds 25,000 characters, the [Response Cache](#response-cache) intercepts it: `content[0].text` becomes a 20,000-char preview + handle, `structuredContent` keeps the full object plus a `_cache` envelope, and the agent can fetch additional bytes via `cascade_read_response`.
 
 ## Asset Input Schemas
 
@@ -551,7 +585,7 @@ For `cascade_create` and `cascade_edit`, the `asset` field is a typed envelope t
 
 `<typeKey>` is one of 48 camelCase property names on Cascade's `Asset` object — for example `page`, `file`, `folder`, `symlink`, `textBlock`, `feedBlock`, `indexBlock`, `xhtmlDataDefinitionBlock`, `xmlBlock`, `twitterFeedBlock`, `reference`, `template`, `xsltFormat`, `scriptFormat`, `user`, `group`, `role`, `site`, `contentType`, `metadataSet`, `pageConfigurationSet`, `publishSet`, `dataDefinition`, `sharedField`, `destination`, `editorConfiguration`, `assetFactory`, `wordPressConnector`, `googleAnalyticsConnector`, `fileSystemTransport`, `ftpTransport`, `databaseTransport`, `cloudTransport`, `workflowDefinition`, `workflowEmail`, and the matching `*Container` types.
 
-Each envelope key maps to a strict Zod schema derived from the upstream OpenAPI spec: every declared field is modelled with its correct required/optional marker. Unknown keys are rejected so typos fail fast. Round-trip is symmetric — a response from `cascade_read` can be modified and sent straight back to `cascade_edit` without reshaping.
+Each envelope key maps to a strict Zod schema derived from the upstream OpenAPI spec: every declared field is modelled with its correct required/optional marker. Unknown keys are rejected so typos fail fast. Round-trip is symmetric when `cascade_read` is called with `read_mode: "raw"`: modify the raw asset envelope and send it straight back to `cascade_edit` without reshaping.
 
 > **Envelope key vs EntityType string.** Cascade uses two parallel naming schemes. The camelCase **envelope keys** above (`xhtmlDataDefinitionBlock`, `xsltFormat`, `ftpTransport`, `contentType`, `editorConfiguration`, `wordPressConnector`, ...) are body-shape discriminators under `asset.<key>`. The lowercase / snake_case **EntityType strings** (`block_XHTML_DATADEFINITION`, `format_XSLT`, `transport_ftp`, `contenttype`, `editorconfiguration`, `wordpressconnector`, ...) are the values used in `identifier.type` for `cascade_read`, `cascade_move`, `cascade_list_subscribers`, and similar. A handful of types spell the same in both schemes (`page`, `file`, `folder`, `symlink`, `template`, `reference`, `site`, `user`, `group`, `role`); most do not. Never interchange them — see the `cascade://entity-types` resource for the full EntityType list.
 
@@ -599,7 +633,7 @@ node dist/index.js       # Run the built output with Node (after bun run build)
                         /plugin marketplace add
 src/
   index.ts              stdio bootstrap (redirects console.* → stderr)
-  server.ts             createServer() factory (wires all 9 tool cohorts + retrieval tool + 2 resources)
+  server.ts             createServer() factory (wires all tool cohorts + retrieval tool + resources)
   client.ts             Cascade API client factory
   config.ts             env validation
   errors.ts             error translation to MCP format (+ exported redactSecrets)
@@ -608,10 +642,10 @@ src/
   audit.ts              stderr audit-log line per invocation (redacts + sanitizes)
   pagination.ts         client-side pagination helper + paginatedHandler factory
   cache.ts              in-memory LRU response cache for oversize payloads
-  resources.ts          MCP resource registrations (cascade://entity-types, cascade://sites)
+  resources.ts          MCP resource registrations/templates (entity-types, sites, text-encoding, raw asset)
   tools/
     helper.ts           registerCascadeTool shared helper + CascadeDeps interface
-    crud.ts             read, create, edit, remove, move, copy (read supports response_detail)
+    crud.ts             read, asset follow-ups, create, edit, remove, move, copy
     search.ts           search (paginated)
     sites.ts            list_sites, site_copy
     access.ts           read/edit_access_rights
@@ -622,9 +656,9 @@ src/
     publish.ts          publish_unpublish
     readResponse.ts     cascade_read_response (slice retrieval by handle)
   schemas/
-    common.ts           Identifier, EntityType, Path, ResponseFormat, ResponseDetail
+    common.ts           Identifier, EntityType, Path, ResponseFormat, ReadMode
     assets.ts           Discriminated asset union + passthrough fallback
-    requests.ts         26 Zod request schemas (25 Cascade + 1 retrieval, + PaginationFields mixin)
+    requests.ts         Zod request schemas (Cascade tools, asset follow-ups, retrieval, pagination)
 tests/
   unit/                 mirrors src/ (includes audit, pagination, resources)
   integration/          end-to-end server wiring tests
@@ -661,12 +695,12 @@ Both install paths converge on the same built `dist/index.js` running under Node
                         Cascade CMS API
 ```
 
-1. The MCP client spawns the server subprocess. For plugin users, Claude Code reads the `mcpServers` field inline in `plugin.json` and runs `npx -y cascade-cms-mcp-server` with env vars from the user's shell. For MCP-config users, the client runs `bunx cascade-cms-mcp-server` (or `npx -y`) with env vars from the config's `env` block. Either way, the runner resolves the package's `bin` entry to `dist/index.js`, and the `#!/usr/bin/env node` shebang routes execution through Node. The entry point redirects `console.*` to stderr (guards the stdio protocol stream from accidental stdout writes by dependencies), validates config, builds a Cascade client from `cascade-cms-api`, creates an MCP server, registers 25 Cascade tools + the `cascade_read_response` retrieval tool + 2 resources, and connects over stdio.
+1. The MCP client spawns the server subprocess. For plugin users, Claude Code reads the `mcpServers` field inline in `plugin.json` and runs `npx -y cascade-cms-mcp-server` with env vars from the user's shell. For MCP-config users, the client runs `bunx cascade-cms-mcp-server` (or `npx -y`) with env vars from the config's `env` block. Either way, the runner resolves the package's `bin` entry to `dist/index.js`, and the `#!/usr/bin/env node` shebang routes execution through Node. The entry point redirects `console.*` to stderr (guards the stdio protocol stream from accidental stdout writes by dependencies), validates config, builds a Cascade client from `cascade-cms-api`, creates an MCP server, registers 28 Cascade tools + the `cascade_read_response` retrieval tool + 4 resources/templates, and connects over stdio.
 2. Each cohort file (`src/tools/<cohort>.ts`) calls `registerCascadeTool(server, config, deps)` for each of its tools, where `deps` carries the shared response cache.
 3. The helper wraps the tool handler with: start timer → Zod input validation → delegate to the Cascade client method → format response (markdown or JSON) → catch + translate errors to MCP `isError: true` results → emit a stderr audit record (`ok`/`error` + duration + redacted error text).
 4. Paginated tools (`cascade_search`, `cascade_list_messages`, `cascade_read_audits`) extract `limit`/`offset` from input, call Cascade for the full result set, and slice client-side via `paginatedHandler`.
 5. When rendered text exceeds 25,000 characters, `formatResponse` mints a handle, stores the full text in the in-memory LRU cache, and returns a 20,000-char preview + handle. The companion `cascade_read_response` tool retrieves slices by handle. See [Response Cache](#response-cache).
-6. Resources (`cascade://entity-types`, `cascade://sites`) are registered alongside tools on the same server. Dynamic resource errors return a JSON error envelope so `application/json` parsing stays reliable.
+6. Resources/templates (`cascade://entity-types`, `cascade://sites`, `cascade://text-encoding`, `cascade://asset/{handle}/raw`) are registered alongside tools on the same server. Dynamic resource errors return a JSON error envelope so `application/json` parsing stays reliable.
 
 ## Security Notes
 

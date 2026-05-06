@@ -56,9 +56,8 @@ export const FAILURE_NOT_FOUND = {
  * Read returned a page asset body with heavy fields included.
  *
  * Serves two purposes:
- *   1. Drives the `response_detail: "summary"` projection tests — the projection
- *      must strip `xhtml`, `structuredData`, `pageConfigurations` while keeping
- *      `id`, `name`, `path`, `type`, `lastModifiedDate`, `metadata`.
+ *   1. Drives the `cascade_read` preview/raw mode tests. Preview mode returns
+ *      a compact handle-based outline; raw mode returns this full payload.
  *   2. Exercises the oversize-response cache pathway — the inflated `xhtml` body
  *      and repeated `structuredDataNodes` push the rendered payload well past
  *      `CHARACTER_LIMIT` so a handle is minted.

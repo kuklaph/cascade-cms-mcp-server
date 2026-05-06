@@ -9,4 +9,4 @@ dist/
 .serena/
 
 # Scratch / research artifacts (not part of the shipped code)
-temp/
+tmp/

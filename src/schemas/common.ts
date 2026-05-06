@@ -6,7 +6,7 @@
  *   - PathSchema: an asset path with optional site id/name
  *   - IdentifierSchema: an asset identifier (id-or-path + required type)
  *   - ResponseFormatSchema: "markdown" | "json" (defaults to "markdown")
- *   - ResponseDetailSchema: "summary" | "full" (defaults to "full"; cascade_read only)
+ *   - ReadModeSchema: "preview" | "raw" (defaults to "preview"; cascade_read only)
  */
 
 import { z } from "zod";
@@ -169,16 +169,16 @@ export const ResponseFormatSchema = z
   .enum(["markdown", "json"])
   .default("markdown")
   .describe(
-    "Response format: 'markdown' (human-readable, default) or 'json' (machine-readable full payload). Use 'json' when the response is large or needs to be parsed programmatically.",
+    "Response format: 'markdown' (human-readable, default) or 'json' (machine-readable structured result). For cascade_read, preview mode remains compact; use read_mode: 'raw' or cascade://asset/{handle}/raw for the raw Cascade payload.",
   );
 
 export type ResponseFormat = z.infer<typeof ResponseFormatSchema>;
 
-export const ResponseDetailSchema = z
-  .enum(["summary", "full"])
-  .default("full")
+export const ReadModeSchema = z
+  .enum(["preview", "raw"])
+  .default("preview")
   .describe(
-    "Detail level: 'full' (default, complete asset) or 'summary' (lean projection — keeps id, name, path, type, lastModifiedDate, metadata; omits xhtml, structuredData, file data, page configurations, and similar heavy fields). Best for content asset types (page, file, folder, block, template). Other entity types (user, workflow, transport, etc.) lack these fields and pass through unchanged. Use 'summary' when you only need to discover or describe an asset, not edit it.",
+    "Read mode for cascade_read. 'preview' (default) returns a compact asset_handle plus nodelet outline for structured assets. 'raw' returns the full Cascade REST payload and can be expensive for pages or data-definition blocks.",
   );
 
-export type ResponseDetail = z.infer<typeof ResponseDetailSchema>;
+export type ReadMode = z.infer<typeof ReadModeSchema>;

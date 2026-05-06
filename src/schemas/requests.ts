@@ -1,6 +1,6 @@
 /**
- * Zod schemas for all 26 MCP tool requests (25 Cascade-backed + 1
- * MCP-native retrieval tool, `cascade_read_response`).
+ * Zod schemas for Cascade-backed tools, handle-based asset inspection tools,
+ * and the MCP-native `cascade_read_response` retrieval tool.
  *
  * Every schema extends a base that includes `response_format` and is strict
  * at the top level unless the upstream shape inherently requires passthrough
@@ -11,7 +11,7 @@ import { z } from "zod";
 import {
   EntityTypeSchema,
   IdentifierSchema,
-  ResponseDetailSchema,
+  ReadModeSchema,
   ResponseFormatSchema,
 } from "./common.js";
 import { AssetInputSchema } from "./assets.js";
@@ -59,12 +59,87 @@ export const ReadRequestSchema = z
     identifier: IdentifierSchema.describe(
       "The asset to read. Provide id + type (preferred) or path + type.",
     ),
-    response_detail: ResponseDetailSchema,
+    read_mode: ReadModeSchema,
     ...BaseRequestFields,
   })
   .strict();
 
 export type ReadInput = z.infer<typeof ReadRequestSchema>;
+
+const AssetHandleField = {
+  asset_handle: z
+    .string()
+    .min(1, "asset_handle must not be empty")
+    .max(64, "asset_handle must be at most 64 characters")
+    .regex(
+      /^a_[0-9a-f-]{1,62}$/i,
+      "asset_handle must look like 'a_<hex-uuid>'",
+    )
+    .describe(
+      "REQUIRED: Asset handle returned by cascade_read structuredContent.asset_handle.",
+    ),
+};
+
+export const AssetSearchPathsRequestSchema = z
+  .object({
+    ...AssetHandleField,
+    query: z.string().min(1, "query must not be empty"),
+    search_in: z
+      .array(z.enum(["identifier", "text", "asset"]))
+      .optional()
+      .describe(
+        "Optional fields to search. Defaults to identifier, text, and asset refs.",
+      ),
+    type: z
+      .enum(["text", "asset", "group"])
+      .optional()
+      .describe("Optional nodelet type filter."),
+    limit: z.number().int().min(1).max(100).default(20),
+    ...BaseRequestFields,
+  })
+  .strict();
+
+export type AssetSearchPathsInput = z.infer<typeof AssetSearchPathsRequestSchema>;
+
+export const AssetListChildrenRequestSchema = z
+  .object({
+    ...AssetHandleField,
+    pointer: z
+      .string()
+      .describe(
+        "JSON Pointer of the parent nodelet. Use an empty string to list root nodelets.",
+      ),
+    cursor: z
+      .string()
+      .regex(/^c_[0-9]+$/, "cursor must be a next_cursor returned by this tool")
+      .optional(),
+    limit: z.number().int().min(1).max(100).default(25),
+    ...BaseRequestFields,
+  })
+  .strict();
+
+export type AssetListChildrenInput = z.infer<typeof AssetListChildrenRequestSchema>;
+
+export const AssetGetNodeRequestSchema = z
+  .object({
+    ...AssetHandleField,
+    pointer: z.string().describe("JSON Pointer returned by cascade_read preview, search, or list."),
+    depth: z
+      .number()
+      .int()
+      .min(0)
+      .max(10)
+      .default(0)
+      .describe("Child depth to include. Default 0 returns only the exact nodelet."),
+    include_text: z
+      .boolean()
+      .default(true)
+      .describe("Whether to include text fields in returned nodelets."),
+    ...BaseRequestFields,
+  })
+  .strict();
+
+export type AssetGetNodeInput = z.infer<typeof AssetGetNodeRequestSchema>;
 
 /** -------------------------------------------------------------------------
  * 2. CreateRequest — wraps asset

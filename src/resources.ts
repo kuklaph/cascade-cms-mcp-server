@@ -1,8 +1,8 @@
 /**
  * MCP resource registrations for the Cascade CMS server.
  *
- * Resources complement the 26 tools by exposing URI-addressable reference
- * data that agents can fetch without invoking a tool. Three resources are
+ * Resources complement the tools by exposing URI-addressable reference data
+ * that agents can fetch without invoking a tool. Four resources/templates are
  * registered:
  *
  *   cascade://entity-types   (static,  JSON)     — Cascade entity type strings.
@@ -10,18 +10,27 @@
  *   cascade://text-encoding  (static,  Markdown) — how to encode text for each
  *                                                  field category (rich-text/XML,
  *                                                  format source, plain text).
+ *   cascade://asset/{handle}/raw (dynamic, JSON) — exact cached raw asset JSON.
  *
  * Dynamic failures are translated via `translateError` so a flaky Cascade
  * instance yields an actionable error body instead of crashing the transport.
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  ResourceTemplate,
+  type McpServer,
+} from "@modelcontextprotocol/sdk/server/mcp.js";
 import type {
   ReadResourceResult,
   TextResourceContents,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { Types } from "cascade-cms-api";
 import type { CascadeClient } from "./client.js";
+import {
+  createAssetCache,
+  isAssetHandle,
+  type AssetCache,
+} from "./assetIndex.js";
 import { EntityTypeSchema } from "./schemas/common.js";
 import { translateError } from "./errors.js";
 
@@ -174,7 +183,7 @@ time.
 `;
 
 /**
- * Register the three Cascade MCP resources on the given server.
+ * Register the Cascade MCP resources on the given server.
  *
  * Idempotent per server: the SDK throws on duplicate URIs, so call this
  * exactly once per `McpServer` instance.
@@ -182,7 +191,9 @@ time.
 export function registerCascadeResources(
   server: McpServer,
   client: CascadeClient,
+  deps?: { assetCache?: AssetCache },
 ): void {
+  const assetCache = deps?.assetCache ?? createAssetCache();
   // Static: all Cascade entity types with short descriptions. The count is
   // derived from the Zod enum so it stays in sync automatically.
   const entityTypeCount = EntityTypeSchema.options.length;
@@ -242,6 +253,41 @@ export function registerCascadeResources(
           JSON.stringify({ error: errorText }, null, 2),
         );
       }
+    },
+  );
+
+  server.registerResource(
+    "Cascade Raw Asset JSON",
+    new ResourceTemplate("cascade://asset/{handle}/raw", { list: undefined }),
+    {
+      description:
+        "Exact raw JSON cached from a prior cascade_read preview. Replace {handle} with structuredContent.asset_handle.",
+      mimeType: "application/json",
+    },
+    async (uri: URL, variables) => {
+      const rawHandle = variables.handle;
+      const handle = Array.isArray(rawHandle) ? rawHandle[0] : rawHandle;
+      if (!handle || !isAssetHandle(handle)) {
+        return textResource(
+          uri,
+          JSON.stringify({ error: "Invalid asset handle" }, null, 2),
+        );
+      }
+      const entry = assetCache.get(handle);
+      if (!entry) {
+        return textResource(
+          uri,
+          JSON.stringify(
+            {
+              error:
+                "Asset handle not found. Re-run cascade_read to create a fresh asset_handle.",
+            },
+            null,
+            2,
+          ),
+        );
+      }
+      return textResource(uri, JSON.stringify(entry.raw, null, 2));
     },
   );
 }

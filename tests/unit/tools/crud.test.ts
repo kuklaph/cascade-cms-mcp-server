@@ -1,8 +1,12 @@
 import { describe, test, expect, mock } from "bun:test";
 import type { ToolAnnotations, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import { registerCrudTools } from "../../../src/tools/crud.js";
 import {
   ReadRequestSchema,
+  AssetSearchPathsRequestSchema,
+  AssetListChildrenRequestSchema,
+  AssetGetNodeRequestSchema,
   CreateRequestSchema,
   EditRequestSchema,
   RemoveRequestSchema,
@@ -43,10 +47,10 @@ const VALID_ASSET = {
 // =============================================================================
 
 describe("cascade_read tool", () => {
-  test("happy path: calls client.read with input (minus response_format) and returns success response", async () => {
+  test("preview default: calls client.read and returns compact handle-based preview", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
-      read: mock(() => Promise.resolve(READ_PAGE_OK)),
+      read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
     });
 
     registerCrudTools(server as any, client);
@@ -62,7 +66,23 @@ describe("cascade_read tool", () => {
     expect(client.read).toHaveBeenCalledTimes(1);
     expect(client.read.mock.calls[0][0]).toEqual({ identifier: ID_PAGE });
     expect(result.isError).not.toBe(true);
-    expect(result.structuredContent).toEqual(READ_PAGE_OK);
+    const structured = result.structuredContent as Record<string, any>;
+    expect(structured.asset_handle).toMatch(/^a_[0-9a-f-]+$/);
+    expect(structured.asset_type).toBe("page");
+    expect(structured.raw_resource_uri).toBe(
+      `cascade://asset/${structured.asset_handle}/raw`,
+    );
+    expect(structured.node_count).toBe(100);
+    expect(structured.asset).toBeUndefined();
+    expect(structured.root_outline).toHaveLength(20);
+
+    const link = result.content.find((block) => block.type === "resource_link");
+    expect(link).toMatchObject({
+      type: "resource_link",
+      uri: structured.raw_resource_uri,
+      name: "Cascade raw asset JSON",
+      mimeType: "application/json",
+    });
   });
 
   test("schema validation: rejects input missing required identifier field", () => {
@@ -87,7 +107,7 @@ describe("cascade_read tool", () => {
     expect(text).toContain("Not Found");
   });
 
-  test("response_detail: 'summary' projects out heavy fields on page asset", async () => {
+  test("read_mode: 'raw' returns identical raw response", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
@@ -98,33 +118,16 @@ describe("cascade_read tool", () => {
 
     const result = await tool.handler({
       identifier: { id: "huge-page-id", type: "page" },
-      response_detail: "summary",
+      read_mode: "raw",
       response_format: "json",
     });
 
     expect(result.isError).not.toBe(true);
     const structured = result.structuredContent as Record<string, any>;
-    expect(structured.success).toBe(true);
-
-    const page = structured.asset.page;
-    expect(page.id).toBe("huge-page-id");
-    expect(page.name).toBe("huge-page");
-    expect(page.path).toBe("/huge");
-    expect(page.type).toBe("page");
-    expect(page.lastModifiedDate).toBe("2026-01-01T00:00:00Z");
-    expect(page.metadata).toEqual({
-      title: "Huge Page",
-      displayName: "Huge",
-      summary: "A page used to exercise the cache",
-    });
-
-    // Heavy fields stripped
-    expect(page.xhtml).toBeUndefined();
-    expect(page.structuredData).toBeUndefined();
-    expect(page.pageConfigurations).toBeUndefined();
+    expect(structured.asset).toEqual(READ_PAGE_HUGE.asset);
   });
 
-  test("response_detail: 'full' returns identical raw response (no projection)", async () => {
+  test("SDK-validated omitted read_mode uses preview by default", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
@@ -132,100 +135,96 @@ describe("cascade_read tool", () => {
 
     registerCrudTools(server as any, client);
     const tool = findTool(tools, "cascade_read");
-
-    const result = await tool.handler({
+    const parsedInput = z.object(tool.config.inputSchema as any).parse({
       identifier: { id: "huge-page-id", type: "page" },
-      response_detail: "full",
       response_format: "json",
     });
 
+    const result = await tool.handler(parsedInput);
+
     expect(result.isError).not.toBe(true);
     const structured = result.structuredContent as Record<string, any>;
-    expect(structured.asset.page.xhtml).toBeDefined();
-    expect(structured.asset.page.structuredData).toBeDefined();
-    expect(structured.asset.page.pageConfigurations).toBeDefined();
+    expect(structured.asset_handle).toMatch(/^a_[0-9a-f-]+$/);
+    expect(structured.asset).toBeUndefined();
   });
 
-  test("response_detail omitted: defaults to 'full' (no projection)", async () => {
+  test("follow-up tools inspect the cached asset handle without calling Cascade again", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_read");
+    const read = findTool(tools, "cascade_read");
+    const search = findTool(tools, "cascade_asset_search_paths");
+    const list = findTool(tools, "cascade_asset_list_children");
+    const get = findTool(tools, "cascade_asset_get_node");
 
-    const result = await tool.handler({
+    const result = await read.handler({
       identifier: { id: "huge-page-id", type: "page" },
+      response_format: "markdown",
+    });
+    const handle = (result.structuredContent as Record<string, any>).asset_handle;
+
+    const searchResult = await search.handler({
+      asset_handle: handle,
+      query: "node-1",
+      response_format: "json",
+    });
+    const listResult = await list.handler({
+      asset_handle: handle,
+      pointer: "",
+      limit: 5,
+      response_format: "json",
+    });
+    const firstPointer = (listResult.structuredContent as Record<string, any>)
+      .children[0].pointer;
+    const getResult = await get.handler({
+      asset_handle: handle,
+      pointer: firstPointer,
+      depth: 0,
       response_format: "json",
     });
 
-    expect(result.isError).not.toBe(true);
-    const structured = result.structuredContent as Record<string, any>;
-    expect(structured.asset.page.xhtml).toBeDefined();
-    expect(structured.asset.page.structuredData).toBeDefined();
-    expect(structured.asset.page.pageConfigurations).toBeDefined();
+    expect(searchResult.isError).not.toBe(true);
+    expect(
+      typeof (searchResult.structuredContent as Record<string, any>).matches[0]
+        .pointer,
+    ).toBe("string");
+    expect((listResult.structuredContent as Record<string, any>).children).toHaveLength(5);
+    expect((getResult.structuredContent as Record<string, any>).pointer).toBe(
+      firstPointer,
+    );
+    expect(client.read).toHaveBeenCalledTimes(1);
   });
 
-  test("response_detail: 'summary' on file asset omits data and text, keeps metadata", async () => {
-    const FILE_ASSET = {
-      success: true,
-      asset: {
-        file: {
-          id: "file-001",
-          name: "logo.png",
-          path: "/assets/logo.png",
-          type: "file",
-          lastModifiedDate: "2026-02-01T00:00:00Z",
-          metadata: { title: "Logo" },
-          data: "base64bytes",
-          text: "fallback text body",
-        },
-      },
-    };
+  test("follow-up tools return actionable errors for missing handles", async () => {
     const { server, tools } = makeMockServer();
-    const client = createMockClient({
-      read: mock(() => Promise.resolve(FILE_ASSET)),
-    });
+    const client = createMockClient();
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_read");
+    const tool = findTool(tools, "cascade_asset_get_node");
 
     const result = await tool.handler({
-      identifier: { id: "file-001", type: "file" },
-      response_detail: "summary",
-      response_format: "json",
+      asset_handle: "a_00000000-0000-0000-0000-000000000000",
+      pointer: "",
     });
 
-    const structured = result.structuredContent as Record<string, any>;
-    const file = structured.asset.file;
-
-    expect(file.id).toBe("file-001");
-    expect(file.metadata).toEqual({ title: "Logo" });
-    expect(file.data).toBeUndefined();
-    expect(file.text).toBeUndefined();
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toContain("cascade_asset_get_node");
+    expect(firstText(result)).toContain("not found");
   });
 
-  test("response_detail: 'summary' robust on empty asset (returns unchanged)", async () => {
-    const EMPTY_ASSET = { success: true, asset: {} };
-    const { server, tools } = makeMockServer();
-    const client = createMockClient({
-      read: mock(() => Promise.resolve(EMPTY_ASSET)),
-    });
-
-    registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_read");
-
-    const result = await tool.handler({
-      identifier: { id: "x", type: "page" },
-      response_detail: "summary",
-      response_format: "json",
-    });
-
-    expect(result.isError).not.toBe(true);
-    const structured = result.structuredContent as Record<string, any>;
-    expect(structured.success).toBe(true);
-    expect(structured.asset).toEqual({});
+  test("asset follow-up schemas require asset_handle", () => {
+    expect(AssetSearchPathsRequestSchema.safeParse({ query: "x" }).success).toBe(
+      false,
+    );
+    expect(AssetListChildrenRequestSchema.safeParse({ pointer: "" }).success).toBe(
+      false,
+    );
+    expect(AssetGetNodeRequestSchema.safeParse({ pointer: "" }).success).toBe(
+      false,
+    );
   });
 });
 
@@ -501,11 +500,11 @@ describe("cascade_copy tool", () => {
 });
 
 // =============================================================================
-// Registration coverage: all 6 tools registered
+// Registration coverage: CRUD tools plus handle-based asset follow-ups
 // =============================================================================
 
 describe("registerCrudTools coverage", () => {
-  test("registers all 6 CRUD tools with cascade_ prefix", () => {
+  test("registers CRUD tools and asset follow-up tools with cascade_ prefix", () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient();
 
@@ -513,6 +512,9 @@ describe("registerCrudTools coverage", () => {
 
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      "cascade_asset_get_node",
+      "cascade_asset_list_children",
+      "cascade_asset_search_paths",
       "cascade_copy",
       "cascade_create",
       "cascade_edit",

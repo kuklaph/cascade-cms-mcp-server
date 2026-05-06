@@ -1,11 +1,9 @@
 /**
  * Server factory for the Cascade CMS MCP server.
  *
- * Instantiates a single `McpServer` and registers 26 tools: 25 Cascade
- * tools across 9 files (CRUD, search, sites, access, workflow, messages,
- * checkout, audits, publish) against the provided Cascade client, plus
- * the MCP-native `cascade_read_response` retrieval tool that reads
- * slices from the in-memory response cache.
+ * Instantiates a single `McpServer` and registers Cascade tools, handle-based
+ * asset inspection tools, the MCP-native `cascade_read_response` retrieval
+ * tool, and MCP resources/templates.
  *
  * Pure and side-effect-free: callers own transport/lifecycle.
  */
@@ -14,6 +12,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CascadeClient } from "./client.js";
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { createResponseCache } from "./cache.js";
+import { createAssetCache } from "./assetIndex.js";
 import type { CascadeDeps } from "./tools/helper.js";
 import { registerCrudTools } from "./tools/crud.js";
 import { registerSearchTools } from "./tools/search.js";
@@ -47,7 +46,13 @@ export function createServer(
     version: SERVER_VERSION,
   });
 
-  const resolved: CascadeDeps = deps ?? { cache: createResponseCache() };
+  const resolved: CascadeDeps = deps ?? {
+    cache: createResponseCache(),
+    assetCache: createAssetCache(),
+  };
+  if (!resolved.assetCache) {
+    resolved.assetCache = createAssetCache();
+  }
 
   registerCrudTools(server, client, resolved);
   registerSearchTools(server, client, resolved);
@@ -59,7 +64,7 @@ export function createServer(
   registerAuditTools(server, client, resolved);
   registerPublishTools(server, client, resolved);
 
-  registerCascadeResources(server, client);
+  registerCascadeResources(server, client, resolved);
 
   // Retrieval tool: reads slices from the response cache populated by the
   // other tool cohorts above. Registered last so it appears after the

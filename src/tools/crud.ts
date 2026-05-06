@@ -16,6 +16,16 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Types } from "cascade-cms-api";
 import type { CascadeClient } from "../client.js";
+import { createResponseCache } from "../cache.js";
+import {
+  createAssetCache,
+  getIndexedNode,
+  listIndexedChildren,
+  searchIndexedNodes,
+  toAssetPreview,
+  type AssetCache,
+  type AssetPreview,
+} from "../assetIndex.js";
 import {
   registerCascadeTool,
   buildCascadeToolDescription,
@@ -23,6 +33,9 @@ import {
 } from "./helper.js";
 import {
   ReadRequestSchema,
+  AssetSearchPathsRequestSchema,
+  AssetListChildrenRequestSchema,
+  AssetGetNodeRequestSchema,
   CreateRequestSchema,
   EditRequestSchema,
   RemoveRequestSchema,
@@ -30,75 +43,132 @@ import {
   CopyRequestSchema,
 } from "../schemas/requests.js";
 
-/**
- * Fields retained by the "summary" projection on a Cascade read result.
- *
- * Keeps only lightweight discovery fields — id, name, path, type, the
- * lastModifiedDate timestamp, and the metadata block. Everything else on
- * the asset entity (xhtml body, structuredData, file bytes, page
- * configurations, velocity/script bodies, etc.) is stripped.
- */
-const SUMMARY_ALLOWLIST = [
-  "id",
-  "name",
-  "path",
-  "type",
-  "lastModifiedDate",
-  "metadata",
-] as const;
-
-/**
- * Project a Cascade `read` response down to the summary allowlist.
- *
- * The upstream shape is `{success, asset: {<typeKey>: {...}}}` where
- * `<typeKey>` is exactly one of `page`, `file`, `folder`, `block`,
- * `template`, etc. This helper projects that entity down to the
- * allowlisted fields. Returns the original result unchanged when:
- *   - input isn't an object,
- *   - `asset` is missing, non-object, or empty,
- *   - `asset` has more than one key (unfamiliar shape — fail safe),
- *   - the entity has none of the allowlisted fields (would project to
- *     an empty object, which is less useful than the original).
- *
- * Note: the allowlist (`id, name, path, type, lastModifiedDate, metadata`)
- * is sized for asset entities like page/file/folder/block. Other Cascade
- * entity types (user, workflow, transport, etc.) lack most of these
- * fields; on those, the empty-projection guard returns the original.
- */
-function summarizeReadResult(raw: unknown): unknown {
-  if (typeof raw !== "object" || raw === null) return raw;
-
-  const result = raw as Record<string, unknown>;
-  const asset = result.asset;
-  if (typeof asset !== "object" || asset === null) return raw;
-
-  const assetRecord = asset as Record<string, unknown>;
-  const typeKeys = Object.keys(assetRecord);
-  // Guard against unfamiliar shapes: if `asset` has 0 or 2+ keys,
-  // we can't safely pick "the entity" — return raw.
-  if (typeKeys.length !== 1) return raw;
-
-  const typeKey = typeKeys[0]!;
-  const entity = assetRecord[typeKey];
-  if (typeof entity !== "object" || entity === null) return raw;
-
-  const entityRecord = entity as Record<string, unknown>;
-  const projected: Record<string, unknown> = {};
-  for (const field of SUMMARY_ALLOWLIST) {
-    if (field in entityRecord) {
-      projected[field] = entityRecord[field];
-    }
+function renderAssetPreview(result: unknown): string {
+  const preview = result as AssetPreview;
+  const lines = [
+    "## cascade_read preview",
+    `- asset_handle: ${preview.asset_handle}`,
+    `- asset_type: ${preview.asset_type}`,
+    `- raw_resource_uri: ${preview.raw_resource_uri}`,
+    `- node_count: ${preview.node_count}`,
+    `- max_depth: ${preview.max_depth}`,
+    "",
+    "Use cascade_asset_search_paths, cascade_asset_list_children, or cascade_asset_get_node with asset_handle for follow-up inspection.",
+  ];
+  if (preview.warnings.length > 0) {
+    lines.push("", ...preview.warnings.map((warning) => `- warning: ${warning}`));
   }
+  return lines.join("\n");
+}
 
-  // If the entity has none of the allowlisted fields (e.g. a user,
-  // workflow, or other entity type without id/name/path), the projection
-  // would be an empty object — less useful than returning the original.
-  if (Object.keys(projected).length === 0) return raw;
+function registerAssetFollowUpTools(
+  server: McpServer,
+  assetCache: AssetCache,
+  deps: CascadeDeps,
+): void {
+  registerCascadeTool(server, {
+    name: "cascade_asset_search_paths",
+    title: "Search cached Cascade asset nodelets",
+    description: buildCascadeToolDescription(
+      `Use after cascade_read. Search nodelet identifiers, text previews, and asset references inside the cached asset_handle returned by cascade_read. This tool never reads Cascade directly; it only inspects the cached asset associated with asset_handle.`,
+    ),
+    inputSchema: AssetSearchPathsRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: async (input) => {
+      const args = input as unknown as {
+        asset_handle: string;
+        query: string;
+        search_in?: Array<"identifier" | "text" | "asset">;
+        type?: string;
+        limit?: number;
+      };
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_search_paths");
+      return {
+        success: true,
+        asset_handle: args.asset_handle,
+        query: args.query,
+        ...searchIndexedNodes(entry, args),
+      };
+    },
+  }, deps);
 
-  return {
-    ...result,
-    asset: { [typeKey]: projected },
-  };
+  registerCascadeTool(server, {
+    name: "cascade_asset_list_children",
+    title: "List cached Cascade asset nodelet children",
+    description: buildCascadeToolDescription(
+      `Use after cascade_read. List child nodelets for a JSON Pointer in the cached asset_handle returned by cascade_read. Use pointer "" to list root nodelets. This tool never reads Cascade directly.`,
+    ),
+    inputSchema: AssetListChildrenRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: async (input) => {
+      const args = input as unknown as {
+        asset_handle: string;
+        pointer: string;
+        cursor?: string;
+        limit?: number;
+      };
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_list_children");
+      return {
+        success: true,
+        asset_handle: args.asset_handle,
+        pointer: args.pointer,
+        ...listIndexedChildren(entry, args.pointer, args),
+      };
+    },
+  }, deps);
+
+  registerCascadeTool(server, {
+    name: "cascade_asset_get_node",
+    title: "Get cached Cascade asset nodelet",
+    description: buildCascadeToolDescription(
+      `Use after cascade_read. Fetch the exact nodelet or bounded subtree at a JSON Pointer in the cached asset_handle returned by cascade_read. This tool never reads Cascade directly.`,
+    ),
+    inputSchema: AssetGetNodeRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: async (input) => {
+      const args = input as unknown as {
+        asset_handle: string;
+        pointer: string;
+        depth?: number;
+        include_text?: boolean;
+      };
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_get_node");
+      return {
+        success: true,
+        asset_handle: args.asset_handle,
+        ...getIndexedNode(entry, args.pointer, args),
+      };
+    },
+  }, deps);
+}
+
+function getAssetEntry(
+  assetCache: AssetCache,
+  handle: string,
+  toolName: string,
+) {
+  const entry = assetCache.get(handle);
+  if (!entry) {
+    throw new Error(
+      `${toolName}: asset handle ${handle} not found. Re-run cascade_read to create a fresh asset_handle.`,
+    );
+  }
+  return entry;
 }
 
 export function registerCrudTools(
@@ -106,13 +176,16 @@ export function registerCrudTools(
   client: CascadeClient,
   deps?: CascadeDeps,
 ): void {
+  const resolved: CascadeDeps = deps ?? { cache: createResponseCache() };
+  const assetCache = resolved.assetCache ?? createAssetCache();
+
   registerCascadeTool(server, {
     name: "cascade_read",
     title: "Read Cascade Asset",
     description: buildCascadeToolDescription(
       `Read an asset from Cascade CMS by identifier.
 
-Retrieves the full representation of any Cascade asset (pages, files, folders, blocks, templates, workflows, etc.) given either an asset ID or a site-qualified path. Returns the complete asset data structure, including metadata, structured content, and parent-folder relationships.
+Default preview mode returns a compact asset_handle, asset identity, node counts, root nodelet outline, and raw_resource_uri. Use cascade_asset_search_paths, cascade_asset_list_children, and cascade_asset_get_node with the returned asset_handle for follow-up inspection. Use read_mode: "raw" only when the full REST payload is required.
 
 Args:
   - identifier (object, required): The asset to read
@@ -122,10 +195,11 @@ Args:
       - siteId OR siteName (string): Which site the path belongs to
     - type (string, required): Entity type — one of the 56 EntityTypeString values (page, file, folder, block, template, etc.)
     - recycled (boolean, optional): Read from recycle bin.
-  - response_detail (string, optional): 'full' (default, complete asset) or 'summary' (lean projection keeping only id, name, path, type, lastModifiedDate, metadata; strips xhtml, structuredData, file data, page configurations, and similar heavy fields). Use 'summary' to discover/describe an asset without loading its body.
-
+  - read_mode (string, optional): 'preview' (default, compact handle-based output) or 'raw' (full REST payload; expensive for structured assets).
 Returns:
-  Cascade OperationResult with the asset body:
+  Preview mode:
+  { asset_handle, asset_type, asset_identity, raw_resource_uri, node_count, max_depth, root_outline, omitted_fields, warnings, next_actions }
+  Raw mode:
   { success: true, asset: { <type>: { ...type-specific representation } } }
   On failure: { success: false, message: "Asset not found" }
 
@@ -150,12 +224,31 @@ Error Handling:
     },
     handler: async (input) => {
       const raw = (input ?? {}) as Record<string, unknown>;
-      const detail = raw.response_detail;
-      const { response_detail: _rd, ...rest } = raw;
+      const readMode = raw.read_mode;
+      const { read_mode: _rm, ...rest } = raw;
       const result = await client.read(rest as unknown as Types.ReadRequest);
-      return detail === "summary" ? summarizeReadResult(result) : result;
+      if (readMode === "raw") return result;
+
+      const entry = assetCache.put(result);
+      const preview = toAssetPreview(entry);
+      return {
+        ...preview,
+        _resource_links: [
+          {
+            type: "resource_link" as const,
+            uri: preview.raw_resource_uri,
+            name: "Cascade raw asset JSON",
+            description: "Exact raw JSON cached from this cascade_read call.",
+            mimeType: "application/json",
+          },
+        ],
+      };
     },
-  }, deps);
+    renderMarkdown: renderAssetPreview,
+    stripFromStructured: ["_resource_links"],
+  }, resolved);
+
+  registerAssetFollowUpTools(server, assetCache, resolved);
 
   registerCascadeTool(server, {
     name: "cascade_create",
@@ -215,7 +308,7 @@ Error Handling:
     description: buildCascadeToolDescription(
       `Edit an existing Cascade CMS asset.
 
-Accepts the full asset body (same envelope shape as cascade_create). The workflow is symmetric: cascade_read returns { asset: { <typeKey>: {...} } }; modify the inner object; pass the same envelope back to cascade_edit. Some asset types require a prior cascade_check_out.
+Accepts the full asset body (same envelope shape as cascade_create). The workflow is symmetric when cascade_read is called with read_mode: "raw": modify the raw asset envelope and pass the same envelope back to cascade_edit. Some asset types require a prior cascade_check_out.
 
 Payload conventions:
   - Edit replaces the asset body, so send the full object as read — do not try to send only the fields you are changing.
