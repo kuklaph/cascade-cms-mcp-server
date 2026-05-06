@@ -30,6 +30,28 @@ export interface RawReference {
   value?: boolean;
 }
 
+export type ScalarArtifactKind =
+  | "http_url"
+  | "site_link"
+  | "href"
+  | "src"
+  | "anchor"
+  | "mailto"
+  | "tel"
+  | "root_path";
+
+export interface ScalarArtifact {
+  source_pointer: string;
+  key?: string;
+  scalar_type: "string";
+  value_length: number;
+  artifact_kind: ScalarArtifactKind;
+  value: string;
+  start_offset: number;
+  end_offset: number;
+  context_preview: string;
+}
+
 export interface RawFactIndex {
   rawHash: string;
   indexVersion: number;
@@ -64,6 +86,16 @@ export interface RawFactFilters {
 export interface RawReferenceFilters {
   pointer_prefix?: string;
   reference_kind?: string;
+  value_contains?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface ScalarArtifactFilters {
+  artifact_kind?: ScalarArtifactKind;
+  pointer_prefix?: string;
+  key?: string;
+  key_contains?: string;
   value_contains?: string;
   limit?: number;
   cursor?: string;
@@ -129,6 +161,7 @@ const CURSOR_PREFIX = "af_";
 const MAX_RAW_BYTES = 10 * 1024 * 1024;
 const MAX_FACTS = 250_000;
 const MAX_DEPTH = 500;
+const MAX_SCALAR_ARTIFACTS = 10_000;
 
 const REFERENCE_PATH_KINDS = new Set([
   "assetFactory",
@@ -249,6 +282,30 @@ export function listReferences(
     index.rawReferences,
     ["cascade_asset_get_value", "cascade_asset_list_facts"],
   );
+}
+
+export function listScalarArtifacts(
+  index: IndexedForAudit,
+  filters: ScalarArtifactFilters,
+): AuditPage<ScalarArtifact> {
+  const extraction = extractScalarArtifacts(index.raw, index.rawFacts, filters);
+  const page = pageResults(
+    index,
+    "raw_scalar_artifacts",
+    filters,
+    (artifact) =>
+      pointerMatches(artifact.source_pointer, filters.pointer_prefix) &&
+      keyMatches(artifact.key, filters.key, filters.key_contains) &&
+      (!filters.artifact_kind || artifact.artifact_kind === filters.artifact_kind) &&
+      (!filters.value_contains || artifact.value.toLowerCase().includes(filters.value_contains.toLowerCase())),
+    extraction.artifacts,
+    ["cascade_asset_get_value", "cascade_asset_search_values", "cascade_asset_list_facts"],
+  );
+  return {
+    ...page,
+    complete: page.complete && !extraction.truncated,
+    truncated: page.truncated || extraction.truncated,
+  };
 }
 
 export function getValueAtPointer(
@@ -545,6 +602,146 @@ function toValueResult(
     value_preview: fact.value_preview ?? scalarPreview(value),
     match_offsets: matchOffsets(scalarSearchText(value), needle),
   };
+}
+
+function extractScalarArtifacts(
+  raw: unknown,
+  facts: RawFact[],
+  filters: ScalarArtifactFilters,
+): { artifacts: ScalarArtifact[]; truncated: boolean } {
+  const artifacts: ScalarArtifact[] = [];
+  const seen = new Set<string>();
+  let truncated = false;
+
+  function add(fact: RawFact, kind: ScalarArtifactKind, start: number, end: number, source: string): boolean {
+    const key = `${fact.pointer}|${kind}|${start}|${end}`;
+    const value = source.slice(start, end);
+    if (
+      !pointerMatches(fact.pointer, filters.pointer_prefix) ||
+      !keyMatches(fact.key, filters.key, filters.key_contains) ||
+      (filters.artifact_kind && kind !== filters.artifact_kind) ||
+      (filters.value_contains && !value.toLowerCase().includes(filters.value_contains.toLowerCase()))
+    ) {
+      return true;
+    }
+    if (seen.has(key)) return true;
+    if (artifacts.length >= MAX_SCALAR_ARTIFACTS) {
+      truncated = true;
+      return false;
+    }
+    seen.add(key);
+    artifacts.push({
+      source_pointer: fact.pointer,
+      ...(fact.key ? { key: fact.key } : {}),
+      scalar_type: "string",
+      value_length: source.length,
+      artifact_kind: kind,
+      value,
+      start_offset: start,
+      end_offset: end,
+      context_preview: contextPreview(source, start, end),
+    });
+    return true;
+  }
+
+  for (const fact of facts) {
+    if (fact.fact_kind !== "scalar" || fact.scalar_type !== "string") continue;
+    if (
+      !pointerMatches(fact.pointer, filters.pointer_prefix) ||
+      !keyMatches(fact.key, filters.key, filters.key_contains)
+    ) {
+      continue;
+    }
+    const value = resolveRawPointer(raw, fact.pointer);
+    if (typeof value !== "string" || value.length === 0) continue;
+
+    if (wantsArtifact(filters, "http_url")) {
+      for (const match of matchRegex(value, /\bhttps?:\/\/[^\s"'<>]+/gi)) {
+        if (!add(fact, "http_url", match.start, match.end, value)) return { artifacts, truncated };
+      }
+    }
+    if (wantsArtifact(filters, "mailto")) {
+      for (const match of matchRegex(value, /\bmailto:[^\s"'<>]+/gi)) {
+        if (!add(fact, "mailto", match.start, match.end, value)) return { artifacts, truncated };
+      }
+    }
+    if (wantsArtifact(filters, "tel")) {
+      for (const match of matchRegex(value, /\btel:[^\s"'<>]+/gi)) {
+        if (!add(fact, "tel", match.start, match.end, value)) return { artifacts, truncated };
+      }
+    }
+    if (wantsArtifact(filters, "href")) {
+      for (const match of matchAttributeValues(value, "href")) {
+        if (!add(fact, "href", match.start, match.end, value)) return { artifacts, truncated };
+      }
+    }
+    if (wantsArtifact(filters, "src")) {
+      for (const match of matchAttributeValues(value, "src")) {
+        if (!add(fact, "src", match.start, match.end, value)) return { artifacts, truncated };
+      }
+    }
+    if (wantsArtifact(filters, "anchor")) {
+      for (const match of matchRegex(value, /(^|[^A-Za-z0-9_])#[A-Za-z][A-Za-z0-9_-]*/g)) {
+        const start = value[match.start] === "#" ? match.start : match.start + 1;
+        if (!add(fact, "anchor", start, match.end, value)) return { artifacts, truncated };
+      }
+    }
+    if (wantsArtifact(filters, "root_path")) {
+      for (const match of matchRegex(value, /(^|[\s"'=])\/(?!\/)[A-Za-z0-9._~/%+-]*(?:[A-Za-z0-9/_~-])?/g)) {
+        const start = value[match.start] === "/" ? match.start : match.start + 1;
+        if (match.end > start + 1 && !add(fact, "root_path", start, match.end, value)) {
+          return { artifacts, truncated };
+        }
+      }
+    }
+    if (wantsArtifact(filters, "site_link") && isSiteLinkFact(fact, value)) {
+      if (!add(fact, "site_link", 0, value.length, value)) return { artifacts, truncated };
+    }
+  }
+
+  return { artifacts, truncated };
+}
+
+function wantsArtifact(filters: ScalarArtifactFilters, kind: ScalarArtifactKind): boolean {
+  return !filters.artifact_kind || filters.artifact_kind === kind;
+}
+
+function* matchRegex(
+  value: string,
+  regex: RegExp,
+): Iterable<{ start: number; end: number }> {
+  for (const match of value.matchAll(regex)) {
+    const text = match[0];
+    if (!text || match.index === undefined) continue;
+    yield { start: match.index, end: match.index + text.length };
+  }
+}
+
+function* matchAttributeValues(
+  value: string,
+  attribute: "href" | "src",
+): Iterable<{ start: number; end: number }> {
+  const regex = new RegExp(`\\b${attribute}\\s*=\\s*(["'])`, "gi");
+  for (const match of value.matchAll(regex)) {
+    if (match.index === undefined || !match[1]) continue;
+    const start = match.index + match[0].length;
+    const end = value.indexOf(match[1], start);
+    if (end >= start) yield { start, end };
+  }
+}
+
+function isSiteLinkFact(fact: RawFact, value: string): boolean {
+  if (!fact.key?.endsWith("Path")) return false;
+  if (value.startsWith("/") || /^[a-z][a-z0-9+.-]*:/i.test(value)) return false;
+  return /^[A-Za-z0-9._~/-]+$/.test(value) && value.includes("/");
+}
+
+function contextPreview(value: string, start: number, end: number): string {
+  const contextStart = Math.max(0, start - 40);
+  const contextEnd = Math.min(value.length, end + 40);
+  const prefix = contextStart > 0 ? "..." : "";
+  const suffix = contextEnd < value.length ? "..." : "";
+  return `${prefix}${value.slice(contextStart, contextEnd)}${suffix}`;
 }
 
 function scalarType(value: unknown): RawScalarType {

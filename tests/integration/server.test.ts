@@ -2,7 +2,7 @@
  * Integration test for the server factory (`createServer`).
  *
  * Verifies that all tool cohorts wire up correctly and produce
- * the expected 33 tools with well-formed names (32 Cascade-backed +
+ * the expected 34 tools with well-formed names (33 Cascade-backed +
  * 1 `cascade_read_response` retrieval tool). Also exercises one
  * end-to-end handler invocation (`cascade_read`) through the real
  * pipeline that `registerCascadeTool` installs on the server, plus
@@ -34,14 +34,15 @@ function getRegisteredTools(server: unknown): Record<string, {
   return (server as { _registeredTools: Record<string, any> })._registeredTools;
 }
 
-/** All 33 expected tool names: 32 Cascade-backed tools + 1 retrieval tool. */
+/** All 34 expected tool names: 33 Cascade-backed tools + 1 retrieval tool. */
 const EXPECTED_TOOL_NAMES = [
-  // crud and asset follow-ups (13)
+  // crud and asset follow-ups (14)
   "cascade_read",
   "cascade_asset_list_facts",
   "cascade_asset_search_values",
   "cascade_asset_search_keys",
   "cascade_asset_get_value",
+  "cascade_asset_list_scalar_artifacts",
   "cascade_asset_list_references",
   "cascade_asset_list_nodelets",
   "cascade_asset_get_nodelet",
@@ -82,12 +83,12 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 describe("createServer (server factory)", () => {
-  test("registers exactly 33 tools", () => {
+  test("registers exactly 34 tools", () => {
     const client = createMockClient();
     const server = createServer(client);
     const tools = getRegisteredTools(server);
 
-    expect(Object.keys(tools)).toHaveLength(33);
+    expect(Object.keys(tools)).toHaveLength(34);
   });
 
   test("all tool names use snake_case with cascade_ prefix", () => {
@@ -109,7 +110,7 @@ describe("createServer (server factory)", () => {
     const names = Object.keys(tools);
     const unique = new Set(names);
     expect(unique.size).toBe(names.length);
-    expect(unique.size).toBe(33);
+    expect(unique.size).toBe(34);
   });
 
   test("every expected tool from each cohort is present", () => {

@@ -3,6 +3,7 @@ import {
   getValueAtPointer,
   listFacts,
   listReferences,
+  listScalarArtifacts,
   searchKeys,
   searchValues,
   type AuditPage,
@@ -12,9 +13,12 @@ import {
   type RawKeySearchFilters,
   type RawReference,
   type RawReferenceFilters,
+  type ScalarArtifact,
+  type ScalarArtifactFilters,
   type RawValueResult,
   type RawValueSearchFilters,
 } from "./assetFacts.js";
+import { ASSET_ENVELOPE_KEYS } from "./schemas/assets.js";
 
 export type NodeletType = "text" | "asset" | "group" | string;
 
@@ -171,11 +175,15 @@ export function buildAssetIndex(raw: unknown, handle: string): IndexedAsset {
 }
 
 export function toAssetPreview(index: IndexedAsset): AssetPreview {
-  const omitted = ["structuredData"];
-  if (index.asset && "xhtml" in index.asset) omitted.push("xhtml");
-  if (index.asset && "pageConfigurations" in index.asset) {
-    omitted.push("pageConfigurations");
-  }
+  const omitted = [
+    "structuredData",
+    "xhtml",
+    "xml",
+    "script",
+    "text",
+    "data",
+    "pageConfigurations",
+  ].filter((field) => index.asset && field in index.asset);
   const omittedRoots = Math.max(
     0,
     index.rootPointers.length - ROOT_OUTLINE_LIMIT,
@@ -214,6 +222,7 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
       "cascade_asset_search_values",
       "cascade_asset_search_keys",
       "cascade_asset_get_value",
+      "cascade_asset_list_scalar_artifacts",
       "cascade_asset_list_references",
       "cascade_asset_list_nodelets",
       "cascade_asset_get_nodelet",
@@ -256,6 +265,13 @@ export function listRawReferences(
   options: RawReferenceFilters,
 ): AuditPage<RawReference> {
   return listReferences(index, options);
+}
+
+export function listAssetScalarArtifacts(
+  index: IndexedAsset,
+  options: ScalarArtifactFilters,
+): AuditPage<ScalarArtifact> {
+  return listScalarArtifacts(index, options);
 }
 
 export function getIndexedNode(
@@ -349,8 +365,12 @@ function canonicalizeAsset(raw: unknown): {
   const root = asRecord(raw);
   const wrapper = asRecord(root?.asset) ?? root;
   const wrapperPointer = root?.asset ? "/asset" : "";
-  const typeKey = findAssetKey(wrapper);
-  const asset = typeKey ? asRecord(wrapper?.[typeKey]) : wrapper;
+  const typeKey = findKnownAssetKey(wrapper);
+  const asset = typeKey
+    ? asRecord(wrapper?.[typeKey])
+    : hasMultipleKnownAssetKeys(wrapper)
+      ? undefined
+      : wrapper;
   const assetPointer = typeKey
     ? `${wrapperPointer}/${escapePointerSegment(typeKey)}`
     : wrapperPointer;
@@ -358,20 +378,26 @@ function canonicalizeAsset(raw: unknown): {
 
   return {
     asset,
-    assetType: assetType(typeKey, asset),
+    assetType: asset ? assetType(typeKey, asset) : "unknown",
     assetIdentity: assetIdentity(asset),
     structuredDataNodes: structuredData?.structuredDataNodes,
     structuredDataNodesPointer: `${assetPointer}/structuredData/structuredDataNodes`,
   };
 }
 
-function findAssetKey(wrapper: Record<string, unknown> | undefined): string | undefined {
+function findKnownAssetKey(wrapper: Record<string, unknown> | undefined): string | undefined {
   if (!wrapper) return undefined;
-  if (asRecord(wrapper.page)) return "page";
-  if (asRecord(wrapper.xhtmlDataDefinitionBlock)) return "xhtmlDataDefinitionBlock";
+  const knownKeys = ASSET_ENVELOPE_KEYS.filter((key) => asRecord(wrapper[key]));
+  if (knownKeys.length === 1) return knownKeys[0];
+  if (knownKeys.length > 1) return undefined;
 
   const keys = Object.keys(wrapper).filter((key) => asRecord(wrapper[key])?.structuredData);
   return keys.length === 1 ? keys[0] : undefined;
+}
+
+function hasMultipleKnownAssetKeys(wrapper: Record<string, unknown> | undefined): boolean {
+  if (!wrapper) return false;
+  return ASSET_ENVELOPE_KEYS.filter((key) => asRecord(wrapper[key])).length > 1;
 }
 
 function assetType(typeKey: string | undefined, asset: Record<string, unknown> | undefined): string {

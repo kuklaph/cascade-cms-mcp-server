@@ -5,13 +5,15 @@ import wysiwygFixture from "../fixtures/read-responses/wysiwyg.xhtmlBlock.json";
 import buttonBlockFixture from "../fixtures/read-responses/button-block.xhtmlBlock.json";
 import accrdnFixture from "../fixtures/read-responses/accrdn.xhtmlBlock.json";
 import pageFixture from "../fixtures/read-responses/page-details.json";
+import nonPageAssets from "../fixtures/read-responses/non-page-assets.json";
 import { CHARACTER_LIMIT } from "../../src/constants.js";
-import { buildRawFactIndex } from "../../src/assetFacts.js";
+import { buildRawFactIndex, listScalarArtifacts } from "../../src/assetFacts.js";
 import {
   buildAssetIndex,
   createAssetCache,
   getRawValue,
   getIndexedNode,
+  listAssetScalarArtifacts,
   listRawFacts,
   listRawReferences,
   listIndexedChildren,
@@ -254,6 +256,95 @@ describe("asset nodelet index", () => {
     expect(wrapped.nodeCount).toBe(topLevel.nodeCount);
   });
 
+  test("canonicalizes known non-page envelopes from top-level and asset-wrapped responses", () => {
+    const cases = [
+      "page",
+      "xhtmlDataDefinitionBlock",
+      "symlink",
+      "scriptFormat",
+      "dataDefinition",
+      "template",
+      "indexBlock",
+      "metadataSet",
+      "site",
+      "file",
+    ] as const;
+    const samples: Record<string, unknown> = {
+      page: {
+        page: {
+          id: "fixture-page",
+          name: "index",
+          path: "/",
+          type: "page",
+          structuredData: { structuredDataNodes: [] },
+        },
+      },
+      xhtmlDataDefinitionBlock: tabsFixture,
+      symlink: {
+        symlink: {
+          id: "fixture-symlink",
+          name: "library",
+          path: "academics/library.sym",
+          type: "symlink",
+          linkURL: "https://library.example.edu/",
+        },
+      },
+      ...nonPageAssets,
+    };
+
+    for (const key of cases) {
+      const topLevel = buildAssetIndex(samples[key], `a_${key}_top`);
+      const wrapped = buildAssetIndex({ success: true, asset: samples[key] }, `a_${key}_wrapped`);
+
+      expect(topLevel.assetType).toBe(key);
+      expect(wrapped.assetType).toBe(key);
+      expect(wrapped.assetIdentity.id).toBe(topLevel.assetIdentity.id);
+      if (key !== "page" && key !== "xhtmlDataDefinitionBlock") {
+        expect(toAssetPreview(topLevel).node_count).toBe(0);
+      }
+    }
+  });
+
+  test("does not treat CLI metadata objects or ambiguous envelopes as an arbitrary asset", () => {
+    const manifestLike = buildAssetIndex(
+      { site: "_fixture", assets: { "index.page.json": { type: "page" } } },
+      "a_manifest",
+    );
+    const ambiguous = buildAssetIndex(
+      {
+        page: {
+          id: "page-id",
+          type: "page",
+          name: "index",
+          structuredData: { structuredDataNodes: [] },
+        },
+        file: { id: "file-id", type: "file", name: "robots.txt", text: "hi" },
+      },
+      "a_ambiguous",
+    );
+
+    expect(manifestLike.assetType).toBe("unknown");
+    expect(manifestLike.assetIdentity).toEqual({});
+    expect(ambiguous.assetType).toBe("unknown");
+    expect(ambiguous.assetIdentity).toEqual({});
+  });
+
+  test("keeps decoded inner asset fallback when the object itself has a type", () => {
+    const index = buildAssetIndex(
+      {
+        id: "decoded-page",
+        name: "index",
+        path: "/",
+        type: "page",
+        structuredData: { structuredDataNodes: [] },
+      },
+      "a_decoded",
+    );
+
+    expect(index.assetType).toBe("page");
+    expect(index.assetIdentity.id).toBe("decoded-page");
+  });
+
   test("resolves exact JSON Pointers, including escaped object keys", () => {
     const raw = { "a/b": { "c~d": 42 } };
 
@@ -336,6 +427,40 @@ describe("asset nodelet index", () => {
     expect(preview.node_count).toBe(11);
     expect("asset" in preview).toBe(false);
     expect(preview.next_actions).toContain("cascade_asset_list_facts");
+    expect(preview.next_actions).toContain("cascade_asset_list_scalar_artifacts");
+    expect(preview.omitted_fields).toEqual(["structuredData"]);
+  });
+
+  test("preview lists only present omitted detail fields on the inner asset body", () => {
+    const preview = toAssetPreview(
+      buildAssetIndex(
+        {
+          asset: {
+            page: {
+              type: "page",
+              structuredData: { structuredDataNodes: [] },
+              xhtml: "<p>body</p>",
+              xml: "<xml/>",
+              script: "alert(1)",
+              text: "plain",
+              data: [1, 2, 3],
+              pageConfigurations: [],
+            },
+          },
+        },
+        "a_omitted",
+      ),
+    );
+
+    expect(preview.omitted_fields).toEqual([
+      "structuredData",
+      "xhtml",
+      "xml",
+      "script",
+      "text",
+      "data",
+      "pageConfigurations",
+    ]);
   });
 
   test("asset cache validates handles and reports misses without calling Cascade", () => {
@@ -348,5 +473,125 @@ describe("asset nodelet index", () => {
 
     cache.put(wysiwygFixture);
     expect(cache.get(entry.handle)).toBeUndefined();
+  });
+});
+
+describe("scalar artifact audit view", () => {
+  const raw = {
+    asset: {
+      page: {
+        name: "index",
+        pagePath: "academics/library",
+        rootLink: "/about/",
+        html: '<a href="https://example.edu/about?x=1#top">About</a><img src="/_files/logo.svg"><a href="mailto:web@example.edu">Email</a><a href="tel:+19105551212">Call</a>',
+        note: "Jump to #content and call tel:+19105550000.",
+      },
+    },
+  };
+
+  test("extracts link-like artifacts from raw scalar facts with exact offsets", () => {
+    const index = buildAssetIndex(structuredClone(raw), "a_artifacts");
+    const page = listScalarArtifacts(index, { limit: 100 });
+
+    expect(page.complete).toBe(true);
+    expect(page.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ artifact_kind: "http_url", value: "https://example.edu/about?x=1#top" }),
+        expect.objectContaining({ artifact_kind: "href", value: "https://example.edu/about?x=1#top" }),
+        expect.objectContaining({ artifact_kind: "src", value: "/_files/logo.svg" }),
+        expect.objectContaining({ artifact_kind: "mailto", value: "mailto:web@example.edu" }),
+        expect.objectContaining({ artifact_kind: "tel", value: "tel:+19105551212" }),
+        expect.objectContaining({ artifact_kind: "anchor", value: "#content" }),
+        expect.objectContaining({ artifact_kind: "root_path", value: "/about/" }),
+        expect.objectContaining({ artifact_kind: "site_link", value: "academics/library" }),
+      ]),
+    );
+
+    for (const artifact of page.results) {
+      const source = resolveJsonPointer(raw, artifact.source_pointer);
+      expect(typeof source).toBe("string");
+      expect((source as string).slice(artifact.start_offset, artifact.end_offset)).toBe(
+        artifact.value,
+      );
+      expect(artifact.scalar_type).toBe("string");
+      expect(artifact.value_length).toBe((source as string).length);
+      expect(artifact.context_preview).toContain(artifact.value);
+    }
+  });
+
+  test("filters scalar artifacts and preserves the raw JSON", () => {
+    const source = structuredClone(raw);
+    const index = buildAssetIndex(source, "a_filters");
+
+    expect(
+      listAssetScalarArtifacts(index, {
+        pointer_prefix: "/asset/page",
+        key: "html",
+        artifact_kind: "href",
+      }).results.map((artifact) => artifact.value),
+    ).toEqual(["https://example.edu/about?x=1#top", "mailto:web@example.edu", "tel:+19105551212"]);
+
+    expect(
+      listScalarArtifacts(index, {
+        key_contains: "root",
+        value_contains: "about",
+      }).results.map((artifact) => artifact.artifact_kind),
+    ).toEqual(["root_path"]);
+
+    expect(source).toEqual(raw);
+  });
+
+  test("paginates scalar artifacts with matching audit cursor semantics", () => {
+    const index = buildAssetIndex(raw, "a_artifact_page");
+    const first = listScalarArtifacts(index, { limit: 2 });
+
+    expect(first.results).toHaveLength(2);
+    expect(first.complete).toBe(false);
+    expect(first.truncated).toBe(true);
+    expect(first.next_cursor).toBeDefined();
+
+    const second = listScalarArtifacts(index, {
+      limit: 2,
+      cursor: first.next_cursor,
+    });
+    expect(second.cursor).toBe(first.next_cursor);
+    expect(second.results).toHaveLength(2);
+
+    expect(() =>
+      listScalarArtifacts(index, {
+        artifact_kind: "href",
+        cursor: first.next_cursor,
+      }),
+    ).toThrow("cursor does not match");
+  });
+
+  test("reports href and src offsets from the quoted value when values repeat attribute names", () => {
+    const html = '<a href="href">Link</a><img src="src" alt="image">';
+    const index = buildAssetIndex({ asset: { page: { type: "page", html } } }, "a_attr_offsets");
+    const artifacts = listScalarArtifacts(index, {}).results;
+    const href = artifacts.find((artifact) => artifact.artifact_kind === "href");
+    const src = artifacts.find((artifact) => artifact.artifact_kind === "src");
+
+    expect(href?.value).toBe("href");
+    expect(href?.start_offset).toBe(html.indexOf('"href"') + 1);
+    expect(href?.end_offset).toBe(html.indexOf('"href"') + 5);
+    expect(html.slice(href!.start_offset, href!.end_offset)).toBe("href");
+
+    expect(src?.value).toBe("src");
+    expect(src?.start_offset).toBe(html.indexOf('"src"') + 1);
+    expect(src?.end_offset).toBe(html.indexOf('"src"') + 4);
+    expect(html.slice(src!.start_offset, src!.end_offset)).toBe("src");
+  });
+
+  test("caps scalar artifact extraction before dense strings can materialize unbounded results", () => {
+    const denseHtml = Array.from({ length: 10_050 }, (_, index) => `<a href="/p${index}">x</a>`).join("");
+    const index = buildAssetIndex({ asset: { page: { type: "page", html: denseHtml } } }, "a_dense");
+    const page = listScalarArtifacts(index, { artifact_kind: "href", limit: 500 });
+
+    expect(page.results).toHaveLength(500);
+    expect(page.matched_count_total).toBe(10_000);
+    expect(page.complete).toBe(false);
+    expect(page.truncated).toBe(true);
+    expect(page.next_cursor).toBeDefined();
   });
 });

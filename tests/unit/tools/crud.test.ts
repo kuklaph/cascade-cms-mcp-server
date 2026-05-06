@@ -8,6 +8,7 @@ import {
   AssetSearchValuesRequestSchema,
   AssetSearchKeysRequestSchema,
   AssetGetValueRequestSchema,
+  AssetListScalarArtifactsRequestSchema,
   AssetListReferencesRequestSchema,
   AssetListNodeletsRequestSchema,
   AssetGetNodeletRequestSchema,
@@ -168,6 +169,7 @@ describe("cascade_read tool", () => {
     const searchValues = findTool(tools, "cascade_asset_search_values");
     const searchKeys = findTool(tools, "cascade_asset_search_keys");
     const getValue = findTool(tools, "cascade_asset_get_value");
+    const listArtifacts = findTool(tools, "cascade_asset_list_scalar_artifacts");
     const listReferences = findTool(tools, "cascade_asset_list_references");
     const listNodelets = findTool(tools, "cascade_asset_list_nodelets");
     const getNodelet = findTool(tools, "cascade_asset_get_nodelet");
@@ -201,6 +203,11 @@ describe("cascade_read tool", () => {
       length: 5,
       response_format: "json",
     });
+    const artifactsResult = await listArtifacts.handler({
+      asset_handle: handle,
+      artifact_kind: "root_path",
+      response_format: "json",
+    });
     const refsResult = await listReferences.handler({
       asset_handle: handle,
       response_format: "json",
@@ -224,11 +231,13 @@ describe("cascade_read tool", () => {
     expect(valuesResult.isError).not.toBe(true);
     expect(keysResult.isError).not.toBe(true);
     expect(valueResult.isError).not.toBe(true);
+    expect(artifactsResult.isError).not.toBe(true);
     expect(refsResult.isError).not.toBe(true);
     expect((factsResult.structuredContent as Record<string, any>).results).toHaveLength(5);
     expect((valuesResult.structuredContent as Record<string, any>).results[0].pointer).toBe("/asset/page/xhtml");
     expect((keysResult.structuredContent as Record<string, any>).results[0].pointer).toBe("/asset/page/xhtml");
     expect((valueResult.structuredContent as Record<string, any>).value).toBe("xxxxx");
+    expect((artifactsResult.structuredContent as Record<string, any>).source_scope).toBe("raw_scalar_artifacts");
     expect((listResult.structuredContent as Record<string, any>).nodelets).toHaveLength(5);
     expect((getResult.structuredContent as Record<string, any>).pointer).toBe(
       firstPointer,
@@ -258,6 +267,7 @@ describe("cascade_read tool", () => {
     expect(AssetSearchValuesRequestSchema.safeParse({ value_contains: "x" }).success).toBe(false);
     expect(AssetSearchKeysRequestSchema.safeParse({ key: "x" }).success).toBe(false);
     expect(AssetGetValueRequestSchema.safeParse({ pointer: "" }).success).toBe(false);
+    expect(AssetListScalarArtifactsRequestSchema.safeParse({}).success).toBe(false);
     expect(AssetListReferencesRequestSchema.safeParse({}).success).toBe(false);
     expect(AssetListNodeletsRequestSchema.safeParse({ pointer: "" }).success).toBe(false);
     expect(AssetGetNodeletRequestSchema.safeParse({ pointer: "" }).success).toBe(false);
@@ -553,6 +563,7 @@ describe("registerCrudTools coverage", () => {
       "cascade_asset_list_facts",
       "cascade_asset_list_nodelets",
       "cascade_asset_list_references",
+      "cascade_asset_list_scalar_artifacts",
       "cascade_asset_search_keys",
       "cascade_asset_search_values",
       "cascade_copy",

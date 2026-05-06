@@ -167,6 +167,34 @@ export const AssetListReferencesRequestSchema = z
 
 export type AssetListReferencesInput = z.infer<typeof AssetListReferencesRequestSchema>;
 
+export const AssetListScalarArtifactsRequestSchema = z
+  .object({
+    ...AssetHandleField,
+    artifact_kind: z
+      .enum([
+        "http_url",
+        "site_link",
+        "href",
+        "src",
+        "anchor",
+        "mailto",
+        "tel",
+        "root_path",
+      ])
+      .optional(),
+    pointer_prefix: z.string().optional(),
+    key: z.string().optional(),
+    key_contains: z.string().optional(),
+    value_contains: z.string().optional(),
+    ...AuditPaginationFields,
+    ...BaseRequestFields,
+  })
+  .strict();
+
+export type AssetListScalarArtifactsInput = z.infer<
+  typeof AssetListScalarArtifactsRequestSchema
+>;
+
 export const AssetListNodeletsRequestSchema = z
   .object({
     ...AssetHandleField,

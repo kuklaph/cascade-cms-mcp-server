@@ -29,6 +29,7 @@ import {
   AssetSearchValuesRequestSchema,
   AssetSearchKeysRequestSchema,
   AssetGetValueRequestSchema,
+  AssetListScalarArtifactsRequestSchema,
   AssetListReferencesRequestSchema,
   AssetListNodeletsRequestSchema,
   AssetGetNodeletRequestSchema,
@@ -577,6 +578,31 @@ describe("asset follow-up request schemas", () => {
       cursor: "af_eyJ2IjoxLCJvIjoyLCJoIjoiYWJjIn0",
     });
     expect(res.success).toBe(true);
+  });
+
+  test("list scalar artifacts accepts artifact filters and requires asset_handle", () => {
+    const res = AssetListScalarArtifactsRequestSchema.safeParse({
+      asset_handle: HANDLE,
+      artifact_kind: "href",
+      pointer_prefix: "/asset/page",
+      key: "xhtml",
+      key_contains: "html",
+      value_contains: "example.edu",
+      cursor: "af_eyJ2IjoxLCJvIjoyLCJoIjoiYWJjIn0",
+      limit: 25,
+    });
+    expect(res.success).toBe(true);
+    expect(
+      AssetListScalarArtifactsRequestSchema.safeParse({
+        artifact_kind: "href",
+      }).success,
+    ).toBe(false);
+    expect(
+      AssetListScalarArtifactsRequestSchema.safeParse({
+        asset_handle: HANDLE,
+        artifact_kind: "onclick",
+      }).success,
+    ).toBe(false);
   });
 
   test("audit cursors reject oversized or malformed values", () => {

@@ -22,6 +22,7 @@ import {
   getRawValue,
   getIndexedNode,
   listRawFacts,
+  listAssetScalarArtifacts,
   listRawReferences,
   listIndexedChildren,
   searchRawKeys,
@@ -41,6 +42,7 @@ import {
   AssetSearchValuesRequestSchema,
   AssetSearchKeysRequestSchema,
   AssetGetValueRequestSchema,
+  AssetListScalarArtifactsRequestSchema,
   AssetListReferencesRequestSchema,
   AssetListNodeletsRequestSchema,
   AssetGetNodeletRequestSchema,
@@ -66,7 +68,7 @@ function renderAssetPreview(result: unknown): string {
     `- node_count: ${preview.node_count}`,
     `- max_depth: ${preview.max_depth}`,
     "",
-    "Use cascade_asset_list_facts, cascade_asset_search_values, cascade_asset_search_keys, cascade_asset_get_value, cascade_asset_list_references, cascade_asset_list_nodelets, or cascade_asset_get_nodelet with asset_handle for follow-up inspection.",
+    "Use cascade_asset_list_facts, cascade_asset_search_values, cascade_asset_search_keys, cascade_asset_get_value, cascade_asset_list_scalar_artifacts, cascade_asset_list_references, cascade_asset_list_nodelets, or cascade_asset_get_nodelet with asset_handle for follow-up inspection.",
   ];
   if (preview.warnings.length > 0) {
     lines.push("", ...preview.warnings.map((warning) => `- warning: ${warning}`));
@@ -193,6 +195,28 @@ function registerAssetFollowUpTools(
   }, deps);
 
   registerCascadeTool(server, {
+    name: "cascade_asset_list_scalar_artifacts",
+    title: "List cached raw scalar artifacts",
+    description: buildCascadeToolDescription(
+      `Use after cascade_read. Enumerate derived link/path-like artifacts from cached raw string scalar facts, including http_url, site_link, href, src, anchor, mailto, tel, and root_path. Returns JSON Pointer and offset provenance. This tool never reads Cascade directly.`,
+    ),
+    inputSchema: AssetListScalarArtifactsRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: async (input) => {
+      const args = input as unknown as Parameters<typeof listAssetScalarArtifacts>[1] & {
+        asset_handle: string;
+      };
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_list_scalar_artifacts");
+      return listAssetScalarArtifacts(entry, args);
+    },
+  }, deps);
+
+  registerCascadeTool(server, {
     name: "cascade_asset_list_nodelets",
     title: "List cached Cascade asset nodelets",
     description: buildCascadeToolDescription(
@@ -282,7 +306,7 @@ export function registerCrudTools(
     description: buildCascadeToolDescription(
       `Read an asset from Cascade CMS by identifier.
 
-Default preview mode returns a compact browse-oriented asset_handle, asset identity, raw_hash, index_version, fact/reference counts, node counts, root nodelet outline, and raw_resource_uri. Preview is not audit-complete; use cascade_asset_list_facts, cascade_asset_search_values, cascade_asset_search_keys, cascade_asset_get_value, cascade_asset_list_references, cascade_asset_list_nodelets, and cascade_asset_get_nodelet with the returned asset_handle for follow-up inspection. Use read_mode: "raw" only when the full REST payload is required.
+Default preview mode returns a compact browse-oriented asset_handle, asset identity, raw_hash, index_version, fact/reference counts, node counts, root nodelet outline, and raw_resource_uri. Preview is not audit-complete; use cascade_asset_list_facts, cascade_asset_search_values, cascade_asset_search_keys, cascade_asset_get_value, cascade_asset_list_scalar_artifacts, cascade_asset_list_references, cascade_asset_list_nodelets, and cascade_asset_get_nodelet with the returned asset_handle for follow-up inspection. Use read_mode: "raw" only when the full REST payload is required.
 
 Args:
   - identifier (object, required): The asset to read
