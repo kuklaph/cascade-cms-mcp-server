@@ -4,9 +4,13 @@ import { z } from "zod";
 import { registerCrudTools } from "../../../src/tools/crud.js";
 import {
   ReadRequestSchema,
-  AssetSearchPathsRequestSchema,
-  AssetListChildrenRequestSchema,
-  AssetGetNodeRequestSchema,
+  AssetListFactsRequestSchema,
+  AssetSearchValuesRequestSchema,
+  AssetSearchKeysRequestSchema,
+  AssetGetValueRequestSchema,
+  AssetListReferencesRequestSchema,
+  AssetListNodeletsRequestSchema,
+  AssetGetNodeletRequestSchema,
   CreateRequestSchema,
   EditRequestSchema,
   RemoveRequestSchema,
@@ -72,6 +76,10 @@ describe("cascade_read tool", () => {
     expect(structured.raw_resource_uri).toBe(
       `cascade://asset/${structured.asset_handle}/raw`,
     );
+    expect(structured.raw_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(structured.index_version).toBe(1);
+    expect(structured.audit_complete).toBe(false);
+    expect(structured.total_fact_count).toBeGreaterThan(100);
     expect(structured.node_count).toBe(100);
     expect(structured.asset).toBeUndefined();
     expect(structured.root_outline).toHaveLength(20);
@@ -148,7 +156,7 @@ describe("cascade_read tool", () => {
     expect(structured.asset).toBeUndefined();
   });
 
-  test("follow-up tools inspect the cached asset handle without calling Cascade again", async () => {
+  test("audit and nodelet follow-up tools inspect the cached asset handle without calling Cascade again", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
@@ -156,9 +164,13 @@ describe("cascade_read tool", () => {
 
     registerCrudTools(server as any, client);
     const read = findTool(tools, "cascade_read");
-    const search = findTool(tools, "cascade_asset_search_paths");
-    const list = findTool(tools, "cascade_asset_list_children");
-    const get = findTool(tools, "cascade_asset_get_node");
+    const listFacts = findTool(tools, "cascade_asset_list_facts");
+    const searchValues = findTool(tools, "cascade_asset_search_values");
+    const searchKeys = findTool(tools, "cascade_asset_search_keys");
+    const getValue = findTool(tools, "cascade_asset_get_value");
+    const listReferences = findTool(tools, "cascade_asset_list_references");
+    const listNodelets = findTool(tools, "cascade_asset_list_nodelets");
+    const getNodelet = findTool(tools, "cascade_asset_get_nodelet");
 
     const result = await read.handler({
       identifier: { id: "huge-page-id", type: "page" },
@@ -166,32 +178,58 @@ describe("cascade_read tool", () => {
     });
     const handle = (result.structuredContent as Record<string, any>).asset_handle;
 
-    const searchResult = await search.handler({
+    const factsResult = await listFacts.handler({
       asset_handle: handle,
-      query: "node-1",
+      fact_kind: "scalar",
+      limit: 5,
       response_format: "json",
     });
-    const listResult = await list.handler({
+    const valuesResult = await searchValues.handler({
+      asset_handle: handle,
+      value_contains: "xxxxx",
+      response_format: "json",
+    });
+    const keysResult = await searchKeys.handler({
+      asset_handle: handle,
+      key: "xhtml",
+      response_format: "json",
+    });
+    const valueResult = await getValue.handler({
+      asset_handle: handle,
+      pointer: "/asset/page/xhtml",
+      offset: 5,
+      length: 5,
+      response_format: "json",
+    });
+    const refsResult = await listReferences.handler({
+      asset_handle: handle,
+      response_format: "json",
+    });
+    const listResult = await listNodelets.handler({
       asset_handle: handle,
       pointer: "",
       limit: 5,
       response_format: "json",
     });
     const firstPointer = (listResult.structuredContent as Record<string, any>)
-      .children[0].pointer;
-    const getResult = await get.handler({
+      .nodelets[0].pointer;
+    const getResult = await getNodelet.handler({
       asset_handle: handle,
       pointer: firstPointer,
       depth: 0,
       response_format: "json",
     });
 
-    expect(searchResult.isError).not.toBe(true);
-    expect(
-      typeof (searchResult.structuredContent as Record<string, any>).matches[0]
-        .pointer,
-    ).toBe("string");
-    expect((listResult.structuredContent as Record<string, any>).children).toHaveLength(5);
+    expect(factsResult.isError).not.toBe(true);
+    expect(valuesResult.isError).not.toBe(true);
+    expect(keysResult.isError).not.toBe(true);
+    expect(valueResult.isError).not.toBe(true);
+    expect(refsResult.isError).not.toBe(true);
+    expect((factsResult.structuredContent as Record<string, any>).results).toHaveLength(5);
+    expect((valuesResult.structuredContent as Record<string, any>).results[0].pointer).toBe("/asset/page/xhtml");
+    expect((keysResult.structuredContent as Record<string, any>).results[0].pointer).toBe("/asset/page/xhtml");
+    expect((valueResult.structuredContent as Record<string, any>).value).toBe("xxxxx");
+    expect((listResult.structuredContent as Record<string, any>).nodelets).toHaveLength(5);
     expect((getResult.structuredContent as Record<string, any>).pointer).toBe(
       firstPointer,
     );
@@ -203,7 +241,7 @@ describe("cascade_read tool", () => {
     const client = createMockClient();
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_asset_get_node");
+    const tool = findTool(tools, "cascade_asset_get_nodelet");
 
     const result = await tool.handler({
       asset_handle: "a_00000000-0000-0000-0000-000000000000",
@@ -211,20 +249,18 @@ describe("cascade_read tool", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_asset_get_node");
+    expect(firstText(result)).toContain("cascade_asset_get_nodelet");
     expect(firstText(result)).toContain("not found");
   });
 
   test("asset follow-up schemas require asset_handle", () => {
-    expect(AssetSearchPathsRequestSchema.safeParse({ query: "x" }).success).toBe(
-      false,
-    );
-    expect(AssetListChildrenRequestSchema.safeParse({ pointer: "" }).success).toBe(
-      false,
-    );
-    expect(AssetGetNodeRequestSchema.safeParse({ pointer: "" }).success).toBe(
-      false,
-    );
+    expect(AssetListFactsRequestSchema.safeParse({}).success).toBe(false);
+    expect(AssetSearchValuesRequestSchema.safeParse({ value_contains: "x" }).success).toBe(false);
+    expect(AssetSearchKeysRequestSchema.safeParse({ key: "x" }).success).toBe(false);
+    expect(AssetGetValueRequestSchema.safeParse({ pointer: "" }).success).toBe(false);
+    expect(AssetListReferencesRequestSchema.safeParse({}).success).toBe(false);
+    expect(AssetListNodeletsRequestSchema.safeParse({ pointer: "" }).success).toBe(false);
+    expect(AssetGetNodeletRequestSchema.safeParse({ pointer: "" }).success).toBe(false);
   });
 });
 
@@ -512,9 +548,13 @@ describe("registerCrudTools coverage", () => {
 
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      "cascade_asset_get_node",
-      "cascade_asset_list_children",
-      "cascade_asset_search_paths",
+      "cascade_asset_get_nodelet",
+      "cascade_asset_get_value",
+      "cascade_asset_list_facts",
+      "cascade_asset_list_nodelets",
+      "cascade_asset_list_references",
+      "cascade_asset_search_keys",
+      "cascade_asset_search_values",
       "cascade_copy",
       "cascade_create",
       "cascade_edit",

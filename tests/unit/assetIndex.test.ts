@@ -5,12 +5,19 @@ import wysiwygFixture from "../fixtures/read-responses/wysiwyg.xhtmlBlock.json";
 import buttonBlockFixture from "../fixtures/read-responses/button-block.xhtmlBlock.json";
 import accrdnFixture from "../fixtures/read-responses/accrdn.xhtmlBlock.json";
 import pageFixture from "../fixtures/read-responses/page-details.json";
+import { CHARACTER_LIMIT } from "../../src/constants.js";
+import { buildRawFactIndex } from "../../src/assetFacts.js";
 import {
   buildAssetIndex,
   createAssetCache,
+  getRawValue,
   getIndexedNode,
+  listRawFacts,
+  listRawReferences,
   listIndexedChildren,
   resolveJsonPointer,
+  searchRawKeys,
+  searchRawValues,
   searchIndexedNodes,
   toAssetPreview,
 } from "../../src/assetIndex.js";
@@ -38,6 +45,195 @@ describe("read-response fixtures", () => {
 });
 
 describe("asset nodelet index", () => {
+  test("indexes every raw object, array, scalar, and object key with JSON Pointer provenance", () => {
+    const raw = {
+      "a/b": {
+        "c~d": [null, true, 7, "", "prefix " + "x".repeat(240) + " suffix"],
+      },
+      repeated: { name: "first" },
+      repeated2: { name: "second" },
+    };
+    const original = structuredClone(raw);
+    const index = buildAssetIndex(raw, "a_raw_facts");
+
+    expect(index.raw).toBe(raw);
+    expect(raw).toEqual(original);
+    expect(index.rawHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(index.totalFactCount).toBe(index.rawFacts.length);
+
+    const facts = listRawFacts(index, { limit: 100 });
+    expect(facts.complete).toBe(true);
+    expect(facts.total_fact_count).toBe(index.rawFacts.length);
+    expect(facts.results.some((fact) => fact.fact_kind === "object" && fact.pointer === "")).toBe(true);
+    expect(facts.results.some((fact) => fact.fact_kind === "array" && fact.pointer === "/a~1b/c~0d")).toBe(true);
+    expect(facts.results.some((fact) => fact.fact_kind === "key" && fact.key === "c~d")).toBe(true);
+    expect(facts.results.some((fact) => fact.fact_kind === "scalar" && fact.pointer === "/a~1b/c~0d/2")).toBe(true);
+
+    for (const fact of facts.results) {
+      expect(resolveJsonPointer(raw, fact.pointer)).not.toBeUndefined();
+    }
+  });
+
+  test("searches full raw scalar values beyond previews and retrieves long strings by slice", () => {
+    const long = "start-" + "x".repeat(220) + "-needle-at-end";
+    const index = buildAssetIndex({ content: long }, "a_search");
+
+    const matches = searchRawValues(index, { value_contains: "needle-at-end" });
+    expect(matches.complete).toBe(true);
+    expect(matches.results).toHaveLength(1);
+    expect(matches.results[0]!.pointer).toBe("/content");
+    expect(matches.results[0]!.value_preview).not.toContain("needle-at-end");
+    expect(matches.results[0]!.match_offsets).toEqual([227]);
+
+    const sliced = getRawValue(index, "/content", { offset: 227, length: 13 });
+    expect(sliced.value).toBe("needle-at-end");
+    expect(sliced.value_length).toBe(long.length);
+    expect(sliced.has_more).toBe(false);
+  });
+
+  test("get raw value bounds omitted string length and rejects object or array values", () => {
+    const long = "x".repeat(CHARACTER_LIMIT + 10);
+    const index = buildAssetIndex({ content: long, nested: { title: "x" }, list: [1] }, "a_bounds");
+
+    const defaultSlice = getRawValue(index, "/content");
+    expect(defaultSlice.value).toBe("x".repeat(CHARACTER_LIMIT));
+    expect(defaultSlice.has_more).toBe(true);
+    expect(defaultSlice.next_offset).toBe(CHARACTER_LIMIT);
+
+    expect(() => getRawValue(index, "")).toThrow("resolves to an object");
+    expect(() => getRawValue(index, "/nested")).toThrow("resolves to an object");
+    expect(() => getRawValue(index, "/list")).toThrow("resolves to an array");
+  });
+
+  test("raw fact indexing fails closed on excessive nesting", () => {
+    let raw: Record<string, unknown> = {};
+    const root = raw;
+    for (let i = 0; i < 501; i++) {
+      raw.child = {};
+      raw = raw.child as Record<string, unknown>;
+    }
+
+    expect(() => buildRawFactIndex(root)).toThrow("too deep");
+  });
+
+  test("searches raw object keys anywhere in the cached response", () => {
+    const index = buildAssetIndex(
+      { metadata: { title: "One" }, nested: [{ title: "Two" }] },
+      "a_keys",
+    );
+
+    const matches = searchRawKeys(index, { key_contains: "title" });
+    expect(matches.matched_count_total).toBe(2);
+    expect(matches.results.map((match) => match.pointer).sort()).toEqual([
+      "/metadata/title",
+      "/nested/0/title",
+    ]);
+  });
+
+  test("indexes generic and page-region Cascade references with source pointers", () => {
+    const index = buildAssetIndex(
+      {
+        asset: {
+          page: {
+            siteId: "site-1",
+            siteName: "Main",
+            contentTypeId: "ct-1",
+            contentTypePath: "/content-types/default",
+            pageConfigurations: [
+              {
+                name: "default",
+                templateId: "tpl-1",
+                templatePath: "/templates/main",
+                pageRegions: [
+                  {
+                    name: "DEFAULT",
+                    blockId: "blk-1",
+                    blockPath: "/blocks/main",
+                    formatPath: "/formats/main",
+                    noBlock: false,
+                    noFormat: true,
+                  },
+                ],
+              },
+            ],
+            structuredData: {
+              structuredDataNodes: [
+                {
+                  identifier: "cta",
+                  type: "asset",
+                  pagePath: "/about",
+                  siteName: "Main",
+                },
+              ],
+            },
+          },
+        },
+      },
+      "a_refs",
+    );
+
+    const refs = listRawReferences(index, { limit: 20 });
+    expect(refs.complete).toBe(true);
+    expect(refs.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          reference_kind: "contentType",
+          id: "ct-1",
+          path: "/content-types/default",
+          site_id: "site-1",
+          site_name: "Main",
+        }),
+        expect.objectContaining({
+          reference_kind: "template",
+          source_pointer: "/asset/page/pageConfigurations/0/templatePath",
+        }),
+        expect.objectContaining({
+          reference_kind: "block",
+          source_pointer: "/asset/page/pageConfigurations/0/pageRegions/0/blockPath",
+          region_name: "DEFAULT",
+        }),
+        expect.objectContaining({
+          reference_kind: "noFormat",
+          source_pointer: "/asset/page/pageConfigurations/0/pageRegions/0/noFormat",
+          value: true,
+        }),
+        expect.objectContaining({
+          reference_kind: "page",
+          source_pointer: "/asset/page/structuredData/structuredDataNodes/0/pagePath",
+          path: "/about",
+        }),
+      ]),
+    );
+  });
+
+  test("raw fact pagination ties cursors to filter hashes and reports completeness honestly", () => {
+    const index = buildAssetIndex({ a: "one", b: "two", c: "three" }, "a_page");
+    const first = listRawFacts(index, {
+      fact_kind: "scalar",
+      limit: 2,
+    });
+
+    expect(first.results).toHaveLength(2);
+    expect(first.complete).toBe(false);
+    expect(first.truncated).toBe(true);
+    expect(first.next_cursor).toBeDefined();
+
+    const second = listRawFacts(index, {
+      fact_kind: "scalar",
+      limit: 2,
+      cursor: first.next_cursor,
+    });
+    expect(second.results).toHaveLength(1);
+    expect(second.complete).toBe(true);
+
+    expect(() =>
+      listRawFacts(index, {
+        fact_kind: "key",
+        cursor: first.next_cursor,
+      }),
+    ).toThrow("cursor does not match");
+  });
+
   test("preserves the raw response exactly while indexing", () => {
     const original = structuredClone(storySliderFixture);
     const index = buildAssetIndex(storySliderFixture, "a_raw");
@@ -62,6 +258,21 @@ describe("asset nodelet index", () => {
     const raw = { "a/b": { "c~d": 42 } };
 
     expect(resolveJsonPointer(raw, "/a~1b/c~0d")).toBe(42);
+  });
+
+  test("does not coerce invalid array pointer segments", () => {
+    const raw = { items: ["first", "second"] };
+
+    expect(resolveJsonPointer(raw, "/items/0")).toBe("first");
+    expect(resolveJsonPointer(raw, "/items/01")).toBeUndefined();
+    expect(resolveJsonPointer(raw, "/items/")).toBeUndefined();
+    expect(resolveJsonPointer(raw, "/items/-")).toBeUndefined();
+
+    const index = buildAssetIndex(raw, "a_pointer");
+    expect(getRawValue(index, "/items/0").value).toBe("first");
+    expect(() => getRawValue(index, "/items/01")).toThrow("not found");
+    expect(() => getRawValue(index, "/items/")).toThrow("not found");
+    expect(() => getRawValue(index, "/items/-")).toThrow("not found");
   });
 
   test("looks up exact nodelets by pointer", () => {
@@ -118,9 +329,13 @@ describe("asset nodelet index", () => {
 
     expect(preview.asset_handle).toBe("a_preview");
     expect(preview.raw_resource_uri).toBe("cascade://asset/a_preview/raw");
+    expect(preview.raw_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(preview.index_version).toBe(1);
+    expect(preview.audit_complete).toBe(false);
+    expect(preview.total_fact_count).toBeGreaterThan(preview.node_count);
     expect(preview.node_count).toBe(11);
     expect("asset" in preview).toBe(false);
-    expect(preview.next_actions).toContain("cascade_asset_search_paths");
+    expect(preview.next_actions).toContain("cascade_asset_list_facts");
   });
 
   test("asset cache validates handles and reports misses without calling Cascade", () => {

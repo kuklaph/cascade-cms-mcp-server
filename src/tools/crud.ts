@@ -19,9 +19,13 @@ import type { CascadeClient } from "../client.js";
 import { createResponseCache } from "../cache.js";
 import {
   createAssetCache,
+  getRawValue,
   getIndexedNode,
+  listRawFacts,
+  listRawReferences,
   listIndexedChildren,
-  searchIndexedNodes,
+  searchRawKeys,
+  searchRawValues,
   toAssetPreview,
   type AssetCache,
   type AssetPreview,
@@ -33,9 +37,13 @@ import {
 } from "./helper.js";
 import {
   ReadRequestSchema,
-  AssetSearchPathsRequestSchema,
-  AssetListChildrenRequestSchema,
-  AssetGetNodeRequestSchema,
+  AssetListFactsRequestSchema,
+  AssetSearchValuesRequestSchema,
+  AssetSearchKeysRequestSchema,
+  AssetGetValueRequestSchema,
+  AssetListReferencesRequestSchema,
+  AssetListNodeletsRequestSchema,
+  AssetGetNodeletRequestSchema,
   CreateRequestSchema,
   EditRequestSchema,
   RemoveRequestSchema,
@@ -50,10 +58,15 @@ function renderAssetPreview(result: unknown): string {
     `- asset_handle: ${preview.asset_handle}`,
     `- asset_type: ${preview.asset_type}`,
     `- raw_resource_uri: ${preview.raw_resource_uri}`,
+    `- raw_hash: ${preview.raw_hash}`,
+    `- index_version: ${preview.index_version}`,
+    `- audit_complete: ${preview.audit_complete}`,
+    `- total_fact_count: ${preview.total_fact_count}`,
+    `- reference_count: ${preview.reference_count}`,
     `- node_count: ${preview.node_count}`,
     `- max_depth: ${preview.max_depth}`,
     "",
-    "Use cascade_asset_search_paths, cascade_asset_list_children, or cascade_asset_get_node with asset_handle for follow-up inspection.",
+    "Use cascade_asset_list_facts, cascade_asset_search_values, cascade_asset_search_keys, cascade_asset_get_value, cascade_asset_list_references, cascade_asset_list_nodelets, or cascade_asset_get_nodelet with asset_handle for follow-up inspection.",
   ];
   if (preview.warnings.length > 0) {
     lines.push("", ...preview.warnings.map((warning) => `- warning: ${warning}`));
@@ -67,12 +80,78 @@ function registerAssetFollowUpTools(
   deps: CascadeDeps,
 ): void {
   registerCascadeTool(server, {
-    name: "cascade_asset_search_paths",
-    title: "Search cached Cascade asset nodelets",
+    name: "cascade_asset_list_facts",
+    title: "List cached raw asset facts",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Search nodelet identifiers, text previews, and asset references inside the cached asset_handle returned by cascade_read. This tool never reads Cascade directly; it only inspects the cached asset associated with asset_handle.`,
+      `Use after cascade_read. List object, array, key, and scalar facts indexed from the full cached raw Cascade response. Supports pointer, key, value, scalar, and reference filters with cursor pagination. This tool never reads Cascade directly and reports complete: true only when the current filter has no remaining matches.`,
     ),
-    inputSchema: AssetSearchPathsRequestSchema,
+    inputSchema: AssetListFactsRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: async (input) => {
+      const args = input as unknown as Parameters<typeof listRawFacts>[1] & {
+        asset_handle: string;
+      };
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_list_facts");
+      return listRawFacts(entry, args);
+    },
+  }, deps);
+
+  registerCascadeTool(server, {
+    name: "cascade_asset_search_values",
+    title: "Search cached raw asset scalar values",
+    description: buildCascadeToolDescription(
+      `Use after cascade_read. Search full scalar values across the cached raw Cascade response, not shortened previews. Returns JSON Pointer provenance, scalar type, value length, preview, and match offsets where practical. This tool never reads Cascade directly.`,
+    ),
+    inputSchema: AssetSearchValuesRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: async (input) => {
+      const args = input as unknown as Parameters<typeof searchRawValues>[1] & {
+        asset_handle: string;
+      };
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_search_values");
+      return searchRawValues(entry, args);
+    },
+  }, deps);
+
+  registerCascadeTool(server, {
+    name: "cascade_asset_search_keys",
+    title: "Search cached raw asset object keys",
+    description: buildCascadeToolDescription(
+      `Use after cascade_read. Find object key occurrences anywhere in the cached raw Cascade response. Returns the JSON Pointer to the keyed value plus parent pointer. This tool never reads Cascade directly.`,
+    ),
+    inputSchema: AssetSearchKeysRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: async (input) => {
+      const args = input as unknown as Parameters<typeof searchRawKeys>[1] & {
+        asset_handle: string;
+      };
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_search_keys");
+      return searchRawKeys(entry, args);
+    },
+  }, deps);
+
+  registerCascadeTool(server, {
+    name: "cascade_asset_get_value",
+    title: "Get cached raw asset value",
+    description: buildCascadeToolDescription(
+      `Use after cascade_read. Retrieve the exact raw cached value at a JSON Pointer. Long strings can be sliced with offset and length. This tool never reads Cascade directly.`,
+    ),
+    inputSchema: AssetGetValueRequestSchema,
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -82,28 +161,44 @@ function registerAssetFollowUpTools(
     handler: async (input) => {
       const args = input as unknown as {
         asset_handle: string;
-        query: string;
-        search_in?: Array<"identifier" | "text" | "asset">;
-        type?: string;
-        limit?: number;
+        pointer: string;
+        offset?: number;
+        length?: number;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_search_paths");
-      return {
-        success: true,
-        asset_handle: args.asset_handle,
-        query: args.query,
-        ...searchIndexedNodes(entry, args),
-      };
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_get_value");
+      return getRawValue(entry, args.pointer, args);
     },
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_asset_list_children",
-    title: "List cached Cascade asset nodelet children",
+    name: "cascade_asset_list_references",
+    title: "List cached Cascade asset references",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. List child nodelets for a JSON Pointer in the cached asset_handle returned by cascade_read. Use pointer "" to list root nodelets. This tool never reads Cascade directly.`,
+      `Use after cascade_read. List Cascade-native references discovered from id/path pairs, structured asset nodes, metadata, page configurations, and page regions. This tool never reads Cascade directly.`,
     ),
-    inputSchema: AssetListChildrenRequestSchema,
+    inputSchema: AssetListReferencesRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: async (input) => {
+      const args = input as unknown as Parameters<typeof listRawReferences>[1] & {
+        asset_handle: string;
+      };
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_list_references");
+      return listRawReferences(entry, args);
+    },
+  }, deps);
+
+  registerCascadeTool(server, {
+    name: "cascade_asset_list_nodelets",
+    title: "List cached Cascade asset nodelets",
+    description: buildCascadeToolDescription(
+      `Use after cascade_read. List child structuredData nodelets for a JSON Pointer in the cached asset_handle returned by cascade_read. Use pointer "" to list root nodelets. This is a convenience view over structuredDataNodes, not an audit-complete view. This tool never reads Cascade directly.`,
+    ),
+    inputSchema: AssetListNodeletsRequestSchema,
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -117,23 +212,25 @@ function registerAssetFollowUpTools(
         cursor?: string;
         limit?: number;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_list_children");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_list_nodelets");
+      const listed = listIndexedChildren(entry, args.pointer, args);
       return {
         success: true,
         asset_handle: args.asset_handle,
         pointer: args.pointer,
-        ...listIndexedChildren(entry, args.pointer, args),
+        nodelets: listed.children,
+        ...(listed.next_cursor ? { next_cursor: listed.next_cursor } : {}),
       };
     },
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_asset_get_node",
+    name: "cascade_asset_get_nodelet",
     title: "Get cached Cascade asset nodelet",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Fetch the exact nodelet or bounded subtree at a JSON Pointer in the cached asset_handle returned by cascade_read. This tool never reads Cascade directly.`,
+      `Use after cascade_read. Fetch the exact structuredData nodelet or bounded subtree at a JSON Pointer in the cached asset_handle returned by cascade_read. This is a convenience view over structuredDataNodes, not an audit-complete view. This tool never reads Cascade directly.`,
     ),
-    inputSchema: AssetGetNodeRequestSchema,
+    inputSchema: AssetGetNodeletRequestSchema,
     annotations: {
       readOnlyHint: true,
       destructiveHint: false,
@@ -147,7 +244,7 @@ function registerAssetFollowUpTools(
         depth?: number;
         include_text?: boolean;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_get_node");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_get_nodelet");
       return {
         success: true,
         asset_handle: args.asset_handle,
@@ -185,7 +282,7 @@ export function registerCrudTools(
     description: buildCascadeToolDescription(
       `Read an asset from Cascade CMS by identifier.
 
-Default preview mode returns a compact asset_handle, asset identity, node counts, root nodelet outline, and raw_resource_uri. Use cascade_asset_search_paths, cascade_asset_list_children, and cascade_asset_get_node with the returned asset_handle for follow-up inspection. Use read_mode: "raw" only when the full REST payload is required.
+Default preview mode returns a compact browse-oriented asset_handle, asset identity, raw_hash, index_version, fact/reference counts, node counts, root nodelet outline, and raw_resource_uri. Preview is not audit-complete; use cascade_asset_list_facts, cascade_asset_search_values, cascade_asset_search_keys, cascade_asset_get_value, cascade_asset_list_references, cascade_asset_list_nodelets, and cascade_asset_get_nodelet with the returned asset_handle for follow-up inspection. Use read_mode: "raw" only when the full REST payload is required.
 
 Args:
   - identifier (object, required): The asset to read
@@ -198,7 +295,7 @@ Args:
   - read_mode (string, optional): 'preview' (default, compact handle-based output) or 'raw' (full REST payload; expensive for structured assets).
 Returns:
   Preview mode:
-  { asset_handle, asset_type, asset_identity, raw_resource_uri, node_count, max_depth, root_outline, omitted_fields, warnings, next_actions }
+  { asset_handle, asset_type, asset_identity, raw_resource_uri, raw_hash, index_version, audit_complete: false, total_fact_count, reference_count, node_count, max_depth, root_outline, omitted_fields, warnings, next_actions }
   Raw mode:
   { success: true, asset: { <type>: { ...type-specific representation } } }
   On failure: { success: false, message: "Asset not found" }

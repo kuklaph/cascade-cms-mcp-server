@@ -25,9 +25,13 @@ import {
   ReadPreferencesRequestSchema,
   PublishUnpublishRequestSchema,
   EditPreferenceRequestSchema,
-  AssetSearchPathsRequestSchema,
-  AssetListChildrenRequestSchema,
-  AssetGetNodeRequestSchema,
+  AssetListFactsRequestSchema,
+  AssetSearchValuesRequestSchema,
+  AssetSearchKeysRequestSchema,
+  AssetGetValueRequestSchema,
+  AssetListReferencesRequestSchema,
+  AssetListNodeletsRequestSchema,
+  AssetGetNodeletRequestSchema,
 } from "../../../src/schemas/requests.js";
 
 // Reusable fixtures
@@ -526,20 +530,72 @@ describe("ReadRequestSchema read_mode field", () => {
 describe("asset follow-up request schemas", () => {
   const HANDLE = "a_00000000-0000-0000-0000-000000000000";
 
-  test("search requires asset_handle and query", () => {
+  test("list facts accepts audit filters and requires asset_handle", () => {
     expect(
-      AssetSearchPathsRequestSchema.safeParse({
+      AssetListFactsRequestSchema.safeParse({
         asset_handle: HANDLE,
-        query: "headline",
+        pointer_prefix: "/asset/page",
+        fact_kind: "scalar",
+        key_contains: "title",
+        scalar_type: "string",
+        non_empty: true,
+        limit: 25,
       }).success,
     ).toBe(true);
-    expect(AssetSearchPathsRequestSchema.safeParse({ query: "headline" }).success).toBe(
-      false,
-    );
+    expect(AssetListFactsRequestSchema.safeParse({ fact_kind: "scalar" }).success).toBe(false);
   });
 
-  test("list children accepts pointer and optional cursor", () => {
-    const res = AssetListChildrenRequestSchema.safeParse({
+  test("search values and keys accept exact raw search inputs", () => {
+    expect(
+      AssetSearchValuesRequestSchema.safeParse({
+        asset_handle: HANDLE,
+        value_contains: "https://example.com",
+      }).success,
+    ).toBe(true);
+    expect(
+      AssetSearchKeysRequestSchema.safeParse({
+        asset_handle: HANDLE,
+        key: "pageRegions",
+      }).success,
+    ).toBe(true);
+  });
+
+  test("get value accepts pointer and optional string slice bounds", () => {
+    const res = AssetGetValueRequestSchema.safeParse({
+      asset_handle: HANDLE,
+      pointer: "/asset/page/xhtml",
+      offset: 100,
+      length: 50,
+    });
+    expect(res.success).toBe(true);
+  });
+
+  test("list references accepts reference filters and cursor", () => {
+    const res = AssetListReferencesRequestSchema.safeParse({
+      asset_handle: HANDLE,
+      reference_kind: "block",
+      cursor: "af_eyJ2IjoxLCJvIjoyLCJoIjoiYWJjIn0",
+    });
+    expect(res.success).toBe(true);
+  });
+
+  test("audit cursors reject oversized or malformed values", () => {
+    expect(
+      AssetListReferencesRequestSchema.safeParse({
+        asset_handle: HANDLE,
+        cursor: "x_" + "a".repeat(16),
+      }).success,
+    ).toBe(false);
+    expect(
+      AssetListReferencesRequestSchema.safeParse({
+        asset_handle: HANDLE,
+        cursor: "af_" + "a".repeat(600),
+      }).success,
+    ).toBe(false);
+  });
+
+  test("list nodelets accepts pointer and optional cursor", () => {
+    const res = AssetListNodeletsRequestSchema.safeParse({
       asset_handle: HANDLE,
       pointer: "",
       cursor: "c_25",
@@ -547,8 +603,8 @@ describe("asset follow-up request schemas", () => {
     expect(res.success).toBe(true);
   });
 
-  test("get node accepts bounded depth and include_text", () => {
-    const res = AssetGetNodeRequestSchema.safeParse({
+  test("get nodelet accepts bounded depth and include_text", () => {
+    const res = AssetGetNodeletRequestSchema.safeParse({
       asset_handle: HANDLE,
       pointer: "/asset/page/structuredData/structuredDataNodes/0",
       depth: 2,

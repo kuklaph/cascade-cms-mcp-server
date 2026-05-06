@@ -1,3 +1,21 @@
+import {
+  buildRawFactIndex,
+  getValueAtPointer,
+  listFacts,
+  listReferences,
+  searchKeys,
+  searchValues,
+  type AuditPage,
+  type RawFact,
+  type RawFactFilters,
+  type RawKeyResult,
+  type RawKeySearchFilters,
+  type RawReference,
+  type RawReferenceFilters,
+  type RawValueResult,
+  type RawValueSearchFilters,
+} from "./assetFacts.js";
+
 export type NodeletType = "text" | "asset" | "group" | string;
 
 export interface NodeStub {
@@ -15,6 +33,12 @@ export interface IndexedAsset {
   assetType: string;
   assetIdentity: Record<string, unknown>;
   rawResourceUri: string;
+  rawHash: string;
+  indexVersion: number;
+  rawFacts: RawFact[];
+  rawReferences: RawReference[];
+  totalFactCount: number;
+  referenceCount: number;
   nodeCount: number;
   maxDepth: number;
   rootPointers: string[];
@@ -50,6 +74,11 @@ export interface AssetPreview {
   asset_type: string;
   asset_identity: Record<string, unknown>;
   raw_resource_uri: string;
+  raw_hash: string;
+  index_version: number;
+  audit_complete: false;
+  total_fact_count: number;
+  reference_count: number;
   node_count: number;
   max_depth: number;
   root_outline: NodeStub[];
@@ -107,6 +136,7 @@ export function isAssetHandle(handle: string): boolean {
 
 export function buildAssetIndex(raw: unknown, handle: string): IndexedAsset {
   const canonical = canonicalizeAsset(raw);
+  const rawIndex = buildRawFactIndex(raw);
   const nodes = new Map<string, IndexedNode>();
   const rootPointers: string[] = [];
 
@@ -127,6 +157,12 @@ export function buildAssetIndex(raw: unknown, handle: string): IndexedAsset {
     assetType: canonical.assetType,
     assetIdentity: canonical.assetIdentity,
     rawResourceUri: `cascade://asset/${handle}/raw`,
+    rawHash: rawIndex.rawHash,
+    indexVersion: rawIndex.indexVersion,
+    rawFacts: rawIndex.rawFacts,
+    rawReferences: rawIndex.rawReferences,
+    totalFactCount: rawIndex.rawFacts.length,
+    referenceCount: rawIndex.rawReferences.length,
     nodeCount: nodes.size,
     maxDepth: maxDepth(nodes),
     rootPointers,
@@ -152,7 +188,7 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
       : [];
   if (omittedRoots > 0) {
     warnings.push(
-      `${omittedRoots} root nodelets omitted from root_outline. Use cascade_asset_list_children with pointer "" to page through all roots.`,
+      `${omittedRoots} root nodelets omitted from root_outline. Use cascade_asset_list_nodelets with pointer "" to page through all roots.`,
     );
   }
 
@@ -161,6 +197,11 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
     asset_type: index.assetType,
     asset_identity: index.assetIdentity,
     raw_resource_uri: index.rawResourceUri,
+    raw_hash: index.rawHash,
+    index_version: index.indexVersion,
+    audit_complete: false,
+    total_fact_count: index.totalFactCount,
+    reference_count: index.referenceCount,
     node_count: index.nodeCount,
     max_depth: index.maxDepth,
     root_outline: index.rootPointers
@@ -169,12 +210,52 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
     omitted_fields: omitted,
     warnings,
     next_actions: [
-      "cascade_asset_search_paths",
-      "cascade_asset_list_children",
-      "cascade_asset_get_node",
+      "cascade_asset_list_facts",
+      "cascade_asset_search_values",
+      "cascade_asset_search_keys",
+      "cascade_asset_get_value",
+      "cascade_asset_list_references",
+      "cascade_asset_list_nodelets",
+      "cascade_asset_get_nodelet",
       "cascade://asset/{handle}/raw",
     ],
   };
+}
+
+export function listRawFacts(
+  index: IndexedAsset,
+  options: RawFactFilters,
+): AuditPage<RawFact> {
+  return listFacts(index, options);
+}
+
+export function searchRawValues(
+  index: IndexedAsset,
+  options: RawValueSearchFilters,
+): AuditPage<RawValueResult> {
+  return searchValues(index, options);
+}
+
+export function searchRawKeys(
+  index: IndexedAsset,
+  options: RawKeySearchFilters,
+): AuditPage<RawKeyResult> {
+  return searchKeys(index, options);
+}
+
+export function getRawValue(
+  index: IndexedAsset,
+  pointer: string,
+  options?: { offset?: number; length?: number },
+): Record<string, unknown> {
+  return getValueAtPointer(index, pointer, options);
+}
+
+export function listRawReferences(
+  index: IndexedAsset,
+  options: RawReferenceFilters,
+): AuditPage<RawReference> {
+  return listReferences(index, options);
 }
 
 export function getIndexedNode(
@@ -230,7 +311,7 @@ export function searchIndexedNodes(
     if (matchesNode(node, query, fields)) {
       matches.push({
         ...toStub(node),
-        next_action: "cascade_asset_get_node",
+        next_action: "cascade_asset_get_nodelet",
       });
       if (matches.length >= limit) break;
     }
@@ -247,8 +328,8 @@ export function resolveJsonPointer(raw: unknown, pointer: string): unknown {
   for (const rawSegment of pointer.slice(1).split("/")) {
     const segment = unescapePointerSegment(rawSegment);
     if (Array.isArray(current)) {
+      if (!isArrayIndexSegment(segment)) return undefined;
       const index = Number(segment);
-      if (!Number.isInteger(index)) return undefined;
       current = current[index];
       continue;
     }
@@ -447,7 +528,7 @@ function previewText(text: string): string {
 function parseCursor(cursor: string | undefined): number {
   if (!cursor) return 0;
   const match = /^c_(\d+)$/.exec(cursor);
-  if (!match) throw new Error("Invalid cursor. Use next_cursor returned by cascade_asset_list_children.");
+  if (!match) throw new Error("Invalid cursor. Use next_cursor returned by cascade_asset_list_nodelets.");
   return Number(match[1]);
 }
 
@@ -468,4 +549,8 @@ function escapePointerSegment(segment: string): string {
 
 function unescapePointerSegment(segment: string): string {
   return segment.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
+function isArrayIndexSegment(segment: string): boolean {
+  return segment === "0" || /^[1-9][0-9]*$/.test(segment);
 }

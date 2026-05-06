@@ -2,7 +2,7 @@
 
 An MCP (Model Context Protocol) server that exposes the Cascade CMS REST API to LLMs and agents. Wraps the [cascade-cms-api](https://github.com/kuklaph/cascade-cms-api) library and provides Zod input validation, markdown/JSON response formatting, and actionable error messages for AI consumers.
 
-Built in TypeScript on [Bun](https://bun.sh). **29 tools**: 28 Cascade tools across 9 cohorts (CRUD, handle-based asset inspection, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish) plus 1 retrieval tool (`cascade_read_response`) for accessing oversize responses by handle. **4 MCP resources/templates** (`cascade://entity-types`, `cascade://sites`, `cascade://text-encoding`, `cascade://asset/{handle}/raw`). Paginated results on `cascade_search`, `cascade_list_messages`, `cascade_read_audits`. Oversize responses are stored in an in-memory LRU cache and accessible by handle. Every tool invocation emits a single-line audit record to stderr.
+Built in TypeScript on [Bun](https://bun.sh). **33 tools**: 32 Cascade tools across 9 cohorts (CRUD, audit-safe asset inspection, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish) plus 1 retrieval tool (`cascade_read_response`) for accessing oversize responses by handle. **4 MCP resources/templates** (`cascade://entity-types`, `cascade://sites`, `cascade://text-encoding`, `cascade://asset/{handle}/raw`). Paginated results on `cascade_search`, `cascade_list_messages`, `cascade_read_audits`, and cached asset audit tools. Oversize responses are stored in an in-memory LRU cache and accessible by handle. Every tool invocation emits a single-line audit record to stderr.
 
 ## Requirements
 
@@ -175,7 +175,7 @@ bunx @modelcontextprotocol/inspector --cli bunx cascade-cms-mcp-server --method 
 
 Every invocation above works with `npx` (with `-y` on the package) if Bun isn't installed. Both tools resolve the published package identically.
 
-The Inspector will list all 29 tools and 4 resources/templates, and let you invoke them interactively.
+The Inspector will list all 33 tools and 4 resources/templates, and let you invoke them interactively.
 
 ## Audit Logging
 
@@ -202,10 +202,14 @@ Every tool accepts an optional `response_format` parameter (`"markdown"` or `"js
 
 | Tool | Read-only | Description |
 | ---- | :-------: | ----------- |
-| `cascade_read` | Yes | Canonical first-step asset read. Default `read_mode: "preview"` returns `asset_handle`, identity, node counts, root outline, and raw resource URI. Use `read_mode: "raw"` for the full REST payload. |
-| `cascade_asset_search_paths` | Yes | Use after `cascade_read`. Search cached nodelet identifiers, text previews, and asset refs by `asset_handle`. |
-| `cascade_asset_list_children` | Yes | Use after `cascade_read`. List child nodelet stubs for a JSON Pointer, with cursor pagination. |
-| `cascade_asset_get_node` | Yes | Use after `cascade_read`. Fetch an exact cached nodelet or bounded subtree by JSON Pointer. |
+| `cascade_read` | Yes | Canonical first-step asset read. Default `read_mode: "preview"` returns `asset_handle`, identity, `raw_hash`, `index_version`, fact/reference counts, node counts, root outline, and raw resource URI. Preview is orientation-only (`audit_complete: false`). Use `read_mode: "raw"` for the full REST payload. |
+| `cascade_asset_list_facts` | Yes | Use after `cascade_read`. List indexed raw object, array, key, and scalar facts by JSON Pointer with audit metadata and cursor pagination. |
+| `cascade_asset_search_values` | Yes | Use after `cascade_read`. Search full raw scalar values, not previews; returns pointer, key, scalar type, value length, preview, and match offsets. |
+| `cascade_asset_search_keys` | Yes | Use after `cascade_read`. Find object key occurrences anywhere in the raw cached JSON. |
+| `cascade_asset_get_value` | Yes | Use after `cascade_read`. Retrieve the exact raw value at a JSON Pointer; supports `offset`/`length` for long strings. |
+| `cascade_asset_list_references` | Yes | Use after `cascade_read`. List Cascade-native references from id/path pairs, structured asset nodes, metadata, page configurations, and page regions. |
+| `cascade_asset_list_nodelets` | Yes | Use after `cascade_read`. Convenience view over `structuredDataNodes`; list nodelets by parent pointer. Not audit-complete. |
+| `cascade_asset_get_nodelet` | Yes | Use after `cascade_read`. Convenience view over `structuredDataNodes`; fetch an exact nodelet or bounded subtree. Not audit-complete. |
 | `cascade_create` | No | Create a new asset. Body is a typed envelope, for example `{ page: {...} }`, `{ textBlock: {...} }`, or `{ site: {...} }`. |
 | `cascade_edit` | No | Edit an existing asset |
 | `cascade_remove` | No | Delete an asset (with optional workflow + delete parameters) |
@@ -396,7 +400,7 @@ If a handle is missing or evicted, `cascade_read_response` returns `isError: tru
 
 ## Cascade Read Flow
 
-`cascade_read` is the canonical entrypoint for inspecting assets. In default preview mode it calls Cascade once, indexes structured-data nodelets, stores the exact raw response under an `asset_handle`, and returns compact `structuredContent`:
+`cascade_read` is the canonical entrypoint for inspecting assets. In default preview mode it calls Cascade once, stores the exact raw response under an `asset_handle`, builds a complete raw fact index, then derives nodelet/reference/string views from that index. Preview output is browse-oriented and never claims audit completeness:
 
 ```json
 {
@@ -404,25 +408,30 @@ If a handle is missing or evicted, `cascade_read_response` returns `isError: tru
   "asset_type": "page",
   "asset_identity": { "id": "abc123", "name": "index", "path": "/" },
   "raw_resource_uri": "cascade://asset/a_550e8400-e29b-41d4-a716-446655440000/raw",
+  "raw_hash": "b7d7...",
+  "index_version": 1,
+  "audit_complete": false,
+  "total_fact_count": 840,
+  "reference_count": 12,
   "node_count": 62,
   "max_depth": 4,
   "root_outline": [ { "pointer": "/asset/page/structuredData/structuredDataNodes/0", "identifier": "page-options", "type": "group" } ],
-  "next_actions": ["cascade_asset_search_paths", "cascade_asset_list_children", "cascade_asset_get_node", "cascade://asset/{handle}/raw"]
+  "next_actions": ["cascade_asset_list_facts", "cascade_asset_search_values", "cascade_asset_search_keys", "cascade_asset_get_value", "cascade_asset_list_references", "cascade_asset_list_nodelets", "cascade_asset_get_nodelet", "cascade://asset/{handle}/raw"]
 }
 ```
 
 Follow-up tools require that `asset_handle`; they do not call Cascade again.
 
 ```json
-{ "tool": "cascade_asset_search_paths", "arguments": { "asset_handle": "a_550e8400-...", "query": "headline" } }
+{ "tool": "cascade_asset_search_values", "arguments": { "asset_handle": "a_550e8400-...", "value_contains": "headline" } }
 ```
 
 ```json
-{ "tool": "cascade_asset_list_children", "arguments": { "asset_handle": "a_550e8400-...", "pointer": "", "limit": 25 } }
+{ "tool": "cascade_asset_list_facts", "arguments": { "asset_handle": "a_550e8400-...", "fact_kind": "scalar", "non_empty": true, "limit": 100 } }
 ```
 
 ```json
-{ "tool": "cascade_asset_get_node", "arguments": { "asset_handle": "a_550e8400-...", "pointer": "/asset/page/structuredData/structuredDataNodes/0", "depth": 1 } }
+{ "tool": "cascade_asset_get_value", "arguments": { "asset_handle": "a_550e8400-...", "pointer": "/asset/page/xhtml", "offset": 0, "length": 25000 } }
 ```
 
 Use `read_mode: "raw"` only when you need the full Cascade REST payload for editing or external processing:
@@ -436,6 +445,42 @@ Use `read_mode: "raw"` only when you need the full Cascade REST payload for edit
   }
 }
 ```
+
+### Audit-safe asset workflows
+
+Paginated raw audit tools (`cascade_asset_list_facts`, `cascade_asset_search_values`, `cascade_asset_search_keys`, `cascade_asset_list_references`) include `asset_handle`, `raw_resource_uri`, `raw_hash`, `index_version`, `source_scope`, `filter_hash`, `limit`, `returned_count`, `matched_count_total`, `total_fact_count`, `complete`, and `truncated`. `cursor` is echoed only when supplied, and `next_cursor` appears only when more results remain. Cursors are opaque and tied to the filter hash; restart without a cursor if you change filters. Treat `complete: true` as scoped to that exact query only.
+
+Find any string/path/URL anywhere:
+
+```json
+{ "tool": "cascade_asset_search_values", "arguments": { "asset_handle": "a_550e8400-...", "value_contains": "https://example.edu", "limit": 100 } }
+```
+
+Audit asset references:
+
+```json
+{ "tool": "cascade_asset_list_references", "arguments": { "asset_handle": "a_550e8400-...", "reference_kind": "block", "limit": 100 } }
+```
+
+Audit page regions/configurations:
+
+```json
+{ "tool": "cascade_asset_list_facts", "arguments": { "asset_handle": "a_550e8400-...", "pointer_prefix": "/asset/page/pageConfigurations", "limit": 100 } }
+```
+
+Retrieve all non-empty text fields:
+
+```json
+{ "tool": "cascade_asset_list_facts", "arguments": { "asset_handle": "a_550e8400-...", "fact_kind": "scalar", "scalar_type": "string", "non_empty": true, "limit": 100 } }
+```
+
+Find fields by key name:
+
+```json
+{ "tool": "cascade_asset_search_keys", "arguments": { "asset_handle": "a_550e8400-...", "key_contains": "title", "limit": 100 } }
+```
+
+Nodelet tools are convenience-only views over `structuredDataNodes`. Use raw fact tools for audit completeness.
 
 ## Example Tool Invocations
 
@@ -573,7 +618,7 @@ Add `response_format: "json"` to any call:
 - `response_format: "markdown"` (default) - human/LLM-readable markdown with key fields highlighted. Best for agent reasoning.
 - `response_format: "json"` - pretty-printed JSON of the tool's structured result. For `cascade_read` preview mode this is the compact handle-based preview; use `read_mode: "raw"` for the raw Cascade response.
 
-For tools other than `cascade_read` preview mode, the Cascade response object is passed through to `structuredContent` (null/empty is wrapped as `{}`; primitives as `{ value: X }`). When a rendered response exceeds 25,000 characters, the [Response Cache](#response-cache) intercepts it: `content[0].text` becomes a 20,000-char preview + handle, `structuredContent` keeps the full object plus a `_cache` envelope, and the agent can fetch additional bytes via `cascade_read_response`.
+For Cascade-backed tools other than `cascade_read` preview mode, the Cascade response object is passed through to `structuredContent` (null/empty is wrapped as `{}`; primitives as `{ value: X }`). Cached asset follow-up tools return their documented cached-inspection result objects. When a rendered response exceeds 25,000 characters, the [Response Cache](#response-cache) intercepts it: `content[0].text` becomes a 20,000-char preview + handle, `structuredContent` keeps the full object plus a `_cache` envelope, and the agent can fetch additional bytes via `cascade_read_response`.
 
 ## Asset Input Schemas
 
@@ -695,7 +740,7 @@ Both install paths converge on the same built `dist/index.js` running under Node
                         Cascade CMS API
 ```
 
-1. The MCP client spawns the server subprocess. For plugin users, Claude Code reads the `mcpServers` field inline in `plugin.json` and runs `npx -y cascade-cms-mcp-server` with env vars from the user's shell. For MCP-config users, the client runs `bunx cascade-cms-mcp-server` (or `npx -y`) with env vars from the config's `env` block. Either way, the runner resolves the package's `bin` entry to `dist/index.js`, and the `#!/usr/bin/env node` shebang routes execution through Node. The entry point redirects `console.*` to stderr (guards the stdio protocol stream from accidental stdout writes by dependencies), validates config, builds a Cascade client from `cascade-cms-api`, creates an MCP server, registers 28 Cascade tools + the `cascade_read_response` retrieval tool + 4 resources/templates, and connects over stdio.
+1. The MCP client spawns the server subprocess. For plugin users, Claude Code reads the `mcpServers` field inline in `plugin.json` and runs `npx -y cascade-cms-mcp-server` with env vars from the user's shell. For MCP-config users, the client runs `bunx cascade-cms-mcp-server` (or `npx -y`) with env vars from the config's `env` block. Either way, the runner resolves the package's `bin` entry to `dist/index.js`, and the `#!/usr/bin/env node` shebang routes execution through Node. The entry point redirects `console.*` to stderr (guards the stdio protocol stream from accidental stdout writes by dependencies), validates config, builds a Cascade client from `cascade-cms-api`, creates an MCP server, registers 32 Cascade tools + the `cascade_read_response` retrieval tool + 4 resources/templates, and connects over stdio.
 2. Each cohort file (`src/tools/<cohort>.ts`) calls `registerCascadeTool(server, config, deps)` for each of its tools, where `deps` carries the shared response cache.
 3. The helper wraps the tool handler with: start timer → Zod input validation → delegate to the Cascade client method → format response (markdown or JSON) → catch + translate errors to MCP `isError: true` results → emit a stderr audit record (`ok`/`error` + duration + redacted error text).
 4. Paginated tools (`cascade_search`, `cascade_list_messages`, `cascade_read_audits`) extract `limit`/`offset` from input, call Cascade for the full result set, and slice client-side via `paginatedHandler`.

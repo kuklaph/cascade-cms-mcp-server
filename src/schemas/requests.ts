@@ -80,28 +80,94 @@ const AssetHandleField = {
     ),
 };
 
-export const AssetSearchPathsRequestSchema = z
+const AuditCursorSchema = z
+  .string()
+  .min(1)
+  .max(512, "cursor must be at most 512 characters")
+  .regex(
+    /^af_[A-Za-z0-9_-]+$/,
+    "cursor must be a next_cursor returned by this audit tool",
+  )
+  .describe("Opaque cursor returned as next_cursor by the same audit tool.");
+
+const AuditPaginationFields = {
+  cursor: AuditCursorSchema.optional(),
+  limit: z.number().int().min(1).max(500).default(50),
+};
+
+export const AssetListFactsRequestSchema = z
   .object({
     ...AssetHandleField,
-    query: z.string().min(1, "query must not be empty"),
-    search_in: z
-      .array(z.enum(["identifier", "text", "asset"]))
-      .optional()
-      .describe(
-        "Optional fields to search. Defaults to identifier, text, and asset refs.",
-      ),
-    type: z
-      .enum(["text", "asset", "group"])
-      .optional()
-      .describe("Optional nodelet type filter."),
-    limit: z.number().int().min(1).max(100).default(20),
+    pointer_prefix: z.string().optional(),
+    fact_kind: z.enum(["object", "array", "key", "scalar"]).optional(),
+    key: z.string().optional(),
+    key_contains: z.string().optional(),
+    value_contains: z.string().optional(),
+    scalar_type: z.enum(["string", "number", "boolean", "null"]).optional(),
+    non_empty: z.boolean().optional(),
+    reference_kind: z.string().optional(),
+    ...AuditPaginationFields,
     ...BaseRequestFields,
   })
   .strict();
 
-export type AssetSearchPathsInput = z.infer<typeof AssetSearchPathsRequestSchema>;
+export type AssetListFactsInput = z.infer<typeof AssetListFactsRequestSchema>;
 
-export const AssetListChildrenRequestSchema = z
+export const AssetSearchValuesRequestSchema = z
+  .object({
+    ...AssetHandleField,
+    value_contains: z.string().min(1, "value_contains must not be empty"),
+    pointer_prefix: z.string().optional(),
+    key: z.string().optional(),
+    key_contains: z.string().optional(),
+    scalar_type: z.enum(["string", "number", "boolean", "null"]).optional(),
+    non_empty: z.boolean().optional(),
+    ...AuditPaginationFields,
+    ...BaseRequestFields,
+  })
+  .strict();
+
+export type AssetSearchValuesInput = z.infer<typeof AssetSearchValuesRequestSchema>;
+
+export const AssetSearchKeysRequestSchema = z
+  .object({
+    ...AssetHandleField,
+    key: z.string().optional(),
+    key_contains: z.string().optional(),
+    pointer_prefix: z.string().optional(),
+    ...AuditPaginationFields,
+    ...BaseRequestFields,
+  })
+  .strict();
+
+export type AssetSearchKeysInput = z.infer<typeof AssetSearchKeysRequestSchema>;
+
+export const AssetGetValueRequestSchema = z
+  .object({
+    ...AssetHandleField,
+    pointer: z.string().describe("JSON Pointer into the exact cached raw JSON."),
+    offset: z.number().int().min(0).optional(),
+    length: z.number().int().min(1).max(CHARACTER_LIMIT).optional(),
+    ...BaseRequestFields,
+  })
+  .strict();
+
+export type AssetGetValueInput = z.infer<typeof AssetGetValueRequestSchema>;
+
+export const AssetListReferencesRequestSchema = z
+  .object({
+    ...AssetHandleField,
+    pointer_prefix: z.string().optional(),
+    reference_kind: z.string().optional(),
+    value_contains: z.string().optional(),
+    ...AuditPaginationFields,
+    ...BaseRequestFields,
+  })
+  .strict();
+
+export type AssetListReferencesInput = z.infer<typeof AssetListReferencesRequestSchema>;
+
+export const AssetListNodeletsRequestSchema = z
   .object({
     ...AssetHandleField,
     pointer: z
@@ -118,12 +184,14 @@ export const AssetListChildrenRequestSchema = z
   })
   .strict();
 
-export type AssetListChildrenInput = z.infer<typeof AssetListChildrenRequestSchema>;
+export type AssetListNodeletsInput = z.infer<typeof AssetListNodeletsRequestSchema>;
 
-export const AssetGetNodeRequestSchema = z
+export const AssetGetNodeletRequestSchema = z
   .object({
     ...AssetHandleField,
-    pointer: z.string().describe("JSON Pointer returned by cascade_read preview, search, or list."),
+    pointer: z.string().describe(
+      "JSON Pointer returned by cascade_read preview root_outline or cascade_asset_list_nodelets.",
+    ),
     depth: z
       .number()
       .int()
@@ -139,7 +207,7 @@ export const AssetGetNodeRequestSchema = z
   })
   .strict();
 
-export type AssetGetNodeInput = z.infer<typeof AssetGetNodeRequestSchema>;
+export type AssetGetNodeletInput = z.infer<typeof AssetGetNodeletRequestSchema>;
 
 /** -------------------------------------------------------------------------
  * 2. CreateRequest — wraps asset
