@@ -38,7 +38,6 @@ const ConfigSchema = z.object({
 
 type EnvlockModule = {
   decrypt: (encrypted: string) => string;
-  isEncrypted: (value: string) => boolean;
 };
 
 async function loadEnvlock(): Promise<EnvlockModule> {
@@ -58,9 +57,9 @@ async function decryptIfNeeded(
   envlock: EnvlockModule | null,
 ): Promise<{ value: string | undefined; envlock: EnvlockModule | null }> {
   if (value === undefined) return { value, envlock };
+  if (!value.startsWith("enc:")) return { value, envlock };
 
   const mod = envlock ?? (await loadEnvlock());
-  if (!mod.isEncrypted(value)) return { value, envlock: mod };
 
   try {
     return { value: mod.decrypt(value), envlock: mod };
