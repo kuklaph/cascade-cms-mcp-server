@@ -7,20 +7,14 @@
       "dependencies": {
         "@modelcontextprotocol/sdk": "^1.0.0",
         "cascade-cms-api": "^1.1.0",
+        "dotseal": "^1.0.0",
         "zod": "^3.23.0",
       },
       "devDependencies": {
         "@types/bun": "latest",
         "@types/node": "^20.0.0",
-        "envlock": "link:envlock",
         "typescript": "^5.5.0",
       },
-      "peerDependencies": {
-        "envlock": "^1.0.0",
-      },
-      "optionalPeers": [
-        "envlock",
-      ],
     },
   },
   "packages": {
@@ -66,13 +60,13 @@
 
     "depd": ["depd@2.0.0", "", {}, "sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw=="],
 
+    "dotseal": ["dotseal@1.0.0", "", { "bin": { "dotseal": "dist/cli.js" } }, "sha512-5sM9FrOmo7ktEEc2IX+8Ti04UAxpRSHC1/x0UlDGj1mTndNg0xz5k5hI2Ayqh9OJ00Bdkxw2x1SfDyvmJCjTdA=="],
+
     "dunder-proto": ["dunder-proto@1.0.1", "", { "dependencies": { "call-bind-apply-helpers": "^1.0.1", "es-errors": "^1.3.0", "gopd": "^1.2.0" } }, "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A=="],
 
     "ee-first": ["ee-first@1.1.1", "", {}, "sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow=="],
 
     "encodeurl": ["encodeurl@2.0.0", "", {}, "sha512-Q0n9HRi4m6JuGIV1eFlmvJB7ZEVxu93IrMyiMsGC0lrMJMWzRgx6WGquyfQgZVb31vhGgXnfmPNNXmxnOkRBrg=="],
-
-    "envlock": ["envlock@link:envlock", { "bin": { "envlock": "bin/cli.ts" } }],
 
     "es-define-property": ["es-define-property@1.0.1", "", {}, "sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g=="],
 

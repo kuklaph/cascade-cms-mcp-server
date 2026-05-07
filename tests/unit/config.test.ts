@@ -81,16 +81,16 @@ describe("loadConfig", () => {
   });
 });
 
-describe("loadConfig — envlock decryption", () => {
+describe("loadConfig — dotseal decryption", () => {
   afterEach(() => {
     mock.restore();
   });
 
-  test("should pass through plaintext values without loading envlock", async () => {
-    // envlock should never be imported when no enc: prefix is present.
+  test("should pass through plaintext values without loading dotseal", async () => {
+    // dotseal should never be imported when no enc: prefix is present.
     // If it were imported, this mock would be invoked — we'll assert it wasn't.
     const decryptSpy = mock(() => "SHOULD_NOT_BE_CALLED");
-    mock.module("envlock", () => ({ decrypt: decryptSpy }));
+    mock.module("dotseal", () => ({ decrypt: decryptSpy }));
 
     const env = {
       CASCADE_API_KEY: "plain-key",
@@ -103,13 +103,13 @@ describe("loadConfig — envlock decryption", () => {
     expect(decryptSpy).not.toHaveBeenCalled();
   });
 
-  test("should decrypt values prefixed with enc: via envlock", async () => {
+  test("should decrypt values prefixed with enc: via dotseal", async () => {
     const decryptSpy = mock((v: string) => {
       if (v === "enc:abc") return "decrypted-key";
       if (v === "enc:xyz") return "https://decrypted.example.edu/api";
       throw new Error(`unexpected ciphertext: ${v}`);
     });
-    mock.module("envlock", () => ({ decrypt: decryptSpy }));
+    mock.module("dotseal", () => ({ decrypt: decryptSpy }));
 
     const env = {
       CASCADE_API_KEY: "enc:abc",
@@ -124,7 +124,7 @@ describe("loadConfig — envlock decryption", () => {
   });
 
   test("should throw clean error when decryption fails, without leaking ciphertext", async () => {
-    mock.module("envlock", () => ({
+    mock.module("dotseal", () => ({
       decrypt: (_v: string) => {
         throw new Error("auth tag mismatch");
       },
@@ -149,9 +149,9 @@ describe("loadConfig — envlock decryption", () => {
     expect(thrown!.message).not.toMatch(/tampered-ciphertext/);
   });
 
-  test("should import envlock only once when multiple values are encrypted", async () => {
+  test("should import dotseal only once when multiple values are encrypted", async () => {
     let importCount = 0;
-    mock.module("envlock", () => {
+    mock.module("dotseal", () => {
       importCount += 1;
       return {
         decrypt: (v: string) => v.replace(/^enc:/, "plain-"),
@@ -170,7 +170,7 @@ describe("loadConfig — envlock decryption", () => {
 
     // Note: bun's mock.module factory may be invoked once per import call.
     // What we really care about is that the user-facing behavior is correct —
-    // a single envlock load is cached internally via the `envlock` param.
+    // a single dotseal load is cached internally via the `dotseal` param.
     // This assertion is a smoke check; the cache behavior is exercised by
     // the two-value decrypt test above (decryptSpy called exactly twice).
     expect(importCount).toBeGreaterThanOrEqual(1);

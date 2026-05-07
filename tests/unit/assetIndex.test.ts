@@ -6,7 +6,10 @@ import buttonBlockFixture from "../fixtures/read-responses/button-block.xhtmlBlo
 import accrdnFixture from "../fixtures/read-responses/accrdn.xhtmlBlock.json";
 import pageFixture from "../fixtures/read-responses/page-details.json";
 import nonPageAssets from "../fixtures/read-responses/non-page-assets.json";
-import { CHARACTER_LIMIT } from "../../src/constants.js";
+import {
+  CHARACTER_LIMIT,
+  DEFAULT_ASSET_CACHE_MAX_ENTRIES,
+} from "../../src/constants.js";
 import { buildRawFactIndex, listScalarArtifacts } from "../../src/assetFacts.js";
 import {
   buildAssetIndex,
@@ -473,6 +476,18 @@ describe("asset nodelet index", () => {
 
     cache.put(wysiwygFixture);
     expect(cache.get(entry.handle)).toBeUndefined();
+  });
+
+  test("asset cache default retains a wider batch of read handles", () => {
+    const cache = createAssetCache();
+    const entries = Array.from({ length: DEFAULT_ASSET_CACHE_MAX_ENTRIES + 1 }, (_, index) =>
+      cache.put({ asset: { page: { id: String(index), type: "page" } } }),
+    );
+
+    expect(cache.size()).toBe(DEFAULT_ASSET_CACHE_MAX_ENTRIES);
+    expect(cache.get(entries[0]!.handle)).toBeUndefined();
+    expect(cache.get(entries[1]!.handle)).toBe(entries[1]);
+    expect(cache.get(entries.at(-1)!.handle)).toBe(entries.at(-1));
   });
 });
 

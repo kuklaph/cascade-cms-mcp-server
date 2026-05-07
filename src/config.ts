@@ -5,9 +5,8 @@
  * when required variables are missing or invalid. Never leaks secret
  * values in error messages.
  *
- * Values prefixed with `enc:` are decrypted via the optional `envlock`
- * peer dependency. envlock is imported lazily — only loaded when at
- * least one env value is encrypted.
+ * Values prefixed with `enc:` are decrypted via `dotseal`. The dependency
+ * is imported lazily — only loaded when at least one env value is encrypted.
  */
 
 import { z } from "zod";
@@ -36,17 +35,17 @@ const ConfigSchema = z.object({
     ),
 });
 
-type EnvlockModule = {
+type dotsealModule = {
   decrypt: (encrypted: string) => string;
 };
 
-async function loadEnvlock(): Promise<EnvlockModule> {
+async function loaddotseal(): Promise<dotsealModule> {
   try {
-    return (await import("envlock")) as EnvlockModule;
+    return (await import("dotseal")) as dotsealModule;
   } catch {
     throw new Error(
-      "Encrypted env value detected (enc:...) but the 'envlock' peer dependency is not installed. " +
-      "Install it: `bun add envlock` (or `npm install envlock`).",
+      "Encrypted env value detected (enc:...) but the 'dotseal' dependency is not installed. " +
+      "Reinstall cascade-cms-mcp-server so its dependencies are present.",
     );
   }
 }
@@ -54,15 +53,15 @@ async function loadEnvlock(): Promise<EnvlockModule> {
 async function decryptIfNeeded(
   fieldName: string,
   value: string | undefined,
-  envlock: EnvlockModule | null,
-): Promise<{ value: string | undefined; envlock: EnvlockModule | null }> {
-  if (value === undefined) return { value, envlock };
-  if (!value.startsWith("enc:")) return { value, envlock };
+  dotseal: dotsealModule | null,
+): Promise<{ value: string | undefined; dotseal: dotsealModule | null }> {
+  if (value === undefined) return { value, dotseal };
+  if (!value.startsWith("enc:")) return { value, dotseal };
 
-  const mod = envlock ?? (await loadEnvlock());
+  const mod = dotseal ?? (await loaddotseal());
 
   try {
-    return { value: mod.decrypt(value), envlock: mod };
+    return { value: mod.decrypt(value), dotseal: mod };
   } catch (err) {
     const reason = err instanceof Error ? err.message : "decryption failed";
     throw new Error(`Failed to decrypt ${fieldName}: ${reason}`);
@@ -73,9 +72,9 @@ async function decryptIfNeeded(
 /**
  * Load and validate server configuration from environment variables.
  *
- * Values beginning with `enc:` are decrypted via envlock. If any
- * encrypted value is present and envlock is not installed, an
- * actionable error is thrown.
+ * Values beginning with `enc:` are decrypted via dotseal. If any
+ * encrypted value is present and dotseal cannot be loaded, an actionable
+ * error is thrown.
  *
  * @throws Error with an actionable message naming the missing/invalid
  *   variable. Secret values (API keys, ciphertexts) are never included
@@ -84,25 +83,25 @@ async function decryptIfNeeded(
 export async function loadConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<Config> {
-  let envlock: EnvlockModule | null = null;
+  let dotseal: dotsealModule | null = null;
   let apiKey: string | undefined;
   let url: string | undefined;
   let timeoutMs: string | undefined;
 
-  ({ value: apiKey, envlock } = await decryptIfNeeded(
+  ({ value: apiKey, dotseal } = await decryptIfNeeded(
     "CASCADE_API_KEY",
     env.CASCADE_API_KEY,
-    envlock,
+    dotseal,
   ));
-  ({ value: url, envlock } = await decryptIfNeeded(
+  ({ value: url, dotseal } = await decryptIfNeeded(
     "CASCADE_URL",
     env.CASCADE_URL,
-    envlock,
+    dotseal,
   ));
-  ({ value: timeoutMs, envlock } = await decryptIfNeeded(
+  ({ value: timeoutMs, dotseal } = await decryptIfNeeded(
     "CASCADE_TIMEOUT_MS",
     env.CASCADE_TIMEOUT_MS,
-    envlock,
+    dotseal,
   ));
 
   const parsed = ConfigSchema.safeParse({

@@ -1,9 +1,9 @@
 {
   "name": "cascade-cms",
-  "version": "0.1.0",
-  "description": "Cascade CMS MCP server — 26 tools across CRUD, search, workflow, messaging, audits, publish, and oversize-response retrieval for reading, editing, and managing Cascade CMS content via Claude.",
+  "version": "1.0.0",
+  "description": "Cascade CMS MCP server with 34 tools for reading, editing, searching, auditing, publishing, and managing Cascade CMS content.",
   "author": {
-    "name": "Philip Kukla"
+    "name": "kuklaph"
   },
   "homepage": "https://github.com/kuklaph/cascade-cms-mcp-server#readme",
   "repository": "https://github.com/kuklaph/cascade-cms-mcp-server",

@@ -1,8 +1,8 @@
 {
   "name": "cascade-cms-mcp-server",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "MCP server exposing Cascade CMS API operations to LLMs and agents",
-  "author": "Philip Kukla",
+  "author": "kuklaph",
   "license": "MIT",
   "keywords": [
     "mcp",
@@ -24,13 +24,18 @@
   "bin": {
     "cascade-cms-mcp-server": "dist/index.js"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
+    "version:update": "bun scripts/update-version.ts",
     "smoke:node": "node scripts/smoke-node.mjs",
     "prepublishOnly": "bun test && bun run build && bun run smoke:node"
   },
@@ -41,20 +46,12 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "cascade-cms-api": "^1.1.0",
+    "dotseal": "^1.0.0",
     "zod": "^3.23.0"
-  },
-  "peerDependencies": {
-    "envlock": "^1.0.0"
-  },
-  "peerDependenciesMeta": {
-    "envlock": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/node": "^20.0.0",
-    "envlock": "link:envlock",
     "typescript": "^5.5.0"
   }
 }
