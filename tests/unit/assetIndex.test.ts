@@ -1,11 +1,13 @@
 import { describe, test, expect } from "bun:test";
-import tabsFixture from "../fixtures/read-responses/tabs.xhtmlBlock.json";
-import storySliderFixture from "../fixtures/read-responses/story-slider.xhtmlBlock.json";
-import wysiwygFixture from "../fixtures/read-responses/wysiwyg.xhtmlBlock.json";
-import buttonBlockFixture from "../fixtures/read-responses/button-block.xhtmlBlock.json";
-import accrdnFixture from "../fixtures/read-responses/accrdn.xhtmlBlock.json";
-import pageFixture from "../fixtures/read-responses/page-details.json";
-import nonPageAssets from "../fixtures/read-responses/non-page-assets.json";
+import {
+  accrdnFixture,
+  buttonBlockFixture,
+  nonPageAssets,
+  pageFixture,
+  storySliderFixture,
+  tabsFixture,
+  wysiwygFixture,
+} from "../fixtures/read-response-fixtures.js";
 import {
   CHARACTER_LIMIT,
   DEFAULT_ASSET_CACHE_MAX_ENTRIES,

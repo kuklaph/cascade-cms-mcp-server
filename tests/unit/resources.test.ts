@@ -19,7 +19,7 @@ import { registerCascadeResources } from "../../src/resources.js";
 import { createAssetCache } from "../../src/assetIndex.js";
 import { EntityTypeSchema } from "../../src/schemas/common.js";
 import { createMockClient } from "../fixtures/mock-client.js";
-import tabsFixture from "../fixtures/read-responses/tabs.xhtmlBlock.json";
+import { tabsFixture } from "../fixtures/read-response-fixtures.js";
 
 /** A captured `server.registerResource(name, uri, config, readCallback)` call. */
 interface RegisteredResource {

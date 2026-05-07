@@ -10,3 +10,6 @@ dist/
 
 # Scratch / research artifacts (not part of the shipped code)
 tmp/
+
+# Local Cascade read responses can contain site data and should stay untracked.
+tests/fixtures/read-responses/
