@@ -120,17 +120,34 @@ $env:CASCADE_URL = "https://yourorg.cascadecms.com/api/v1/"
 | `CASCADE_URL`        |   Yes    | Cascade API URL, for example `https://yourorg.cascadecms.com/api/v1/` |
 | `CASCADE_TIMEOUT_MS` |    No    | Request timeout in milliseconds. Default: `30000`                     |
 
-Values may also be [dotseal](https://github.com/kuklaph/dotseal) ciphertexts with the `enc:<iv>:<authTag>:<ciphertext>` format. Encrypted `enc:` values are decrypted by this server's dotseal runtime dependency; plaintext values pass through without loading it.
+Values may also be [dotseal](https://github.com/kuklaph/dotseal) ciphertexts with the `enc:<iv>:<authTag>:<ciphertext>` format. This package includes dotseal as a runtime dependency, so encrypted `enc:` values work when the server runs through `bunx` or `npx`. Plaintext values pass through without loading dotseal.
 
-To generate encrypted values, install or run the dotseal CLI separately:
+The bundled runtime dependency is not exposed as a `dotseal` shell command. Use `bunx`, `npx`, or a separate global install when you want to generate ciphertexts:
 
 ```bash
-bun install -g dotseal
-# or, without Bun:
-npm install -g dotseal
+bunx dotseal encrypt "your_api_key_here"
+# or:
+npx dotseal encrypt "your_api_key_here"
 ```
 
-Then generate the encrypted value and paste the `enc:...` output into your MCP config or shell environment.
+Paste the `enc:...` output into your MCP config or shell environment. If you prefer a global CLI install, `bun install -g dotseal` or `npm install -g dotseal` is also fine; it is not required for this server to decrypt values at runtime.
+
+Example MCP config with an encrypted API key:
+
+```json
+{
+  "mcpServers": {
+    "cascade-cms": {
+      "command": "bunx",
+      "args": ["cascade-cms-mcp-server"],
+      "env": {
+        "CASCADE_API_KEY": "enc:...",
+        "CASCADE_URL": "https://yourorg.cascadecms.com/api/v1/"
+      }
+    }
+  }
+}
+```
 
 ## Capabilities
 
