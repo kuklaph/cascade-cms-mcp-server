@@ -279,5 +279,6 @@ MIT - see [LICENSE](LICENSE).
 ## Related
 
 - [cascade-cms-api](https://github.com/kuklaph/cascade-cms-api) - underlying JavaScript client library
+- [dotseal](https://github.com/kuklaph/dotseal) - optional encrypted environment value helper
 - [Model Context Protocol](https://modelcontextprotocol.io/) - protocol specification
 - [Cascade CMS REST API](https://www.hannonhill.com/cascadecms/latest/developing-in-cascade/rest-api/index.html) - upstream API documentation
