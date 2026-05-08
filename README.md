@@ -171,6 +171,66 @@ Every tool accepts optional `response_format: "markdown" | "json"`; markdown is 
 
 Use your MCP client's tool list or inspector for exact request schemas.
 
+## Tool Permissions
+
+Use these groups when configuring MCP client approvals. Client config syntax varies, but a common policy is to allow read-only tools by default and require approval for tools that create, update, delete, publish, check in/out, or otherwise change Cascade state.
+
+Read-only tools:
+
+| Tool | Purpose |
+| ---- | ------- |
+| `cascade_read` | Read an asset and return a preview or raw response |
+| `cascade_search` | Search Cascade assets |
+| `cascade_list_sites` | List Cascade sites |
+| `cascade_read_access_rights` | Read access rights for an asset |
+| `cascade_read_workflow_settings` | Read workflow settings for an asset |
+| `cascade_read_workflow_information` | Read workflow information for an asset |
+| `cascade_list_subscribers` | List subscribers for an asset |
+| `cascade_list_messages` | List Cascade messages |
+| `cascade_read_audits` | Read audit log entries |
+| `cascade_read_preferences` | Read system preferences |
+| `cascade_read_response` | Fetch more text from a cached oversized response |
+
+`cascade_read` helper tools:
+
+These tools do not call Cascade directly. They inspect the in-memory `asset_handle` created by a prior `cascade_read` preview response.
+
+| Tool | Purpose |
+| ---- | ------- |
+| `cascade_asset_list_facts` | List indexed raw JSON facts from a cached read |
+| `cascade_asset_search_values` | Search scalar values in a cached read |
+| `cascade_asset_search_keys` | Search object keys in a cached read |
+| `cascade_asset_get_value` | Fetch one raw JSON value from a cached read |
+| `cascade_asset_list_scalar_artifacts` | List links, paths, and similar scalar artifacts from a cached read |
+| `cascade_asset_list_references` | List Cascade references found in a cached read |
+| `cascade_asset_list_nodelets` | List structured-data nodelets from a cached read |
+| `cascade_asset_get_nodelet` | Fetch one structured-data nodelet from a cached read |
+
+Approval recommended:
+
+| Tool | State change |
+| ---- | ------------ |
+| `cascade_create` | Creates an asset |
+| `cascade_edit` | Edits an asset |
+| `cascade_move` | Moves or renames an asset |
+| `cascade_copy` | Copies an asset |
+| `cascade_site_copy` | Copies a site |
+| `cascade_edit_access_rights` | Changes asset access rights |
+| `cascade_edit_workflow_settings` | Changes workflow settings |
+| `cascade_perform_workflow_transition` | Performs a workflow transition |
+| `cascade_mark_message` | Marks a message |
+| `cascade_check_out` | Checks out an asset |
+| `cascade_check_in` | Checks in an asset |
+| `cascade_edit_preference` | Changes a system preference |
+
+High-impact approval recommended:
+
+| Tool | State change |
+| ---- | ------------ |
+| `cascade_remove` | Deletes an asset |
+| `cascade_delete_message` | Deletes a message |
+| `cascade_publish_unpublish` | Publishes or unpublishes an asset |
+
 ## Examples
 
 Read a page by id:
