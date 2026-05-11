@@ -3,7 +3,7 @@
  *
  * Mints no new responses; only reads what other tools have stored after
  * their reply text exceeded CHARACTER_LIMIT. Handles are ephemeral and
- * live only as long as the cache retains them (LRU, last 10 by default).
+ * live only as long as the cache retains them.
  *
  * The handler returns the slice text under `_slice_text` so a custom
  * `renderMarkdown` can pass it through unchanged (avoiding the default
@@ -21,7 +21,10 @@ import {
   type CascadeDeps,
 } from "./helper.js";
 import { ReadResponseRequestSchema } from "../schemas/requests.js";
-import { CHARACTER_LIMIT } from "../constants.js";
+import {
+  CHARACTER_LIMIT,
+  OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES,
+} from "../constants.js";
 
 export function registerReadResponseTool(
   server: McpServer,
@@ -58,10 +61,10 @@ Examples:
   - Continue reading: { handle: "h_abc...", offset: 20000 }
   - Specific byte range: { handle: "h_abc...", offset: 50000, length: 10000 }
   - Don't use when: The originating response fit under the limit (no handle was minted).
-  - Don't use when: The handle is older than 10 oversize responses back (LRU-evicted); re-run the originating tool.
+  - Don't use when: The handle is older than ${OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES} oversize responses back (LRU-evicted); re-run the originating tool.
 
 Error Handling:
-  - "Handle not found" — the handle was evicted (cache holds the last 10 oversize responses) or never existed. Re-run the originating tool.`,
+  - "Handle not found" — the handle was evicted (cache holds the last ${OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES} oversize responses) or never existed. Re-run the originating tool.`,
       ),
       inputSchema: ReadResponseRequestSchema,
       annotations: {
@@ -81,7 +84,7 @@ Error Handling:
           // Throw a translatable error — registerCascadeTool will run
           // translateError on it, surfacing the message to the caller.
           throw new Error(
-            `Handle ${handle} not found. The cache holds the last few oversize responses; this handle was either never minted, was already evicted, or expired. Re-run the originating tool to mint a new handle.`,
+            `Handle ${handle} not found. The cache holds the last ${OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES} oversize responses; this handle was either never minted, was already evicted, or expired. Re-run the originating tool to mint a new handle.`,
           );
         }
         const bytes_total = entry.fullText.length;

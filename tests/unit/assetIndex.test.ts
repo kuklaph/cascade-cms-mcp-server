@@ -9,8 +9,8 @@ import {
   wysiwygFixture,
 } from "../fixtures/read-response-fixtures.js";
 import {
+  ASSET_READ_CACHE_MAX_ENTRIES,
   CHARACTER_LIMIT,
-  DEFAULT_ASSET_CACHE_MAX_ENTRIES,
 } from "../../src/constants.js";
 import { buildRawFactIndex, listScalarArtifacts } from "../../src/assetFacts.js";
 import {
@@ -482,11 +482,11 @@ describe("asset nodelet index", () => {
 
   test("asset cache default retains a wider batch of read handles", () => {
     const cache = createAssetCache();
-    const entries = Array.from({ length: DEFAULT_ASSET_CACHE_MAX_ENTRIES + 1 }, (_, index) =>
+    const entries = Array.from({ length: ASSET_READ_CACHE_MAX_ENTRIES + 1 }, (_, index) =>
       cache.put({ asset: { page: { id: String(index), type: "page" } } }),
     );
 
-    expect(cache.size()).toBe(DEFAULT_ASSET_CACHE_MAX_ENTRIES);
+    expect(cache.size()).toBe(ASSET_READ_CACHE_MAX_ENTRIES);
     expect(cache.get(entries[0]!.handle)).toBeUndefined();
     expect(cache.get(entries[1]!.handle)).toBe(entries[1]);
     expect(cache.get(entries.at(-1)!.handle)).toBe(entries.at(-1));

@@ -7,6 +7,7 @@ import {
 } from "../../../src/tools/helper.js";
 import { createResponseCache } from "../../../src/cache.js";
 import { CHARACTER_LIMIT } from "../../../src/constants.js";
+import type { ToolBlockRule, ToolBlockStore } from "../../../src/toolBlocks.js";
 
 /** Minimal shape we require of McpServer for registerTool. */
 interface MockServer {
@@ -42,6 +43,14 @@ function firstText(r: CallToolResult): string {
     throw new Error("Expected first content block to be type 'text'");
   }
   return block.text;
+}
+
+function makeToolBlockStore(rules: ToolBlockRule[]): ToolBlockStore {
+  return {
+    path: "C:\\tmp\\tool-blocks.json",
+    read: mock(async () => rules),
+    write: mock(async () => {}),
+  };
 }
 
 describe("registerCascadeTool", () => {
@@ -99,6 +108,337 @@ describe("registerCascadeTool", () => {
 
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler.mock.calls[0][0]).toEqual({ name: "alice", count: 5 });
+  });
+
+  test("should block a denied tool call by asset id before invoking handler", async () => {
+    const server = makeMockServer();
+    const handler = mock(async () => ({ success: true }));
+
+    registerCascadeTool(
+      server as any,
+      {
+        name: "cascade_remove",
+        title: "Remove",
+        description: "desc",
+        inputSchema: SampleSchema,
+        annotations: SAMPLE_ANNOTATIONS,
+        handler,
+      },
+      {
+        cache: createResponseCache(),
+        toolBlockStore: makeToolBlockStore([
+          {
+            type: "site",
+            id: ["site-123", "site-456"],
+            tools: ["cascade_remove", "cascade_edit"],
+            reason: "Production site is protected",
+          },
+        ]),
+      },
+    );
+
+    const wrapped = server.registerTool.mock.calls[0][2] as (
+      input: unknown,
+    ) => Promise<CallToolResult>;
+
+    const result = await wrapped({
+      identifier: { type: "site", id: "site-123" },
+      response_format: "markdown",
+    });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toContain("Tool call denied");
+    expect(firstText(result)).toContain("Production site is protected");
+  });
+
+  test("should block a denied tool call by asset path", async () => {
+    const server = makeMockServer();
+    const handler = mock(async () => ({ success: true }));
+
+    registerCascadeTool(
+      server as any,
+      {
+        name: "cascade_remove",
+        title: "Remove",
+        description: "desc",
+        inputSchema: SampleSchema,
+        annotations: SAMPLE_ANNOTATIONS,
+        handler,
+      },
+      {
+        cache: createResponseCache(),
+        toolBlockStore: makeToolBlockStore([
+          {
+            type: "site",
+            path: ["Protected Site", "Archived Site"],
+            tools: ["cascade_remove"],
+          },
+        ]),
+      },
+    );
+
+    const wrapped = server.registerTool.mock.calls[0][2] as (
+      input: unknown,
+    ) => Promise<CallToolResult>;
+
+    const result = await wrapped({
+      identifier: {
+        type: "site",
+        path: { path: "Protected Site", siteName: "Protected Site" },
+      },
+    });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+  });
+
+  test("should block a denied tool call by asset url", async () => {
+    const server = makeMockServer();
+    const handler = mock(async () => ({ success: true }));
+
+    registerCascadeTool(
+      server as any,
+      {
+        name: "cascade_edit",
+        title: "Edit",
+        description: "desc",
+        inputSchema: SampleSchema,
+        annotations: SAMPLE_ANNOTATIONS,
+        handler,
+      },
+      {
+        cache: createResponseCache(),
+        toolBlockStore: makeToolBlockStore([
+          {
+            url: [
+              "https://college.cascadecms.com/entity/open.act?id=link-1&type=symlink",
+              "https://college.cascadecms.com/entity/open.act?id=link-2&type=symlink",
+            ],
+            tools: ["cascade_edit"],
+          },
+        ]),
+      },
+    );
+
+    const wrapped = server.registerTool.mock.calls[0][2] as (
+      input: unknown,
+    ) => Promise<CallToolResult>;
+
+    const result = await wrapped({
+      asset: {
+        symlink: {
+          id: "link-1",
+          linkURL: "https://example.edu/protected",
+        },
+      },
+    });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+  });
+
+  test("should not treat external published URLs as Cascade URL selectors", async () => {
+    const server = makeMockServer();
+    const handler = mock(async () => ({ success: true }));
+
+    registerCascadeTool(
+      server as any,
+      {
+        name: "cascade_edit",
+        title: "Edit",
+        description: "desc",
+        inputSchema: SampleSchema,
+        annotations: SAMPLE_ANNOTATIONS,
+        handler,
+      },
+      {
+        cache: createResponseCache(),
+        toolBlockStore: makeToolBlockStore([
+          {
+            url: "https://example.edu/protected",
+            tools: ["cascade_edit"],
+          },
+        ]),
+      },
+    );
+
+    const wrapped = server.registerTool.mock.calls[0][2] as (
+      input: unknown,
+    ) => Promise<CallToolResult>;
+
+    const result = await wrapped({
+      asset: {
+        symlink: {
+          id: "link-1",
+          linkURL: "https://example.edu/protected",
+        },
+      },
+    });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(result.isError).not.toBe(true);
+  });
+
+  test("should allow the same tool when asset type does not match the deny rule", async () => {
+    const server = makeMockServer();
+    const handler = mock(async () => ({ success: true }));
+
+    registerCascadeTool(
+      server as any,
+      {
+        name: "cascade_remove",
+        title: "Remove",
+        description: "desc",
+        inputSchema: SampleSchema,
+        annotations: SAMPLE_ANNOTATIONS,
+        handler,
+      },
+      {
+        cache: createResponseCache(),
+        toolBlockStore: makeToolBlockStore([
+          {
+            type: "site",
+            id: "site-123",
+            tools: ["cascade_remove"],
+          },
+        ]),
+      },
+    );
+
+    const wrapped = server.registerTool.mock.calls[0][2] as (
+      input: unknown,
+    ) => Promise<CallToolResult>;
+
+    const result = await wrapped({
+      identifier: { type: "page", id: "site-123" },
+      response_format: "markdown",
+    });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(result.isError).not.toBe(true);
+  });
+
+  test("should allow a matched asset when the tool is not in the deny rule tools list", async () => {
+    const server = makeMockServer();
+    const handler = mock(async () => ({ success: true }));
+
+    registerCascadeTool(
+      server as any,
+      {
+        name: "cascade_read",
+        title: "Read",
+        description: "desc",
+        inputSchema: SampleSchema,
+        annotations: SAMPLE_ANNOTATIONS,
+        handler,
+      },
+      {
+        cache: createResponseCache(),
+        toolBlockStore: makeToolBlockStore([
+          {
+            type: "site",
+            id: "site-123",
+            tools: ["cascade_remove", "cascade_edit"],
+          },
+        ]),
+      },
+    );
+
+    const wrapped = server.registerTool.mock.calls[0][2] as (
+      input: unknown,
+    ) => Promise<CallToolResult>;
+
+    const result = await wrapped({
+      identifier: { type: "site", id: "site-123" },
+      response_format: "markdown",
+    });
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(result.isError).not.toBe(true);
+  });
+
+  test("should fail closed when the tool block repository cannot be read", async () => {
+    const server = makeMockServer();
+    const handler = mock(async () => ({ success: true }));
+    const toolBlockStore: ToolBlockStore = {
+      path: "C:\\tmp\\tool-blocks.json",
+      read: mock(async () => {
+        throw new Error("Invalid tool block repository");
+      }),
+      write: mock(async () => {}),
+    };
+
+    registerCascadeTool(
+      server as any,
+      {
+        name: "cascade_edit",
+        title: "Edit",
+        description: "desc",
+        inputSchema: SampleSchema,
+        annotations: SAMPLE_ANNOTATIONS,
+        handler,
+      },
+      {
+        cache: createResponseCache(),
+        toolBlockStore,
+      },
+    );
+
+    const wrapped = server.registerTool.mock.calls[0][2] as (
+      input: unknown,
+    ) => Promise<CallToolResult>;
+
+    const result = await wrapped({
+      asset: { page: { id: "page-1" } },
+      response_format: "markdown",
+    });
+
+    expect(handler).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toContain("Invalid tool block repository");
+  });
+
+  test("should not consult the tool block repository for asset sub-read tools", async () => {
+    const server = makeMockServer();
+    const handler = mock(async () => ({ success: true }));
+    const toolBlockStore = makeToolBlockStore([
+      {
+        type: "page",
+        id: "page-1",
+        tools: ["cascade_asset_get_value"],
+      },
+    ]);
+
+    registerCascadeTool(
+      server as any,
+      {
+        name: "cascade_asset_get_value",
+        title: "Get Value",
+        description: "desc",
+        inputSchema: SampleSchema,
+        annotations: SAMPLE_ANNOTATIONS,
+        handler,
+      },
+      {
+        cache: createResponseCache(),
+        toolBlockStore,
+      },
+    );
+
+    const wrapped = server.registerTool.mock.calls[0][2] as (
+      input: unknown,
+    ) => Promise<CallToolResult>;
+
+    const result = await wrapped({
+      asset_handle: "a_123",
+      pointer: "/asset",
+      response_format: "markdown",
+    });
+
+    expect(toolBlockStore.read).not.toHaveBeenCalled();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(result.isError).not.toBe(true);
   });
 
   test("should return a formatted success response when the handler resolves with a result", async () => {

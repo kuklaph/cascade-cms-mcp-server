@@ -1,6 +1,6 @@
 /**
  * Zod schemas for Cascade-backed tools, handle-based asset inspection tools,
- * and the MCP-native `cascade_read_response` retrieval tool.
+ * and MCP-native local utility tools.
  *
  * Every schema extends a base that includes `response_format` and is strict
  * at the top level unless the upstream shape inherently requires passthrough
@@ -49,6 +49,39 @@ const PassthroughRecord = z
   .passthrough()
   .describe(
     "Arbitrary nested object passed through to Cascade. Structure depends on the operation; Cascade's server-side validation applies.",
+  );
+
+const AclEntrySchema = z
+  .object({
+    level: z
+      .enum(["read", "write"])
+      .describe('REQUIRED: The access level, either "read" or "write".'),
+    type: z
+      .enum(["user", "group"])
+      .describe('REQUIRED: The ACL entry type, either "user" or "group".'),
+    name: z
+      .string()
+      .describe(
+        "REQUIRED: The user or group name this ACL entry applies to.",
+      ),
+    id: z.string().optional().describe("Optional group id."),
+  })
+  .strict()
+  .describe("A single access control list entry.");
+
+const AccessRightsInformationSendSchema = z
+  .object({
+    aclEntries: z
+      .array(AclEntrySchema)
+      .optional()
+      .describe("Optional list of access control list entries."),
+    allLevel: z
+      .enum(["none", "read", "write"])
+      .describe("REQUIRED: The default access level for all users."),
+  })
+  .strict()
+  .describe(
+    "Access rights information sent to Cascade when editing asset ACLs.",
   );
 
 /** -------------------------------------------------------------------------
@@ -505,8 +538,8 @@ export const EditAccessRightsRequestSchema = z
     identifier: IdentifierSchema.describe(
       "The asset or container whose access rights to modify.",
     ),
-    accessRightsInformation: PassthroughRecord.describe(
-      "REQUIRED: Complete access rights payload (allLevel, aclEntries, etc.). Matches Cascade's AccessRightsInformationSend shape.",
+    accessRightsInformation: AccessRightsInformationSendSchema.describe(
+      "REQUIRED: Complete access rights payload matching Cascade's AccessRightsInformationSend shape.",
     ),
     applyToChildren: z
       .boolean()

@@ -2,8 +2,7 @@
  * Server factory for the Cascade CMS MCP server.
  *
  * Instantiates a single `McpServer` and registers Cascade tools, handle-based
- * asset inspection tools, the MCP-native `cascade_read_response` retrieval
- * tool, and MCP resources/templates.
+ * asset inspection tools, local MCP utility tools, and MCP resources/templates.
  *
  * Pure and side-effect-free: callers own transport/lifecycle.
  */
@@ -13,6 +12,7 @@ import type { CascadeClient } from "./client.js";
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { createResponseCache } from "./cache.js";
 import { createAssetCache } from "./assetIndex.js";
+import { createToolBlockStore } from "./toolBlocks.js";
 import type { CascadeDeps } from "./tools/helper.js";
 import { registerCrudTools } from "./tools/crud.js";
 import { registerSearchTools } from "./tools/search.js";
@@ -23,6 +23,10 @@ import { registerMessageTools } from "./tools/messages.js";
 import { registerCheckoutTools } from "./tools/checkout.js";
 import { registerAuditTools } from "./tools/audits.js";
 import { registerPublishTools } from "./tools/publish.js";
+import {
+  registerSiteRemovalProtectionTool,
+  registerToolBlockTool,
+} from "./tools/toolBlocks.js";
 import { registerReadResponseTool } from "./tools/readResponse.js";
 import { registerCascadeResources } from "./resources.js";
 
@@ -39,20 +43,18 @@ import { registerCascadeResources } from "./resources.js";
  */
 export function createServer(
   client: CascadeClient,
-  deps?: CascadeDeps,
+  deps?: Partial<CascadeDeps>,
 ): McpServer {
   const server = new McpServer({
     name: SERVER_NAME,
     version: SERVER_VERSION,
   });
 
-  const resolved: CascadeDeps = deps ?? {
-    cache: createResponseCache(),
-    assetCache: createAssetCache(),
+  const resolved: CascadeDeps = {
+    cache: deps?.cache ?? createResponseCache(),
+    assetCache: deps?.assetCache ?? createAssetCache(),
+    toolBlockStore: deps?.toolBlockStore ?? createToolBlockStore(),
   };
-  if (!resolved.assetCache) {
-    resolved.assetCache = createAssetCache();
-  }
 
   registerCrudTools(server, client, resolved);
   registerSearchTools(server, client, resolved);
@@ -66,9 +68,10 @@ export function createServer(
 
   registerCascadeResources(server, client, resolved);
 
-  // Retrieval tool: reads slices from the response cache populated by the
-  // other tool cohorts above. Registered last so it appears after the
-  // Cascade-backed tools in the MCP tool list.
+  // Local MCP tools: manage guardrails and read slices from the response
+  // cache populated by the other tool cohorts above.
+  registerToolBlockTool(server, resolved);
+  registerSiteRemovalProtectionTool(server, client, resolved);
   registerReadResponseTool(server, resolved);
 
   return server;

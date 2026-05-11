@@ -10,8 +10,8 @@
  */
 
 import {
-  CACHE_MAX_ENTRIES,
   CACHE_MAX_BYTES_PER_ENTRY,
+  OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES,
 } from "./constants.js";
 
 export interface CachedEntry {
@@ -35,7 +35,7 @@ export interface ResponseCacheOptions {
 export function createResponseCache(
   opts?: ResponseCacheOptions,
 ): ResponseCache {
-  const maxEntries = opts?.maxEntries ?? CACHE_MAX_ENTRIES;
+  const maxEntries = opts?.maxEntries ?? OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES;
   const maxBytesPerEntry = opts?.maxBytesPerEntry ?? CACHE_MAX_BYTES_PER_ENTRY;
   const store = new Map<string, CachedEntry>();
 

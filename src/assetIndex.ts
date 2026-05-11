@@ -19,7 +19,7 @@ import {
   type RawValueSearchFilters,
 } from "./assetFacts.js";
 import { ASSET_ENVELOPE_KEYS } from "./schemas/assets.js";
-import { DEFAULT_ASSET_CACHE_MAX_ENTRIES } from "./constants.js";
+import { ASSET_READ_CACHE_MAX_ENTRIES } from "./constants.js";
 
 export type NodeletType = "text" | "asset" | "group" | string;
 
@@ -98,7 +98,7 @@ const DEFAULT_SEARCH_LIMIT = 20;
 const ROOT_OUTLINE_LIMIT = 20;
 
 export function createAssetCache(opts?: AssetCacheOptions): AssetCache {
-  const maxEntries = opts?.maxEntries ?? DEFAULT_ASSET_CACHE_MAX_ENTRIES;
+  const maxEntries = opts?.maxEntries ?? ASSET_READ_CACHE_MAX_ENTRIES;
   const store = new Map<string, AssetCacheEntry>();
 
   function put(raw: unknown): AssetCacheEntry {

@@ -1,8 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import { createResponseCache } from "../../src/cache.js";
 import {
-  CACHE_MAX_ENTRIES,
   CACHE_MAX_BYTES_PER_ENTRY,
+  OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES,
 } from "../../src/constants.js";
 
 describe("createResponseCache", () => {
@@ -117,15 +117,16 @@ describe("createResponseCache", () => {
     const handle = cache.put("tool", "markdown", "small payload");
     expect(cache.get(handle)!.fullText).toBe("small payload");
 
-    // And the default maxEntries is at least CACHE_MAX_ENTRIES.
-    for (let i = 0; i < CACHE_MAX_ENTRIES; i += 1) {
+    // And the default maxEntries is at least OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES.
+    for (let i = 0; i < OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES; i += 1) {
       cache.put("tool", "markdown", `item-${i}`);
     }
-    // The first `put` above plus CACHE_MAX_ENTRIES more puts = CACHE_MAX_ENTRIES + 1
+    // The first `put` above plus OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES more puts =
+    // OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES + 1
     // insertions. Handle from first put may or may not be evicted depending on
     // exact default; we only assert the original handle wasn't immediately lost
     // before the overflow.
-    expect(cache.size()).toBeLessThanOrEqual(CACHE_MAX_ENTRIES);
+    expect(cache.size()).toBeLessThanOrEqual(OVERSIZE_RESPONSE_CACHE_MAX_ENTRIES);
     // Sanity: the default maxBytesPerEntry is large enough that a small payload was stored verbatim (not marker).
     expect(CACHE_MAX_BYTES_PER_ENTRY).toBeGreaterThan(1000);
   });

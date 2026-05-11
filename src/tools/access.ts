@@ -33,7 +33,7 @@ export function registerAccessTools(
     description: buildCascadeToolDescription(
       `Read access rights (users/groups + permission levels) for a Cascade asset.
 
-Returns the complete ACL (access control list) for an asset: which users and groups can read, edit, or delete it, and what the default level is for everyone else. Permission levels typically include "none", "read", "write", and "all" (level names are defined by the Cascade server). Useful for auditing permissions before sharing content or before a bulk edit.
+Returns the complete ACL (access control list) for an asset: which users and groups can read or write it, and what the default level is for everyone else. Access levels are "none", "read", and "write" for allLevel, and "read" or "write" for explicit ACL entries. Useful for auditing permissions before sharing content or before a bulk edit.
 
 Args:
   - identifier (object, required): The asset whose ACL to read
@@ -46,8 +46,9 @@ Returns:
   {
     success: true,
     accessRightsInformation: {
+      identifier: { ... },
       aclEntries: [ { name, type: "user"|"group", level }, ... ],
-      allLevel: "none"|"read"|"write"|"all"
+      allLevel: "none"|"read"|"write"
     }
   }
   On failure: { success: false, message: "<error>" }
@@ -85,9 +86,9 @@ Args:
     - id (string, optional): Asset ID (preferred)
     - path (object, optional): { path, siteId OR siteName }
     - type (string, required): Entity type of the asset
-  - accessRightsInformation (object, required, shape varies — see Cascade docs):
-    - aclEntries (array): Full new ACL. Each entry: { name, type: "user"|"group", level }
-    - allLevel (string): Default for everyone not listed. Typically "none" | "read" | "write" | "all".
+  - accessRightsInformation (object, required):
+    - aclEntries (array, optional): Full explicit ACL. Each entry: { name, type: "user"|"group", level: "read"|"write", id? }
+    - allLevel (string): Default for everyone not listed. One of "none" | "read" | "write".
   - applyToChildren (boolean, optional): For containers only. Default false. Propagates the ACL to all descendants.
 
 Returns:

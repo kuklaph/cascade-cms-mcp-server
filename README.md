@@ -2,7 +2,7 @@
 
 An MCP (Model Context Protocol) server that exposes the Cascade CMS REST API to LLMs and agents. It wraps the [cascade-cms-api](https://github.com/kuklaph/cascade-cms-api) library with Zod validation, markdown/JSON response formatting, and actionable error messages.
 
-Built in TypeScript on [Bun](https://bun.sh). The published server provides 34 MCP tools and 4 resources/templates for Cascade CMS asset reads/writes, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish, and cached response retrieval.
+Built in TypeScript on [Bun](https://bun.sh). The published server provides 36 MCP tools and 4 resources/templates for Cascade CMS asset reads/writes, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish, blocked-call management, site-removal safeguarding, and cached response retrieval.
 
 ## Requirements
 
@@ -120,7 +120,63 @@ $env:CASCADE_URL = "https://yourorg.cascadecms.com/api/v1/"
 | `CASCADE_URL`        |   Yes    | Cascade API URL, for example `https://yourorg.cascadecms.com/api/v1/` |
 | `CASCADE_TIMEOUT_MS` |    No    | Request timeout in milliseconds. Default: `30000`                     |
 
-Values may also be [dotseal](https://github.com/kuklaph/dotseal) ciphertexts with the `enc:<iv>:<authTag>:<ciphertext>` format. This package includes dotseal as a runtime dependency, so encrypted `enc:` values work when the server runs through `bunx` or `npx`. Plaintext values pass through without loading dotseal.
+`CASCADE_API_KEY`, `CASCADE_URL`, and `CASCADE_TIMEOUT_MS` may also be [dotseal](https://github.com/kuklaph/dotseal) ciphertexts with the `enc:<iv>:<authTag>:<ciphertext>` format. This package includes dotseal as a runtime dependency, so encrypted `enc:` values work when the server runs through `bunx` or `npx`. Plaintext values pass through without loading dotseal.
+
+## Blocked Tool Calls
+
+Use `cascade_tool_blocks` to list or add blocked Cascade tool-call rules. The rules live in a local JSON file at `~/.cascade-cms-mcp-server/tool-blocks.json`. If the file does not exist, the repository is treated as empty; deleting the file removes all stored blocks until new rules are added.
+
+Each rule requires a non-empty `tools` array plus `url`, `id`, or `path`. `url` means an HTTPS Cascade CMS asset URL on a `.cascadecms.com` host at `/entity/open.act` with `id` and `type` query parameters; it does not match published site URLs or symlink/feed/destination target URLs. Explicit `id` or `path` selectors require `type`. URL selectors and explicit selectors can be combined in the same rule; URL selectors use the URL's own `type`, while explicit `id` and `path` selectors use the rule's top-level `type`. Each selector may be a string or an array of strings. `reason` is optional and appears in the blocked-call error.
+
+Before a checked Cascade tool runs, the server reads this JSON repository and blocks the call if the tool name and payload match a rule. If the JSON file is malformed or cannot be read, checked Cascade tools fail closed before calling Cascade. Local helper tools (`cascade_asset_*`) and `cascade_read_response` do not consult the repository because they only inspect cached local data.
+
+Because `cascade_tool_blocks` can add guardrails, MCP clients should require user approval before calling it. It cannot remove or replace existing guardrails; delete or edit the local JSON file directly when intentional cleanup is required.
+
+Use `cascade_protect_site_removal` to generate removal safeguards for accessible sites and their root folders. It lists sites, blocks `cascade_remove` for those site IDs and site names/paths, reads each root folder at `/`, blocks readable root folders by ID, and also blocks folder path `/` as a path-based root-folder fallback. Existing generated rules from this tool are replaced when it runs again; unrelated rules stay in place. The response reports unreadable root folders so you know which root IDs could not be added.
+
+Example stored rules:
+
+```json
+[
+  {
+    "type": "site",
+    "id": ["site-123", "site-456"],
+    "path": ["Protected Site"],
+    "tools": ["cascade_remove", "cascade_edit"],
+    "reason": "No site edits or deletes"
+  },
+  {
+    "url": [
+      "https://college.cascadecms.com/entity/open.act?id=link-1&type=symlink",
+      "https://college.cascadecms.com/entity/open.act?id=link-2&type=symlink"
+    ],
+    "tools": ["cascade_edit"]
+  }
+]
+```
+
+Example management calls:
+
+```json
+{
+  "tool": "cascade_tool_blocks",
+  "arguments": {
+    "action": "add",
+    "rule": {
+      "url": "https://college.cascadecms.com/entity/open.act?id=block-1&type=block",
+      "tools": ["cascade_remove", "cascade_edit"],
+      "reason": "Protected block"
+    }
+  }
+}
+```
+
+```json
+{
+  "tool": "cascade_tool_blocks",
+  "arguments": { "action": "list" }
+}
+```
 
 The bundled runtime dependency is not exposed as a `dotseal` shell command. Use `bunx`, `npx`, or a separate global install when you want to generate ciphertexts:
 
@@ -166,6 +222,8 @@ Use this section to decide whether this MCP covers the job. Your MCP client or a
 | Read audit logs and system preferences                                                                  | Yes       |
 | Inspect raw asset content, references, strings, links, paths, and structured-data nodelets after a read | Yes       |
 | Fetch additional bytes from large/truncated responses                                                   | Yes       |
+| Persist blocked-call rules that prevent matching Cascade tool calls from running                         | Yes       |
+| Generate site and root-folder removal safeguards                                                         | Yes       |
 
 Every tool accepts optional `response_format: "markdown" | "json"`; markdown is the default. `cascade_read` returns a compact preview by default plus an `asset_handle` for follow-up inspection. Follow-up tools inspect the cached asset and do not call Cascade again. Handles are process-scoped and may be evicted after later `cascade_read` calls.
 
@@ -222,6 +280,8 @@ Approval recommended:
 | `cascade_check_out` | Checks out an asset |
 | `cascade_check_in` | Checks in an asset |
 | `cascade_edit_preference` | Changes a system preference |
+| `cascade_tool_blocks` | Changes the local blocked-call repository |
+| `cascade_protect_site_removal` | Changes the local blocked-call repository after reading accessible sites and root folders |
 
 High-impact approval recommended:
 

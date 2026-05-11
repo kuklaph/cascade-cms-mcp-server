@@ -146,13 +146,32 @@ describe("ReadAccessRightsRequestSchema", () => {
 });
 
 describe("EditAccessRightsRequestSchema", () => {
-  test("should accept a valid edit access rights request with passthrough info", () => {
+  test("should accept a valid edit access rights request", () => {
     const res = EditAccessRightsRequestSchema.safeParse({
       identifier: ID_PAGE,
       accessRightsInformation: { allLevel: "read", aclEntries: [] },
       applyToChildren: true,
     });
     expect(res.success).toBe(true);
+  });
+
+  test("should reject access rights with unsupported allLevel", () => {
+    const res = EditAccessRightsRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      accessRightsInformation: { allLevel: "all", aclEntries: [] },
+    });
+    expect(res.success).toBe(false);
+  });
+
+  test("should reject access rights with malformed ACL entries", () => {
+    const res = EditAccessRightsRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      accessRightsInformation: {
+        allLevel: "none",
+        aclEntries: [{ level: "all", type: "role", name: "editors" }],
+      },
+    });
+    expect(res.success).toBe(false);
   });
 });
 

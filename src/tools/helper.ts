@@ -4,8 +4,7 @@
  * Every tool in this server goes through `registerCascadeTool` so the
  * validate → handle → format → error-translate pipeline lives in ONE place.
  * When the MCP SDK or Cascade library contracts change, only this file
- * needs editing — not all 26 tool registrations (25 Cascade tools + the
- * `cascade_read_response` retrieval tool).
+ * needs editing — not every individual tool registration.
  */
 
 import type { z } from "zod";
@@ -23,6 +22,12 @@ import { translateError } from "../errors.js";
 import { logToolInvocation } from "../audit.js";
 import type { ResponseCache } from "../cache.js";
 import type { AssetCache } from "../assetIndex.js";
+import {
+  describeToolBlockRule,
+  findDeniedToolCall,
+  shouldCheckToolBlocks,
+  type ToolBlockStore,
+} from "../toolBlocks.js";
 
 /**
  * Shared dependencies threaded through tool registration so tools can
@@ -33,6 +38,7 @@ import type { AssetCache } from "../assetIndex.js";
 export interface CascadeDeps {
   cache: ResponseCache;
   assetCache?: AssetCache;
+  toolBlockStore?: ToolBlockStore;
 }
 
 /**
@@ -109,6 +115,20 @@ export function registerCascadeTool<TSchema extends z.ZodObject<any>>(
 
         // Strip response_format before delegating to the Cascade operation.
         const { response_format: _rf, ...rest } = input ?? {};
+
+        if (deps?.toolBlockStore && shouldCheckToolBlocks(name)) {
+          const denied = findDeniedToolCall(
+            name,
+            rest,
+            await deps.toolBlockStore.read(),
+          );
+          if (denied) {
+            const reason = denied.reason ? ` ${denied.reason}` : "";
+            throw new Error(
+              `Tool call denied by tool block repository for ${name} ${describeToolBlockRule(denied)}.${reason}`,
+            );
+          }
+        }
 
         const result = await handler(rest as Omit<z.infer<TSchema>, "response_format">);
 

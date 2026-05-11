@@ -2,8 +2,8 @@
  * Integration test for the server factory (`createServer`).
  *
  * Verifies that all tool cohorts wire up correctly and produce
- * the expected 34 tools with well-formed names (33 Cascade-backed +
- * 1 `cascade_read_response` retrieval tool). Also exercises one
+ * the expected 36 tools with well-formed names (33 Cascade-backed +
+ * 3 MCP-native local tools). Also exercises one
  * end-to-end handler invocation (`cascade_read`) through the real
  * pipeline that `registerCascadeTool` installs on the server, plus
  * the oversize-response round-trip through `cascade_read_response`.
@@ -13,6 +13,7 @@ import { describe, test, expect, mock } from "bun:test";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createServer } from "../../src/server.js";
 import { createMockClient } from "../fixtures/mock-client.js";
+import type { ToolBlockStore } from "../../src/toolBlocks.js";
 import {
   READ_PAGE_OK,
   READ_PAGE_HUGE,
@@ -34,7 +35,15 @@ function getRegisteredTools(server: unknown): Record<string, {
   return (server as { _registeredTools: Record<string, any> })._registeredTools;
 }
 
-/** All 34 expected tool names: 33 Cascade-backed tools + 1 retrieval tool. */
+function emptyToolBlockStore(): ToolBlockStore {
+  return {
+    path: "C:\\tmp\\tool-blocks.json",
+    read: async () => [],
+    write: async () => {},
+  };
+}
+
+/** All 36 expected tool names: 33 Cascade-backed tools + 3 local tools. */
 const EXPECTED_TOOL_NAMES = [
   // crud and asset follow-ups (14)
   "cascade_read",
@@ -78,22 +87,24 @@ const EXPECTED_TOOL_NAMES = [
   "cascade_edit_preference",
   // publish (1)
   "cascade_publish_unpublish",
-  // response cache retrieval (1)
+  // local MCP tools (3)
+  "cascade_tool_blocks",
+  "cascade_protect_site_removal",
   "cascade_read_response",
 ];
 
 describe("createServer (server factory)", () => {
-  test("registers exactly 34 tools", () => {
+  test("registers exactly 36 tools", () => {
     const client = createMockClient();
-    const server = createServer(client);
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
 
-    expect(Object.keys(tools)).toHaveLength(34);
+    expect(Object.keys(tools)).toHaveLength(36);
   });
 
   test("all tool names use snake_case with cascade_ prefix", () => {
     const client = createMockClient();
-    const server = createServer(client);
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
 
     const namePattern = /^cascade_[a-z]+(?:_[a-z]+)*$/;
@@ -104,18 +115,18 @@ describe("createServer (server factory)", () => {
 
   test("no duplicate tool names are registered", () => {
     const client = createMockClient();
-    const server = createServer(client);
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
 
     const names = Object.keys(tools);
     const unique = new Set(names);
     expect(unique.size).toBe(names.length);
-    expect(unique.size).toBe(34);
+    expect(unique.size).toBe(36);
   });
 
   test("every expected tool from each cohort is present", () => {
     const client = createMockClient();
-    const server = createServer(client);
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
     const registered = new Set(Object.keys(tools));
 
@@ -128,7 +139,7 @@ describe("createServer (server factory)", () => {
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_OK)),
     });
-    const server = createServer(client);
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
 
     const readTool = tools["cascade_read"];
@@ -159,7 +170,7 @@ describe("createServer (server factory)", () => {
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
     });
-    const server = createServer(client);
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
 
     const readTool = tools["cascade_read"];
@@ -249,7 +260,7 @@ describe("createServer (server factory)", () => {
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
     });
-    const server = createServer(client);
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
 
     const readTool = tools["cascade_read"];
