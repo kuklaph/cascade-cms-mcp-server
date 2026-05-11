@@ -64,7 +64,12 @@ const AclEntrySchema = z
       .describe(
         "REQUIRED: The user or group name this ACL entry applies to.",
       ),
-    id: z.string().optional().describe("Optional group id."),
+    id: z
+      .string()
+      .optional()
+      .describe(
+        "Optional group id. Include it when Cascade returned one for this group ACL entry; prefer id over name when available.",
+      ),
   })
   .strict()
   .describe("A single access control list entry.");

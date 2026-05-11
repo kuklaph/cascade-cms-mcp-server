@@ -87,7 +87,7 @@ Args:
     - path (object, optional): { path, siteId OR siteName }
     - type (string, required): Entity type of the asset
   - accessRightsInformation (object, required):
-    - aclEntries (array, optional): Full explicit ACL. Each entry: { name, type: "user"|"group", level: "read"|"write", id? }
+    - aclEntries (array, optional): Full explicit ACL. Each entry: { name, type: "user"|"group", level: "read"|"write", id? }; include id for group entries when Cascade provides it.
     - allLevel (string): Default for everyone not listed. One of "none" | "read" | "write".
   - applyToChildren (boolean, optional): For containers only. Default false. Propagates the ACL to all descendants.
 
