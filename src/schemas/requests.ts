@@ -302,7 +302,19 @@ export const RemoveRequestSchema = z
       "Optional delete parameters (e.g., to bypass the recycle bin or unpublish first). Matches Cascade's DeleteParameters shape.",
     ),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.identifier.type !== "site", {
+    message: "Cascade sites cannot be removed with cascade_remove",
+    path: ["identifier", "type"],
+  })
+  .refine(
+    (v) =>
+      v.identifier.type !== "folder" || v.identifier.path?.path !== "/",
+    {
+      message: "Cascade site root folder path '/' requests cannot be removed with cascade_remove",
+      path: ["identifier", "path", "path"],
+    },
+  );
 
 export type RemoveInput = z.infer<typeof RemoveRequestSchema>;
 

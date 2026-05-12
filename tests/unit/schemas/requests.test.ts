@@ -75,6 +75,33 @@ describe("RemoveRequestSchema", () => {
     const res = RemoveRequestSchema.safeParse({ identifier: ID_PAGE });
     expect(res.success).toBe(true);
   });
+
+  test("should reject site removal requests", () => {
+    const res = RemoveRequestSchema.safeParse({
+      identifier: { id: "site-1", type: "site" },
+    });
+    expect(res.success).toBe(false);
+  });
+
+  test("should reject root folder path removal requests", () => {
+    const res = RemoveRequestSchema.safeParse({
+      identifier: {
+        type: "folder",
+        path: { path: "/", siteName: "my-site" },
+      },
+    });
+    expect(res.success).toBe(false);
+  });
+
+  test("should reject root folder path removal requests with siteId", () => {
+    const res = RemoveRequestSchema.safeParse({
+      identifier: {
+        type: "folder",
+        path: { path: "/", siteId: "site-1" },
+      },
+    });
+    expect(res.success).toBe(false);
+  });
 });
 
 describe("MoveRequestSchema", () => {

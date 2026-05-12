@@ -387,6 +387,66 @@ describe("cascade_remove tool", () => {
     expect(result.isError).not.toBe(true);
   });
 
+  test("rejects site removal before calling client.remove", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient({
+      remove: mock(() => Promise.resolve(OK_RESULT)),
+    });
+
+    registerCrudTools(server as any, client);
+    const tool = findTool(tools, "cascade_remove");
+
+    const result = await tool.handler({
+      identifier: { id: "site-1", type: "site" },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(client.remove).not.toHaveBeenCalled();
+    expect(firstText(result)).toContain("Cascade sites cannot be removed");
+  });
+
+  test("rejects root folder path removal before calling client.remove", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient({
+      remove: mock(() => Promise.resolve(OK_RESULT)),
+    });
+
+    registerCrudTools(server as any, client);
+    const tool = findTool(tools, "cascade_remove");
+
+    const result = await tool.handler({
+      identifier: {
+        type: "folder",
+        path: { path: "/", siteName: "my-site" },
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(client.remove).not.toHaveBeenCalled();
+    expect(firstText(result)).toContain("Cascade site root folder path");
+  });
+
+  test("rejects root folder path removal with siteId before calling client.remove", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient({
+      remove: mock(() => Promise.resolve(OK_RESULT)),
+    });
+
+    registerCrudTools(server as any, client);
+    const tool = findTool(tools, "cascade_remove");
+
+    const result = await tool.handler({
+      identifier: {
+        type: "folder",
+        path: { path: "/", siteId: "site-1" },
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(client.remove).not.toHaveBeenCalled();
+    expect(firstText(result)).toContain("Cascade site root folder path");
+  });
+
   test("schema validation: rejects missing identifier", () => {
     const parsed = RemoveRequestSchema.safeParse({});
     expect(parsed.success).toBe(false);

@@ -246,7 +246,7 @@ High-impact approval recommended:
 
 | Tool                        | State change                      |
 | --------------------------- | --------------------------------- |
-| `cascade_remove`            | Deletes an asset                  |
+| `cascade_remove`            | Deletes an asset, except sites and root-folder path `/` requests |
 | `cascade_delete_message`    | Deletes a message                 |
 | `cascade_publish_unpublish` | Publishes or unpublishes an asset |
 

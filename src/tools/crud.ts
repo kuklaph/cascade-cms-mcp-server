@@ -473,7 +473,7 @@ Error Handling:
     description: buildCascadeToolDescription(
       `Delete an asset from Cascade CMS.
 
-By default, deletion sends the asset to the recycle bin; deleteParameters can unpublish and/or hard-delete. If the asset is under a workflow that requires review, workflowConfiguration specifies the approval flow. This is a DESTRUCTIVE operation — confirm intent before calling.
+By default, deletion sends the asset to the recycle bin; deleteParameters can unpublish and/or hard-delete. Site removal and root-folder path "/" removal are rejected; root-folder ID safeguards require generated tool-block rules. If the asset is under a workflow that requires review, workflowConfiguration specifies the approval flow. This is a DESTRUCTIVE operation — confirm intent before calling.
 
 Args:
   - identifier (object, required): The asset to delete
