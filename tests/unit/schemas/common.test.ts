@@ -3,7 +3,6 @@ import {
   EntityTypeSchema,
   PathSchema,
   IdentifierSchema,
-  ResponseFormatSchema,
 } from "../../../src/schemas/common.js";
 
 describe("EntityTypeSchema", () => {
@@ -76,16 +75,6 @@ describe("IdentifierSchema", () => {
   test("should reject when type is missing", () => {
     const res = IdentifierSchema.safeParse({ id: "abc" });
     expect(res.success).toBe(false);
-  });
-});
-
-describe("ResponseFormatSchema", () => {
-  test("should default to 'markdown' when undefined is passed and accept 'json'", () => {
-    const resDefault = ResponseFormatSchema.parse(undefined);
-    expect(resDefault).toBe("markdown");
-
-    const resJson = ResponseFormatSchema.safeParse("json");
-    expect(resJson.success).toBe(true);
   });
 });
 

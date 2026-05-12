@@ -49,10 +49,21 @@ export function redactSecrets(msg: string): string {
   );
 }
 
-function toMcpError(text: string): CallToolResult {
+function toMcpError(text: string, opName: string): CallToolResult {
+  const message = redactSecrets(text);
+  const structuredContent = {
+    success: false,
+    error: {
+      type: "tool_error",
+      tool: opName,
+      message,
+      ...suggestedRecovery(message),
+    },
+  };
   return {
     isError: true,
-    content: [{ type: "text", text: redactSecrets(text) }],
+    content: [{ type: "text", text: JSON.stringify(structuredContent, null, 2) }],
+    structuredContent,
   };
 }
 
@@ -69,13 +80,14 @@ export function translateError(err: unknown, opName: string): CallToolResult {
     // Cascade library throws wrapped messages via handleRequest.
     if (msg.startsWith(REQUEST_FAILED_PREFIX)) {
       const clean = msg.slice(REQUEST_FAILED_PREFIX.length);
-      return toMcpError(`${opName} failed: ${clean}`);
+      return toMcpError(`${opName} failed: ${clean}`, opName);
     }
 
     // Upstream timeout ("Request timed out") or any message mentioning "timeout".
     if (msg === TIMEOUT_MESSAGE || /timeout/i.test(msg)) {
       return toMcpError(
         `The Cascade request timed out for ${opName}. Please try again or increase CASCADE_TIMEOUT_MS.`,
+        opName,
       );
     }
 
@@ -83,10 +95,11 @@ export function translateError(err: unknown, opName: string): CallToolResult {
     if (msg.includes(MISSING_CONFIG_MESSAGE)) {
       return toMcpError(
         `Configuration error: ${opName} could not run — Cascade credentials are missing. Check CASCADE_API_KEY and CASCADE_URL.`,
+        opName,
       );
     }
 
-    return toMcpError(`${opName} failed: ${msg}`);
+    return toMcpError(`${opName} failed: ${msg}`, opName);
   }
 
   // Non-Error inputs: string, object, undefined, null, etc.
@@ -99,7 +112,17 @@ export function translateError(err: unknown, opName: string): CallToolResult {
       ? err
       : safeStringify(err);
 
-  return toMcpError(`${opName} failed: ${asString}`);
+  return toMcpError(`${opName} failed: ${asString}`, opName);
+}
+
+function suggestedRecovery(message: string): Record<string, unknown> {
+  if (/asset handle .* not found/i.test(message)) {
+    return {
+      suggested_tool: "cascade_read",
+      hints: ["Re-run cascade_read to create a fresh asset_handle."],
+    };
+  }
+  return {};
 }
 
 function safeStringify(v: unknown): string {

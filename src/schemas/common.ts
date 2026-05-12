@@ -5,7 +5,6 @@
  *   - EntityTypeSchema: the EntityTypeString union used in identifier.type
  *   - PathSchema: an asset path with optional site id/name
  *   - IdentifierSchema: an asset identifier (id-or-path + required type)
- *   - ResponseFormatSchema: "markdown" | "json" (defaults to "markdown")
  *   - ReadModeSchema: "preview" | "raw" (defaults to "preview"; cascade_read only)
  */
 
@@ -164,15 +163,6 @@ export const IdentifierSchema = z
   );
 
 export type Identifier = z.infer<typeof IdentifierSchema>;
-
-export const ResponseFormatSchema = z
-  .enum(["markdown", "json"])
-  .default("markdown")
-  .describe(
-    "Response format: 'markdown' (human-readable, default) or 'json' (machine-readable structured result). For cascade_read, preview mode remains compact; use read_mode: 'raw' or cascade://asset/{handle}/raw for the raw Cascade payload.",
-  );
-
-export type ResponseFormat = z.infer<typeof ResponseFormatSchema>;
 
 export const ReadModeSchema = z
   .enum(["preview", "raw"])

@@ -152,7 +152,6 @@ describe("logToolInvocation", () => {
 const SampleSchema = z
   .object({
     name: z.string(),
-    response_format: z.enum(["markdown", "json"]).default("markdown"),
   })
   .strict();
 
@@ -191,7 +190,7 @@ describe("registerCascadeTool audit logging integration", () => {
       input: unknown,
     ) => Promise<CallToolResult>;
 
-    await wrapped({ name: "alice", response_format: "markdown" });
+    await wrapped({ name: "alice" });
 
     expect(stderrWrites.length).toBe(1);
     const line = stderrWrites[0];
@@ -221,7 +220,7 @@ describe("registerCascadeTool audit logging integration", () => {
       input: unknown,
     ) => Promise<CallToolResult>;
 
-    await wrapped({ name: "alice", response_format: "markdown" });
+    await wrapped({ name: "alice" });
 
     expect(stderrWrites.length).toBe(1);
     const line = stderrWrites[0];
@@ -248,7 +247,7 @@ describe("registerCascadeTool audit logging integration", () => {
       input: unknown,
     ) => Promise<CallToolResult>;
 
-    await wrapped({ name: "a", response_format: "markdown" });
+    await wrapped({ name: "a" });
     expect(stderrWrites.length).toBe(1);
   });
 });

@@ -1,8 +1,8 @@
 # cascade-cms-mcp-server
 
-An MCP (Model Context Protocol) server that exposes the Cascade CMS REST API to LLMs and agents. It wraps the [cascade-cms-api](https://github.com/kuklaph/cascade-cms-api) library with Zod validation, markdown/JSON response formatting, and actionable error messages.
+An MCP (Model Context Protocol) server that exposes the Cascade CMS REST API to LLMs and agents. It wraps the [cascade-cms-api](https://github.com/kuklaph/cascade-cms-api) library with Zod validation, JSON response text, structuredContent, and actionable error messages.
 
-Built in TypeScript on [Bun](https://bun.sh). The published server provides 36 MCP tools and 4 resources/templates for Cascade CMS asset reads/writes, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish, blocked-call management, site-removal safeguarding, and cached response retrieval.
+Built in TypeScript on [Bun](https://bun.sh). The published server provides 37 MCP tools and 4 resources/templates for Cascade CMS asset reads/writes, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish, blocked-call management, site-removal safeguarding, server version checks, and cached response retrieval.
 
 ## Requirements
 
@@ -128,7 +128,7 @@ Use `cascade_tool_blocks` to list or add blocked Cascade tool-call rules. The ru
 
 Each rule requires a non-empty `tools` array plus `url`, `id`, or `path`. `url` means an HTTPS Cascade CMS asset URL on a `.cascadecms.com` host at `/entity/open.act` with `id` and `type` query parameters; it does not match published site URLs or symlink/feed/destination target URLs. Explicit `id` or `path` selectors require `type`. URL selectors and explicit selectors can be combined in the same rule; URL selectors use the URL's own `type`, while explicit `id` and `path` selectors use the rule's top-level `type`. Each selector may be a string or an array of strings. `reason` is optional and appears in the blocked-call error.
 
-Before a checked Cascade tool runs, the server reads this JSON repository and blocks the call if the tool name and payload match a rule. If the JSON file is malformed or cannot be read, checked Cascade tools fail closed before calling Cascade. Local helper tools (`cascade_asset_*`) and `cascade_read_response` do not consult the repository because they only inspect cached local data.
+Before a checked Cascade tool runs, the server reads this JSON repository and blocks the call if the tool name and payload match a rule. If the JSON file is malformed or cannot be read, checked Cascade tools fail closed before calling Cascade. Local helper tools (`cascade_asset_*`), `cascade_read_response`, and `cascade_server_version` do not consult the repository because they only inspect cached local data or server metadata.
 
 Because `cascade_tool_blocks` can add guardrails, MCP clients should require user approval before calling it. It cannot remove or replace existing guardrails; delete or edit the local JSON file directly when intentional cleanup is required.
 
@@ -225,7 +225,7 @@ Use this section to decide whether this MCP covers the job. Your MCP client or a
 | Persist blocked-call rules that prevent matching Cascade tool calls from running                         | Yes       |
 | Generate site and root-folder removal safeguards                                                         | Yes       |
 
-Every tool accepts optional `response_format: "markdown" | "json"`; markdown is the default. `cascade_read` returns a compact preview by default plus an `asset_handle` for follow-up inspection. Follow-up tools inspect the cached asset and do not call Cascade again. Handles are process-scoped and may be evicted after later `cascade_read` calls.
+Tool responses are JSON text, and `structuredContent` is the authoritative machine-readable result when the response fits. Oversized responses return bounded `_cache` metadata; use `cascade_read_response` with that handle to page through the full serialized response. The beta `response_format` option was removed; callers should parse `content[0].text` as JSON or prefer `structuredContent` when their client exposes it. `cascade_read` returns a compact preview by default plus an `asset_handle` for follow-up inspection. Use `read_mode: "raw"` for the full Cascade payload. Follow-up tools inspect the cached asset and do not call Cascade again. Handles are process-scoped and may be evicted after later calls.
 
 Use your MCP client's tool list or inspector for exact request schemas.
 
@@ -247,6 +247,7 @@ Read-only tools:
 | `cascade_list_messages` | List Cascade messages |
 | `cascade_read_audits` | Read audit log entries |
 | `cascade_read_preferences` | Read system preferences |
+| `cascade_server_version` | Read this MCP server's name and version |
 | `cascade_read_response` | Fetch more text from a cached oversized response |
 
 `cascade_read` helper tools:

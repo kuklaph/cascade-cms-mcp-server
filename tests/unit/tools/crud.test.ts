@@ -1,6 +1,5 @@
 import { describe, test, expect, mock } from "bun:test";
 import type { ToolAnnotations, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { z } from "zod";
 import { registerCrudTools } from "../../../src/tools/crud.js";
 import {
   ReadRequestSchema,
@@ -65,7 +64,6 @@ describe("cascade_read tool", () => {
 
     const result = await tool.handler({
       identifier: ID_PAGE,
-      response_format: "markdown",
     });
 
     expect(client.read).toHaveBeenCalledTimes(1);
@@ -116,7 +114,7 @@ describe("cascade_read tool", () => {
     expect(text).toContain("Not Found");
   });
 
-  test("read_mode: 'raw' returns identical raw response", async () => {
+  test("read_mode: 'raw' returns bounded cache metadata for oversize raw responses", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
@@ -128,12 +126,14 @@ describe("cascade_read tool", () => {
     const result = await tool.handler({
       identifier: { id: "huge-page-id", type: "page" },
       read_mode: "raw",
-      response_format: "json",
     });
 
     expect(result.isError).not.toBe(true);
     const structured = result.structuredContent as Record<string, any>;
-    expect(structured.asset).toEqual(READ_PAGE_HUGE.asset);
+    expect(structured.success).toBe(true);
+    expect(structured.truncated).toBe(true);
+    expect(structured.asset).toBeUndefined();
+    expect(structured._cache.handle).toMatch(/^h_[0-9a-f-]+$/);
   });
 
   test("SDK-validated omitted read_mode uses preview by default", async () => {
@@ -144,9 +144,8 @@ describe("cascade_read tool", () => {
 
     registerCrudTools(server as any, client);
     const tool = findTool(tools, "cascade_read");
-    const parsedInput = z.object(tool.config.inputSchema as any).parse({
+    const parsedInput = (tool.config.inputSchema as any).parse({
       identifier: { id: "huge-page-id", type: "page" },
-      response_format: "json",
     });
 
     const result = await tool.handler(parsedInput);
@@ -176,7 +175,6 @@ describe("cascade_read tool", () => {
 
     const result = await read.handler({
       identifier: { id: "huge-page-id", type: "page" },
-      response_format: "markdown",
     });
     const handle = (result.structuredContent as Record<string, any>).asset_handle;
 
@@ -184,39 +182,32 @@ describe("cascade_read tool", () => {
       asset_handle: handle,
       fact_kind: "scalar",
       limit: 5,
-      response_format: "json",
     });
     const valuesResult = await searchValues.handler({
       asset_handle: handle,
       value_contains: "xxxxx",
-      response_format: "json",
     });
     const keysResult = await searchKeys.handler({
       asset_handle: handle,
       key: "xhtml",
-      response_format: "json",
     });
     const valueResult = await getValue.handler({
       asset_handle: handle,
       pointer: "/asset/page/xhtml",
       offset: 5,
       length: 5,
-      response_format: "json",
     });
     const artifactsResult = await listArtifacts.handler({
       asset_handle: handle,
       artifact_kind: "root_path",
-      response_format: "json",
     });
     const refsResult = await listReferences.handler({
       asset_handle: handle,
-      response_format: "json",
     });
     const listResult = await listNodelets.handler({
       asset_handle: handle,
       pointer: "",
       limit: 5,
-      response_format: "json",
     });
     const firstPointer = (listResult.structuredContent as Record<string, any>)
       .nodelets[0].pointer;
@@ -224,7 +215,6 @@ describe("cascade_read tool", () => {
       asset_handle: handle,
       pointer: firstPointer,
       depth: 0,
-      response_format: "json",
     });
 
     expect(factsResult.isError).not.toBe(true);
@@ -294,7 +284,6 @@ describe("cascade_create tool", () => {
 
     const result = await tool.handler({
       asset: VALID_ASSET,
-      response_format: "markdown",
     });
 
     expect(client.create).toHaveBeenCalledTimes(1);
@@ -344,7 +333,6 @@ describe("cascade_edit tool", () => {
     const assetWithId = { page: { ...VALID_ASSET.page, id: "page-001" } };
     const result = await tool.handler({
       asset: assetWithId,
-      response_format: "json",
     });
 
     expect(client.edit).toHaveBeenCalledTimes(1);
@@ -392,7 +380,6 @@ describe("cascade_remove tool", () => {
 
     const result = await tool.handler({
       identifier: ID_PAGE,
-      response_format: "markdown",
     });
 
     expect(client.remove).toHaveBeenCalledTimes(1);
@@ -446,7 +433,6 @@ describe("cascade_move tool", () => {
     const result = await tool.handler({
       identifier: ID_PAGE,
       moveParameters,
-      response_format: "markdown",
     });
 
     expect(client.move).toHaveBeenCalledTimes(1);
@@ -506,7 +492,6 @@ describe("cascade_copy tool", () => {
     const result = await tool.handler({
       identifier: ID_PAGE,
       copyParameters,
-      response_format: "markdown",
     });
 
     expect(client.copy).toHaveBeenCalledTimes(1);

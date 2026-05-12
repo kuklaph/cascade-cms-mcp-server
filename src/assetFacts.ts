@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { CHARACTER_LIMIT } from "./constants.js";
+import type { NextAction } from "./guidance.js";
 
 export const RAW_FACT_INDEX_VERSION = 1;
 
@@ -135,7 +136,7 @@ export interface AuditPage<T> {
   next_cursor?: string;
   complete: boolean;
   truncated: boolean;
-  next_actions: string[];
+  next_actions: NextAction[];
   results: T[];
 }
 
@@ -209,6 +210,7 @@ export function listFacts(
 ): AuditPage<RawFact> {
   return pageResults(
     index,
+    "cascade_asset_list_facts",
     "raw_fact_index",
     filters,
     (fact) => matchesFact(index.raw, fact, filters),
@@ -228,6 +230,7 @@ export function searchValues(
 ): AuditPage<RawValueResult> {
   const page = pageResults(
     index,
+    "cascade_asset_search_values",
     "raw_scalar_values",
     filters,
     (fact) => fact.fact_kind === "scalar" && matchesFact(index.raw, fact, filters),
@@ -247,6 +250,7 @@ export function searchKeys(
 ): AuditPage<RawKeyResult> {
   const page = pageResults(
     index,
+    "cascade_asset_search_keys",
     "raw_object_keys",
     filters,
     (fact) =>
@@ -273,6 +277,7 @@ export function listReferences(
 ): AuditPage<RawReference> {
   return pageResults(
     index,
+    "cascade_asset_list_references",
     "cascade_references",
     filters,
     (ref) =>
@@ -291,6 +296,7 @@ export function listScalarArtifacts(
   const extraction = extractScalarArtifacts(index.raw, index.rawFacts, filters);
   const page = pageResults(
     index,
+    "cascade_asset_list_scalar_artifacts",
     "raw_scalar_artifacts",
     filters,
     (artifact) =>
@@ -532,11 +538,12 @@ function annotateReferenceFacts(facts: RawFact[], refs: RawReference[]): void {
 
 function pageResults<T extends { pointer?: string; source_pointer?: string }>(
   index: IndexedForAudit,
+  selfTool: string,
   sourceScope: string,
   filters: { limit?: number; cursor?: string },
   matches: (item: T) => boolean,
   allItems: T[],
-  nextActions: string[],
+  nextActionTools: string[],
 ): AuditPage<T> {
   const limit = clampLimit(filters.limit);
   const filterHash = hashString(stableStringify({ sourceScope, ...withoutPaging(filters) }));
@@ -562,9 +569,41 @@ function pageResults<T extends { pointer?: string; source_pointer?: string }>(
     ...(nextCursor ? { next_cursor: nextCursor } : {}),
     complete: nextCursor === undefined,
     truncated: nextCursor !== undefined,
-    next_actions: nextActions,
+    next_actions: buildAuditNextActions(index, nextActionTools, nextCursor, selfTool, {
+      ...withoutPaging(filters),
+      limit,
+    }),
     results,
   };
+}
+
+function buildAuditNextActions(
+  index: IndexedForAudit,
+  tools: string[],
+  nextCursor: string | undefined,
+  selfTool: string,
+  continuationFilters: Record<string, unknown>,
+): NextAction[] {
+  return [
+    ...tools.map((tool) => ({
+      tool,
+      reason: "Use this cached asset handle for related raw JSON inspection.",
+      input: { asset_handle: index.handle },
+    })),
+    ...(nextCursor
+      ? [
+          {
+            tool: selfTool,
+            reason: "Continue this paginated query with the returned cursor.",
+            input: {
+              asset_handle: index.handle,
+              ...continuationFilters,
+              cursor: nextCursor,
+            },
+          },
+        ]
+      : []),
+  ];
 }
 
 function matchesFact(raw: unknown, fact: RawFact, filters: RawFactFilters): boolean {

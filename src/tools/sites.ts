@@ -36,7 +36,7 @@ export function registerSiteTools(
 Returns identifiers (id, name, type="site") for every site the authenticated user can see. This is typically the first call an agent makes to discover which sites exist before reading or editing assets inside them. The response contains only identifiers — call cascade_read with { type: "site", ... } to fetch a site's full configuration.
 
 Args:
-  (none — takes no parameters beyond response_format)
+  (none)
 
 Returns:
   Cascade OperationResult:
@@ -63,11 +63,6 @@ Error Handling:
     handler: (input) => client.listSites(input as unknown as Types.ListSitesRequest),
   }, deps);
 
-  // SiteCopyRequestSchema uses `.refine()` which yields a ZodEffects wrapper.
-  // The helper needs the underlying ZodObject (with `.shape`) for MCP
-  // registration — use `.innerType()` to unwrap. We re-apply the cross-field
-  // refinement in the handler below so the MCP boundary still rejects
-  // under-specified payloads before calling Cascade.
   registerCascadeTool(server, {
     name: "cascade_site_copy",
     title: "Copy Cascade Site",
@@ -100,25 +95,13 @@ Error Handling:
   - "Site name collision" when newSiteName already exists
   - "Permission denied" when the user isn't a site-copy administrator`,
     ),
-    inputSchema: SiteCopyRequestSchema.innerType(),
+    inputSchema: SiteCopyRequestSchema,
     annotations: {
       readOnlyHint: false,
       destructiveHint: false,
       idempotentHint: false,
       openWorldHint: true,
     },
-    handler: (input) => {
-      const args = input as {
-        originalSiteId?: string;
-        originalSiteName?: string;
-        newSiteName: string;
-      };
-      if (!args.originalSiteId && !args.originalSiteName) {
-        throw new Error(
-          "requires either originalSiteId or originalSiteName",
-        );
-      }
-      return client.siteCopy(input as unknown as Types.SiteCopyRequest);
-    },
+    handler: (input) => client.siteCopy(input as unknown as Types.SiteCopyRequest),
   }, deps);
 }

@@ -60,7 +60,6 @@ describe("cascade_list_subscribers tool", () => {
 
     const result = await tool.handler({
       identifier: ID_PAGE,
-      response_format: "markdown",
     });
 
     expect(client.listSubscribers).toHaveBeenCalledTimes(1);
@@ -113,7 +112,7 @@ describe("cascade_list_messages tool", () => {
     expect(tool.config.annotations.idempotentHint).toBe(true);
     expect(tool.config.annotations.openWorldHint).toBe(true);
 
-    const result = await tool.handler({ response_format: "markdown" });
+    const result = await tool.handler({});
 
     expect(client.listMessages).toHaveBeenCalledTimes(1);
     // Library receives empty request; pagination fields are stripped.
@@ -218,7 +217,6 @@ describe("cascade_mark_message tool", () => {
     const result = await tool.handler({
       identifier: ID_MESSAGE,
       markType: "read",
-      response_format: "markdown",
     });
 
     expect(client.markMessage).toHaveBeenCalledTimes(1);
@@ -279,7 +277,6 @@ describe("cascade_delete_message tool", () => {
 
     const result = await tool.handler({
       identifier: ID_MESSAGE,
-      response_format: "markdown",
     });
 
     expect(client.deleteMessage).toHaveBeenCalledTimes(1);

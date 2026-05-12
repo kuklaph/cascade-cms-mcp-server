@@ -29,7 +29,6 @@ import {
   searchRawValues,
   toAssetPreview,
   type AssetCache,
-  type AssetPreview,
 } from "../assetIndex.js";
 import {
   registerCascadeTool,
@@ -52,29 +51,6 @@ import {
   MoveRequestSchema,
   CopyRequestSchema,
 } from "../schemas/requests.js";
-
-function renderAssetPreview(result: unknown): string {
-  const preview = result as AssetPreview;
-  const lines = [
-    "## cascade_read preview",
-    `- asset_handle: ${preview.asset_handle}`,
-    `- asset_type: ${preview.asset_type}`,
-    `- raw_resource_uri: ${preview.raw_resource_uri}`,
-    `- raw_hash: ${preview.raw_hash}`,
-    `- index_version: ${preview.index_version}`,
-    `- audit_complete: ${preview.audit_complete}`,
-    `- total_fact_count: ${preview.total_fact_count}`,
-    `- reference_count: ${preview.reference_count}`,
-    `- node_count: ${preview.node_count}`,
-    `- max_depth: ${preview.max_depth}`,
-    "",
-    "Use cascade_asset_list_facts, cascade_asset_search_values, cascade_asset_search_keys, cascade_asset_get_value, cascade_asset_list_scalar_artifacts, cascade_asset_list_references, cascade_asset_list_nodelets, or cascade_asset_get_nodelet with asset_handle for follow-up inspection.",
-  ];
-  if (preview.warnings.length > 0) {
-    lines.push("", ...preview.warnings.map((warning) => `- warning: ${warning}`));
-  }
-  return lines.join("\n");
-}
 
 function registerAssetFollowUpTools(
   server: McpServer,
@@ -244,6 +220,30 @@ function registerAssetFollowUpTools(
         pointer: args.pointer,
         nodelets: listed.children,
         ...(listed.next_cursor ? { next_cursor: listed.next_cursor } : {}),
+        next_actions: [
+          ...(listed.next_cursor
+            ? [
+                {
+                  tool: "cascade_asset_list_nodelets",
+                  reason: "Continue listing nodelets from the next cursor.",
+                  input: {
+                    asset_handle: args.asset_handle,
+                    pointer: args.pointer,
+                    cursor: listed.next_cursor,
+                    ...(args.limit ? { limit: args.limit } : {}),
+                  },
+                },
+              ]
+            : []),
+          ...listed.children.map((nodelet) => ({
+            tool: "cascade_asset_get_nodelet",
+            reason: "Fetch this nodelet or a bounded subtree.",
+            input: {
+              asset_handle: args.asset_handle,
+              pointer: nodelet.pointer,
+            },
+          })),
+        ],
       };
     },
   }, deps);
@@ -365,7 +365,6 @@ Error Handling:
         ],
       };
     },
-    renderMarkdown: renderAssetPreview,
     stripFromStructured: ["_resource_links"],
   }, resolved);
 

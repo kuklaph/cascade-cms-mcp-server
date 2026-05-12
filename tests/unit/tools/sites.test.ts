@@ -42,7 +42,7 @@ describe("cascade_list_sites tool", () => {
     expect(tool.config.annotations.idempotentHint).toBe(true);
     expect(tool.config.annotations.openWorldHint).toBe(true);
 
-    const result = await tool.handler({ response_format: "markdown" });
+    const result = await tool.handler({});
 
     expect(client.listSites).toHaveBeenCalledTimes(1);
     expect(client.listSites.mock.calls[0][0]).toEqual({});
@@ -96,7 +96,6 @@ describe("cascade_site_copy tool", () => {
     };
     const result = await tool.handler({
       ...payload,
-      response_format: "json",
     });
 
     expect(client.siteCopy).toHaveBeenCalledTimes(1);

@@ -2,8 +2,8 @@
  * Zod schemas for Cascade-backed tools, handle-based asset inspection tools,
  * and MCP-native local utility tools.
  *
- * Every schema extends a base that includes `response_format` and is strict
- * at the top level unless the upstream shape inherently requires passthrough
+ * Every schema is strict at the top level unless the upstream shape requires
+ * passthrough
  * (e.g., complex nested objects where Cascade does its own validation).
  */
 
@@ -12,15 +12,10 @@ import {
   EntityTypeSchema,
   IdentifierSchema,
   ReadModeSchema,
-  ResponseFormatSchema,
 } from "./common.js";
 import { AssetInputSchema } from "./assets.js";
 import { CHARACTER_LIMIT } from "../constants.js";
 
-/** Base shared by all request schemas: optional response_format (defaults markdown). */
-const BaseRequestFields = {
-  response_format: ResponseFormatSchema,
-};
 
 /** Reusable pagination fields merged into list/search request schemas. */
 const PaginationFields = {
@@ -98,7 +93,6 @@ export const ReadRequestSchema = z
       "The asset to read. Provide id + type (preferred) or path + type.",
     ),
     read_mode: ReadModeSchema,
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -145,7 +139,6 @@ export const AssetListFactsRequestSchema = z
     non_empty: z.boolean().optional(),
     reference_kind: z.string().optional(),
     ...AuditPaginationFields,
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -161,7 +154,6 @@ export const AssetSearchValuesRequestSchema = z
     scalar_type: z.enum(["string", "number", "boolean", "null"]).optional(),
     non_empty: z.boolean().optional(),
     ...AuditPaginationFields,
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -174,7 +166,6 @@ export const AssetSearchKeysRequestSchema = z
     key_contains: z.string().optional(),
     pointer_prefix: z.string().optional(),
     ...AuditPaginationFields,
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -186,7 +177,6 @@ export const AssetGetValueRequestSchema = z
     pointer: z.string().describe("JSON Pointer into the exact cached raw JSON."),
     offset: z.number().int().min(0).optional(),
     length: z.number().int().min(1).max(CHARACTER_LIMIT).optional(),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -199,7 +189,6 @@ export const AssetListReferencesRequestSchema = z
     reference_kind: z.string().optional(),
     value_contains: z.string().optional(),
     ...AuditPaginationFields,
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -225,7 +214,6 @@ export const AssetListScalarArtifactsRequestSchema = z
     key_contains: z.string().optional(),
     value_contains: z.string().optional(),
     ...AuditPaginationFields,
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -246,7 +234,6 @@ export const AssetListNodeletsRequestSchema = z
       .regex(/^c_[0-9]+$/, "cursor must be a next_cursor returned by this tool")
       .optional(),
     limit: z.number().int().min(1).max(100).default(25),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -269,7 +256,6 @@ export const AssetGetNodeletRequestSchema = z
       .boolean()
       .default(true)
       .describe("Whether to include text fields in returned nodelets."),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -283,7 +269,6 @@ export const CreateRequestSchema = z
     asset: AssetInputSchema.describe(
       "The asset payload to create. `type` chooses the branch (page/file/folder/block/symlink get strict validation; other types pass through).",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -297,7 +282,6 @@ export const EditRequestSchema = z
     asset: AssetInputSchema.describe(
       "The asset payload to edit. Must include `id` to identify the target asset. Parent-folder fields are ignored on edit — use move to relocate.",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -317,7 +301,6 @@ export const RemoveRequestSchema = z
     deleteParameters: PassthroughRecord.optional().describe(
       "Optional delete parameters (e.g., to bypass the recycle bin or unpublish first). Matches Cascade's DeleteParameters shape.",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -355,7 +338,6 @@ export const MoveRequestSchema = z
     workflowConfiguration: PassthroughRecord.optional().describe(
       "Optional workflow configuration applied when doWorkflow=true.",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -392,7 +374,6 @@ export const CopyRequestSchema = z
     workflowConfiguration: PassthroughRecord.optional().describe(
       "Optional workflow configuration applied when doWorkflow=true.",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -465,7 +446,6 @@ export const SearchRequestSchema = z
       "Search query and filters.",
     ),
     ...PaginationFields,
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -494,7 +474,6 @@ export const SiteCopyRequestSchema = z
       .describe(
         "REQUIRED: Name of the new site that will be created from the copy.",
       ),
-    ...BaseRequestFields,
   })
   .strict()
   .refine(
@@ -513,7 +492,6 @@ export type SiteCopyInput = z.infer<typeof SiteCopyRequestSchema>;
  * ------------------------------------------------------------------------ */
 export const ListSitesRequestSchema = z
   .object({
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -527,7 +505,6 @@ export const ReadAccessRightsRequestSchema = z
     identifier: IdentifierSchema.describe(
       "The asset or container whose access rights to read.",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -552,7 +529,6 @@ export const EditAccessRightsRequestSchema = z
       .describe(
         "Apply these rights to child assets/containers (default: false). Only meaningful for folders and containers.",
       ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -568,7 +544,6 @@ export const ReadWorkflowSettingsRequestSchema = z
     identifier: IdentifierSchema.describe(
       "The folder whose workflow settings to read.",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -599,7 +574,6 @@ export const EditWorkflowSettingsRequestSchema = z
       .describe(
         "Apply the 'requireWorkflow' setting to child folders (default: false).",
       ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -615,7 +589,6 @@ export const ListSubscribersRequestSchema = z
     identifier: IdentifierSchema.describe(
       "The asset whose subscribers to list.",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -629,7 +602,6 @@ export type ListSubscribersInput = z.infer<
 export const ListMessagesRequestSchema = z
   .object({
     ...PaginationFields,
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -646,7 +618,6 @@ export const MarkMessageRequestSchema = z
       .describe(
         "REQUIRED: Action to apply to the message: 'read' | 'unread' | 'archive' | 'unarchive'.",
       ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -658,7 +629,6 @@ export type MarkMessageInput = z.infer<typeof MarkMessageRequestSchema>;
 export const DeleteMessageRequestSchema = z
   .object({
     identifier: IdentifierSchema.describe("The message to delete."),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -672,7 +642,6 @@ export const CheckOutRequestSchema = z
     identifier: IdentifierSchema.describe(
       "The asset to check out (creates a working copy for exclusive editing).",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -691,7 +660,6 @@ export const CheckInRequestSchema = z
       .describe(
         "REQUIRED: Check-in comments describing the changes. Empty string is allowed.",
       ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -706,7 +674,6 @@ export const ReadAuditsRequestSchema = z
       "REQUIRED: Audit filters (identifier, username, groupname, role, auditType, start/end dates). Matches Cascade's AuditParameters shape.",
     ),
     ...PaginationFields,
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -720,7 +687,6 @@ export const ReadWorkflowInformationRequestSchema = z
     identifier: IdentifierSchema.describe(
       "The asset whose active workflow information to read.",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -745,7 +711,6 @@ export const PerformWorkflowTransitionRequestSchema = z
       .string()
       .optional()
       .describe("Optional comment recorded with the workflow transition."),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -758,7 +723,6 @@ export type PerformWorkflowTransitionInput = z.infer<
  * ------------------------------------------------------------------------ */
 export const ReadPreferencesRequestSchema = z
   .object({
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -767,7 +731,19 @@ export type ReadPreferencesInput = z.infer<
 >;
 
 /** -------------------------------------------------------------------------
- * 24. PublishUnpublishRequest
+ * 24. ServerVersionRequest
+ * ------------------------------------------------------------------------ */
+export const ServerVersionRequestSchema = z
+  .object({
+  })
+  .strict();
+
+export type ServerVersionInput = z.infer<
+  typeof ServerVersionRequestSchema
+>;
+
+/** -------------------------------------------------------------------------
+ * 25. PublishUnpublishRequest
  * ------------------------------------------------------------------------ */
 export const PublishUnpublishRequestSchema = z
   .object({
@@ -777,7 +753,6 @@ export const PublishUnpublishRequestSchema = z
     publishInformation: PassthroughRecord.describe(
       "REQUIRED: Publish parameters (unpublish flag, destinations list, etc.). Matches Cascade's PublishInformation shape.",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -793,7 +768,6 @@ export const EditPreferenceRequestSchema = z
     preference: PassthroughRecord.describe(
       "REQUIRED: The preference to create or update. Shape: `{ name: string, value: string }`.",
     ),
-    ...BaseRequestFields,
   })
   .strict();
 
@@ -838,7 +812,6 @@ export const ReadResponseRequestSchema = z
       .describe(
         `Maximum characters to return in this slice. Default and max ${CHARACTER_LIMIT}. Smaller slices are fine; iterate via next_offset.`,
       ),
-    ...BaseRequestFields,
   })
   .strict();
 

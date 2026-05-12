@@ -62,7 +62,6 @@ describe("cascade_read_audits tool", () => {
     };
     const result = await tool.handler({
       auditParameters,
-      response_format: "markdown",
     });
 
     expect(client.readAudits).toHaveBeenCalledTimes(1);
@@ -171,7 +170,7 @@ describe("cascade_read_preferences tool", () => {
     expect(tool.config.annotations.idempotentHint).toBe(true);
     expect(tool.config.annotations.openWorldHint).toBe(true);
 
-    const result = await tool.handler({ response_format: "markdown" });
+    const result = await tool.handler({});
 
     expect(client.readPreferences).toHaveBeenCalledTimes(1);
     expect(client.readPreferences.mock.calls[0][0]).toEqual({});
@@ -227,7 +226,6 @@ describe("cascade_edit_preference tool", () => {
     };
     const result = await tool.handler({
       preference,
-      response_format: "markdown",
     });
 
     expect(client.editPreference).toHaveBeenCalledTimes(1);

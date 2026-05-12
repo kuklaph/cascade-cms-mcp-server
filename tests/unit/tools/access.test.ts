@@ -51,7 +51,6 @@ describe("cascade_read_access_rights tool", () => {
 
     const result = await tool.handler({
       identifier: ID_PAGE,
-      response_format: "markdown",
     });
 
     expect(client.readAccessRights).toHaveBeenCalledTimes(1);
@@ -108,7 +107,6 @@ describe("cascade_edit_access_rights tool", () => {
       identifier: ID_PAGE,
       accessRightsInformation,
       applyToChildren: true,
-      response_format: "json",
     });
 
     expect(client.editAccessRights).toHaveBeenCalledTimes(1);

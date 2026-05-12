@@ -43,7 +43,6 @@ describe("cascade_publish_unpublish tool", () => {
     const result = await tool.handler({
       identifier: ID_PAGE,
       publishInformation,
-      response_format: "markdown",
     });
 
     expect(client.publishUnpublish).toHaveBeenCalledTimes(1);

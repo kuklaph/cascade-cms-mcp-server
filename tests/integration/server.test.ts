@@ -2,8 +2,8 @@
  * Integration test for the server factory (`createServer`).
  *
  * Verifies that all tool cohorts wire up correctly and produce
- * the expected 36 tools with well-formed names (33 Cascade-backed +
- * 3 MCP-native local tools). Also exercises one
+ * the expected 37 tools with well-formed names (33 Cascade-backed +
+ * 4 MCP-native local tools). Also exercises one
  * end-to-end handler invocation (`cascade_read`) through the real
  * pipeline that `registerCascadeTool` installs on the server, plus
  * the oversize-response round-trip through `cascade_read_response`.
@@ -18,7 +18,11 @@ import {
   READ_PAGE_OK,
   READ_PAGE_HUGE,
 } from "../fixtures/cascade-responses.js";
-import { CHARACTER_LIMIT } from "../../src/constants.js";
+import {
+  CHARACTER_LIMIT,
+  SERVER_NAME,
+  SERVER_VERSION,
+} from "../../src/constants.js";
 
 /**
  * Extract the runtime `_registeredTools` map from an `McpServer`.
@@ -43,7 +47,24 @@ function emptyToolBlockStore(): ToolBlockStore {
   };
 }
 
-/** All 36 expected tool names: 33 Cascade-backed tools + 3 local tools. */
+async function callToolViaSdkPath(
+  server: unknown,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<CallToolResult> {
+  const protocol = (server as { server: { _requestHandlers: Map<string, any> } }).server;
+  const handler = protocol._requestHandlers.get("tools/call");
+  if (!handler) throw new Error("tools/call handler not registered");
+  return handler(
+    {
+      method: "tools/call",
+      params: { name, arguments: args },
+    },
+    {},
+  );
+}
+
+/** All 37 expected tool names: 33 Cascade-backed tools + 4 local tools. */
 const EXPECTED_TOOL_NAMES = [
   // crud and asset follow-ups (14)
   "cascade_read",
@@ -87,19 +108,20 @@ const EXPECTED_TOOL_NAMES = [
   "cascade_edit_preference",
   // publish (1)
   "cascade_publish_unpublish",
-  // local MCP tools (3)
+  // local MCP tools (4)
   "cascade_tool_blocks",
   "cascade_protect_site_removal",
+  "cascade_server_version",
   "cascade_read_response",
 ];
 
 describe("createServer (server factory)", () => {
-  test("registers exactly 36 tools", () => {
+  test("registers exactly 37 tools", () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
 
-    expect(Object.keys(tools)).toHaveLength(36);
+    expect(Object.keys(tools)).toHaveLength(37);
   });
 
   test("all tool names use snake_case with cascade_ prefix", () => {
@@ -121,7 +143,7 @@ describe("createServer (server factory)", () => {
     const names = Object.keys(tools);
     const unique = new Set(names);
     expect(unique.size).toBe(names.length);
-    expect(unique.size).toBe(36);
+    expect(unique.size).toBe(37);
   });
 
   test("every expected tool from each cohort is present", () => {
@@ -133,6 +155,30 @@ describe("createServer (server factory)", () => {
     for (const expected of EXPECTED_TOOL_NAMES) {
       expect(registered.has(expected)).toBe(true);
     }
+  });
+
+  test("cascade_server_version reports server metadata without reading tool blocks", async () => {
+    const client = createMockClient();
+    const toolBlockStore: ToolBlockStore = {
+      path: "C:\\tmp\\tool-blocks.json",
+      read: mock(() => {
+        throw new Error("tool block store should not be read");
+      }),
+      write: async () => {},
+    };
+    const server = createServer(client, { toolBlockStore });
+    const tools = getRegisteredTools(server);
+
+    const result = await tools["cascade_server_version"].handler({});
+    const body = JSON.parse((result.content[0] as any).text);
+
+    expect(result.isError).not.toBe(true);
+    expect(body).toEqual({
+      success: true,
+      name: SERVER_NAME,
+      version: SERVER_VERSION,
+    });
+    expect(toolBlockStore.read).not.toHaveBeenCalled();
   });
 
   test("cascade_read handler invokes client.read and returns preview result", async () => {
@@ -147,10 +193,9 @@ describe("createServer (server factory)", () => {
 
     const result = await readTool.handler({
       identifier: { id: "abc", type: "page" },
-      response_format: "markdown",
     });
 
-    // client.read should have been called once with response_format stripped.
+    // client.read should have been called once with read input only.
     expect(client.read).toHaveBeenCalledTimes(1);
     expect(client.read.mock.calls[0][0]).toEqual({
       identifier: { id: "abc", type: "page" },
@@ -182,7 +227,6 @@ describe("createServer (server factory)", () => {
     const oversize = await readTool.handler({
       identifier: { id: "huge-page-id", type: "page" },
       read_mode: "raw",
-      response_format: "json",
     });
 
     expect(oversize.isError).not.toBe(true);
@@ -201,8 +245,8 @@ describe("createServer (server factory)", () => {
     expect(envelope.handle.length).toBeGreaterThan(0);
     expect(envelope.bytes_total).toBeGreaterThan(CHARACTER_LIMIT);
     expect(structured.success).toBe(true);
-    // Full asset (xhtml) preserved in structuredContent alongside the envelope.
-    expect(structured.asset.page.xhtml).toBeDefined();
+    expect(structured.truncated).toBe(true);
+    expect(structured.asset).toBeUndefined();
 
     const handle = envelope.handle;
 
@@ -211,7 +255,6 @@ describe("createServer (server factory)", () => {
       handle,
       offset: 0,
       length: 100,
-      response_format: "markdown",
     });
 
     expect(firstSlice.isError).not.toBe(true);
@@ -228,14 +271,14 @@ describe("createServer (server factory)", () => {
     if (!firstSliceBlock || firstSliceBlock.type !== "text") {
       throw new Error("expected first slice content block to be text");
     }
-    expect(firstSliceBlock.text.length).toBe(100);
+    const firstSliceText = JSON.parse(firstSliceBlock.text);
+    expect(firstSliceText.slice_text.length).toBe(100);
 
     // Act 3: cascade_read_response {handle, offset: 100, length: 100}.
     const secondSlice = await readResponseTool.handler({
       handle,
       offset: 100,
       length: 100,
-      response_format: "markdown",
     });
 
     expect(secondSlice.isError).not.toBe(true);
@@ -250,10 +293,40 @@ describe("createServer (server factory)", () => {
     if (!secondSliceBlock || secondSliceBlock.type !== "text") {
       throw new Error("expected second slice content block to be text");
     }
-    expect(secondSliceBlock.text.length).toBe(100);
+    const secondSliceText = JSON.parse(secondSliceBlock.text);
+    expect(secondSliceText.slice_text.length).toBe(100);
 
     // Sequential slices must be contiguous — i.e. second slice != first slice.
-    expect(secondSliceBlock.text).not.toBe(firstSliceBlock.text);
+    expect(secondSliceText.slice_text).not.toBe(firstSliceText.slice_text);
+  });
+
+  test("tools/call path returns project JSON validation errors for removed and invalid fields", async () => {
+    const client = createMockClient({
+      read: mock(() => Promise.resolve(READ_PAGE_OK)),
+    });
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+
+    const removedField = await callToolViaSdkPath(server, "cascade_read", {
+      identifier: { id: "abc", type: "page" },
+      response_format: "json",
+    });
+    const removedBody = JSON.parse((removedField.content[0] as any).text);
+
+    expect(removedField.isError).toBe(true);
+    expect(removedBody.error.type).toBe("validation_error");
+    expect(removedBody.error.issues[0].code).toBe("unrecognized_keys");
+    expect(removedBody.error.issues[0].hint).toContain("response_format");
+
+    const invalidEnum = await callToolViaSdkPath(server, "cascade_read", {
+      identifier: { id: "abc", type: "page" },
+      read_mode: "sk-testsecret123456",
+    });
+    const invalidBody = JSON.parse((invalidEnum.content[0] as any).text);
+
+    expect(invalidEnum.isError).toBe(true);
+    expect(invalidBody.error.type).toBe("validation_error");
+    expect(JSON.stringify(invalidBody)).not.toContain("sk-testsecret123456");
+    expect(client.read).not.toHaveBeenCalled();
   });
 
   test("cascade_read default preview omits heavy recursive fields", async () => {
@@ -266,7 +339,6 @@ describe("createServer (server factory)", () => {
     const readTool = tools["cascade_read"];
     const result = await readTool.handler({
       identifier: { id: "huge-page-id", type: "page" },
-      response_format: "json",
     });
 
     expect(result.isError).not.toBe(true);

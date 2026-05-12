@@ -28,6 +28,7 @@ import {
   registerToolBlockTool,
 } from "./tools/toolBlocks.js";
 import { registerReadResponseTool } from "./tools/readResponse.js";
+import { registerServerVersionTool } from "./tools/version.js";
 import { registerCascadeResources } from "./resources.js";
 
 /**
@@ -72,6 +73,7 @@ export function createServer(
   // cache populated by the other tool cohorts above.
   registerToolBlockTool(server, resolved);
   registerSiteRemovalProtectionTool(server, client, resolved);
+  registerServerVersionTool(server);
   registerReadResponseTool(server, resolved);
 
   return server;

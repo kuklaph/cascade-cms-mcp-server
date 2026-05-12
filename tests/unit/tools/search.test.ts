@@ -16,7 +16,7 @@ import { SEARCH_OK } from "../../fixtures/cascade-responses.js";
 // =============================================================================
 
 describe("cascade_search tool", () => {
-  test("happy path: calls client.search with input (minus response_format/limit/offset) and returns paginated response", async () => {
+  test("happy path: calls client.search with input minus limit/offset and returns paginated response", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
       search: mock(() => Promise.resolve(SEARCH_OK)),
@@ -38,7 +38,6 @@ describe("cascade_search tool", () => {
       searchInformation,
       limit: 50,
       offset: 0,
-      response_format: "markdown",
     });
 
     expect(client.search).toHaveBeenCalledTimes(1);

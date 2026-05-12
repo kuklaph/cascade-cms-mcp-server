@@ -20,6 +20,7 @@ import {
 } from "./assetFacts.js";
 import { ASSET_ENVELOPE_KEYS } from "./schemas/assets.js";
 import { ASSET_READ_CACHE_MAX_ENTRIES } from "./constants.js";
+import type { NextAction } from "./guidance.js";
 
 export type NodeletType = "text" | "asset" | "group" | string;
 
@@ -89,7 +90,7 @@ export interface AssetPreview {
   root_outline: NodeStub[];
   omitted_fields: string[];
   warnings: string[];
-  next_actions: string[];
+  next_actions: NextAction[];
 }
 
 const HANDLE_PATTERN = /^a_[0-9a-f-]{36}$/i;
@@ -218,15 +219,46 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
     omitted_fields: omitted,
     warnings,
     next_actions: [
-      "cascade_asset_list_facts",
-      "cascade_asset_search_values",
-      "cascade_asset_search_keys",
-      "cascade_asset_get_value",
-      "cascade_asset_list_scalar_artifacts",
-      "cascade_asset_list_references",
-      "cascade_asset_list_nodelets",
-      "cascade_asset_get_nodelet",
-      "cascade://asset/{handle}/raw",
+      {
+        tool: "cascade_asset_list_facts",
+        reason: "Browse indexed raw JSON facts from this cached asset.",
+        input: { asset_handle: index.handle },
+      },
+      {
+        tool: "cascade_asset_search_values",
+        reason: "Search scalar values inside this cached asset.",
+        required_inputs: ["asset_handle", "value_contains"],
+      },
+      {
+        tool: "cascade_asset_search_keys",
+        reason: "Find object keys inside this cached asset.",
+        input: { asset_handle: index.handle },
+      },
+      {
+        tool: "cascade_asset_get_value",
+        reason: "Fetch an exact raw JSON value by pointer.",
+        required_inputs: ["asset_handle", "pointer"],
+      },
+      {
+        tool: "cascade_asset_list_scalar_artifacts",
+        reason: "List URL, href, src, mailto, tel, anchor, and path-like scalar artifacts.",
+        input: { asset_handle: index.handle },
+      },
+      {
+        tool: "cascade_asset_list_references",
+        reason: "List Cascade-native references discovered in the cached raw response.",
+        input: { asset_handle: index.handle },
+      },
+      {
+        tool: "cascade_asset_list_nodelets",
+        reason: "Browse structuredData nodelets from the root.",
+        input: { asset_handle: index.handle, pointer: "" },
+      },
+      {
+        tool: "cascade_asset_get_nodelet",
+        reason: "Fetch an exact structuredData nodelet by pointer.",
+        required_inputs: ["asset_handle", "pointer"],
+      },
     ],
   };
 }

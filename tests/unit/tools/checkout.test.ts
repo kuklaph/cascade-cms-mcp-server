@@ -41,7 +41,6 @@ describe("cascade_check_out tool", () => {
 
     const result = await tool.handler({
       identifier: ID_PAGE,
-      response_format: "markdown",
     });
 
     expect(client.checkOut).toHaveBeenCalledTimes(1);
@@ -97,7 +96,6 @@ describe("cascade_check_in tool", () => {
     const result = await tool.handler({
       identifier: ID_PAGE,
       comments: "Fixed typo in header",
-      response_format: "markdown",
     });
 
     expect(client.checkIn).toHaveBeenCalledTimes(1);

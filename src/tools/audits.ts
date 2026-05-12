@@ -104,7 +104,7 @@ Error Handling:
 Returns every configurable server-wide preference as name/value pairs. Preferences include things like default publish behavior, image handling defaults, API limits, and UI options. Typically useful before calling cascade_edit_preference so you know the current value. Requires system-admin-level credentials.
 
 Args:
-  (none — takes no parameters beyond response_format)
+  (none)
 
 Returns:
   Cascade OperationResult:

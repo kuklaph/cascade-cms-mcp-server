@@ -370,10 +370,10 @@ describe("Edge cases", () => {
     expect(res.success).toBe(false);
   });
 
-  test("ReadRequestSchema should reject an invalid response_format value", () => {
+  test("ReadRequestSchema should reject removed response_format field", () => {
     const res = ReadRequestSchema.safeParse({
       identifier: ID_PAGE,
-      response_format: "xml",
+      response_format: "json",
     });
     expect(res.success).toBe(false);
   });

@@ -26,6 +26,10 @@ function firstText(r: CallToolResult): string {
   return block.text;
 }
 
+function parsedText(r: CallToolResult): any {
+  return JSON.parse(firstText(r));
+}
+
 function makeStore(initial: unknown[] = []): ToolBlockStore {
   let rules = initial;
   return {
@@ -66,7 +70,7 @@ describe("registerToolBlockTool", () => {
     const wrapped = server.registerTool.mock.calls[0][2] as (
       input: unknown,
     ) => Promise<CallToolResult>;
-    const result = await wrapped({ action: "list", response_format: "json" });
+    const result = await wrapped({ action: "list" });
 
     expect(result.isError).not.toBe(true);
     expect(result.structuredContent).toEqual({
@@ -95,7 +99,6 @@ describe("registerToolBlockTool", () => {
         url: "https://college.cascadecms.com/entity/open.act?id=block-1&type=block",
         tools: ["cascade_remove", "cascade_edit"],
       },
-      response_format: "markdown",
     });
 
     expect(result.isError).not.toBe(true);
@@ -105,7 +108,11 @@ describe("registerToolBlockTool", () => {
         tools: ["cascade_remove", "cascade_edit"],
       },
     ]);
-    expect(firstText(result)).toContain("cascade_tool_blocks succeeded");
+    expect(parsedText(result)).toMatchObject({
+      success: true,
+      path: "C:\\tmp\\tool-blocks.json",
+      count: 1,
+    });
   });
 
   test("rejects removal and replacement actions", async () => {
@@ -130,9 +137,15 @@ describe("registerToolBlockTool", () => {
     });
 
     expect(removeResult.isError).toBe(true);
-    expect(firstText(removeResult)).toContain("Unsupported tool block action: remove");
+    expect(parsedText(removeResult).error.issues[0].valid_values).toEqual([
+      "list",
+      "add",
+    ]);
     expect(replaceResult.isError).toBe(true);
-    expect(firstText(replaceResult)).toContain("Unsupported tool block action: replace");
+    expect(parsedText(replaceResult).error.issues[0].valid_values).toEqual([
+      "list",
+      "add",
+    ]);
     expect(store.write).not.toHaveBeenCalled();
   });
 });
@@ -191,7 +204,7 @@ describe("registerSiteRemovalProtectionTool", () => {
     const wrapped = server.registerTool.mock.calls[0][2] as (
       input: unknown,
     ) => Promise<CallToolResult>;
-    const result = await wrapped({ response_format: "json" });
+    const result = await wrapped({});
 
     expect(result.isError).not.toBe(true);
     expect(result.structuredContent).toMatchObject({
@@ -272,7 +285,7 @@ describe("registerSiteRemovalProtectionTool", () => {
     const wrapped = server.registerTool.mock.calls[0][2] as (
       input: unknown,
     ) => Promise<CallToolResult>;
-    const result = await wrapped({ response_format: "json" });
+    const result = await wrapped({});
 
     expect(result.isError).not.toBe(true);
     expect(store.write).toHaveBeenCalledWith([
@@ -329,7 +342,7 @@ describe("registerSiteRemovalProtectionTool", () => {
     const wrapped = server.registerTool.mock.calls[0][2] as (
       input: unknown,
     ) => Promise<CallToolResult>;
-    const result = await wrapped({ response_format: "json" });
+    const result = await wrapped({});
 
     expect(result.isError).not.toBe(true);
     expect(store.write).toHaveBeenCalledWith([

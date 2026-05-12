@@ -224,6 +224,17 @@ describe("asset nodelet index", () => {
     expect(first.complete).toBe(false);
     expect(first.truncated).toBe(true);
     expect(first.next_cursor).toBeDefined();
+    expect(first.next_actions).toContainEqual(
+      expect.objectContaining({
+        tool: "cascade_asset_list_facts",
+        input: expect.objectContaining({
+          asset_handle: index.handle,
+          fact_kind: "scalar",
+          limit: 2,
+          cursor: first.next_cursor,
+        }),
+      }),
+    );
 
     const second = listRawFacts(index, {
       fact_kind: "scalar",
@@ -431,8 +442,8 @@ describe("asset nodelet index", () => {
     expect(preview.total_fact_count).toBeGreaterThan(preview.node_count);
     expect(preview.node_count).toBe(11);
     expect("asset" in preview).toBe(false);
-    expect(preview.next_actions).toContain("cascade_asset_list_facts");
-    expect(preview.next_actions).toContain("cascade_asset_list_scalar_artifacts");
+    expect(preview.next_actions.map((action) => action.tool)).toContain("cascade_asset_list_facts");
+    expect(preview.next_actions.map((action) => action.tool)).toContain("cascade_asset_list_scalar_artifacts");
     expect(preview.omitted_fields).toEqual(["structuredData"]);
   });
 
@@ -566,6 +577,16 @@ describe("scalar artifact audit view", () => {
     expect(first.complete).toBe(false);
     expect(first.truncated).toBe(true);
     expect(first.next_cursor).toBeDefined();
+    expect(first.next_actions).toContainEqual(
+      expect.objectContaining({
+        tool: "cascade_asset_list_scalar_artifacts",
+        input: expect.objectContaining({
+          asset_handle: index.handle,
+          limit: 2,
+          cursor: first.next_cursor,
+        }),
+      }),
+    );
 
     const second = listScalarArtifacts(index, {
       limit: 2,

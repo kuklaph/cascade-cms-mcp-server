@@ -65,7 +65,6 @@ describe("cascade_read_workflow_settings tool", () => {
 
     const result = await tool.handler({
       identifier: ID_FOLDER,
-      response_format: "markdown",
     });
 
     expect(client.readWorkflowSettings).toHaveBeenCalledTimes(1);
@@ -129,7 +128,6 @@ describe("cascade_edit_workflow_settings tool", () => {
       workflowSettings,
       applyInheritWorkflowsToChildren: true,
       applyRequireWorkflowToChildren: false,
-      response_format: "json",
     });
 
     expect(client.editWorkflowSettings).toHaveBeenCalledTimes(1);
@@ -191,7 +189,6 @@ describe("cascade_read_workflow_information tool", () => {
 
     const result = await tool.handler({
       identifier: ID_PAGE,
-      response_format: "markdown",
     });
 
     expect(client.readWorkflowInformation).toHaveBeenCalledTimes(1);
@@ -248,7 +245,6 @@ describe("cascade_perform_workflow_transition tool", () => {
       workflowId: "wf-1",
       actionIdentifier: "approve",
       transitionComment: "Looks good",
-      response_format: "json",
     });
 
     expect(client.performWorkflowTransition).toHaveBeenCalledTimes(1);
