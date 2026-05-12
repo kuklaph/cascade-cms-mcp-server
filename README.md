@@ -63,7 +63,7 @@ For clients with a UI instead of JSON, enter the same values:
 | Arguments   | `cascade-cms-mcp-server`                                        | `-y`, `cascade-cms-mcp-server` |
 | Environment | `CASCADE_API_KEY`, `CASCADE_URL`, optional `CASCADE_TIMEOUT_MS` | Same                           |
 
-Restart the client after changing its MCP config.
+Restart the client after changing its MCP config. Then call `cascade_server_version` to confirm the running server name and version.
 
 ### Client-Specific Examples
 
@@ -120,9 +120,229 @@ $env:CASCADE_URL = "https://yourorg.cascadecms.com/api/v1/"
 | `CASCADE_URL`        |   Yes    | Cascade API URL, for example `https://yourorg.cascadecms.com/api/v1/` |
 | `CASCADE_TIMEOUT_MS` |    No    | Request timeout in milliseconds. Default: `30000`                     |
 
-`CASCADE_API_KEY`, `CASCADE_URL`, and `CASCADE_TIMEOUT_MS` may also be [dotseal](https://github.com/kuklaph/dotseal) ciphertexts with the `enc:<iv>:<authTag>:<ciphertext>` format. This package includes dotseal as a runtime dependency, so encrypted `enc:` values work when the server runs through `bunx` or `npx`. Plaintext values pass through without loading dotseal.
+## Encrypted Environment Values
 
-## Blocked Tool Calls
+If you prefer keeping your env values encrypted at rest, `CASCADE_API_KEY`, `CASCADE_URL`, and `CASCADE_TIMEOUT_MS` may also be [dotseal](https://github.com/kuklaph/dotseal) ciphertexts with the `enc:<iv>:<authTag>:<ciphertext>` format. This package includes dotseal as a runtime dependency, so encrypted `enc:` values work when the server runs through `bunx` or `npx`. Plaintext values pass through without loading dotseal.
+
+The bundled runtime dependency is not exposed as a `dotseal` shell command. Use `bunx`, `npx`, or a separate global install when you want to generate ciphertexts:
+
+```bash
+bunx dotseal encrypt "your_api_key_here"
+```
+
+Alternative with npm:
+
+```bash
+npx dotseal encrypt "your_api_key_here"
+```
+
+Paste the `enc:...` output into your MCP config or shell environment. If you prefer a global CLI install, `bun install -g dotseal` or `npm install -g dotseal` is also fine; it is not required for this server to decrypt values at runtime.
+
+Example MCP config with an encrypted API key:
+
+```json
+{
+  "mcpServers": {
+    "cascade-cms": {
+      "command": "bunx",
+      "args": ["cascade-cms-mcp-server"],
+      "env": {
+        "CASCADE_API_KEY": "enc:...",
+        "CASCADE_URL": "https://yourorg.cascadecms.com/api/v1/"
+      }
+    }
+  }
+}
+```
+
+## Response Model
+
+Tool responses are JSON text. When the response fits, `structuredContent` is the authoritative machine-readable result.
+
+Oversized responses return bounded `_cache` metadata. Use `cascade_read_response` with that handle to page through the full serialized response. Handles are process-scoped and may be evicted after later calls.
+
+`cascade_read` returns a compact preview by default plus an `asset_handle` for follow-up inspection. Use `read_mode: "raw"` only when you need the full Cascade payload in the initial response. Follow-up tools inspect the cached asset and do not call Cascade again.
+
+The beta `response_format` option was removed. Callers should parse `content[0].text` as JSON or prefer `structuredContent` when their client exposes it.
+
+## Capabilities
+
+Use this section to decide whether this MCP covers the job. Your MCP client or agent will see the exact tool schemas and choose the specific tool calls.
+
+| Need                                                                                                    | Supported |
+| ------------------------------------------------------------------------------------------------------- | --------- |
+| Read Cascade assets by id or path                                                                       | Yes       |
+| Search assets by terms, fields, type, and site                                                          | Yes       |
+| Create, edit, move, copy, rename, or delete assets                                                      | Yes       |
+| Publish or unpublish assets                                                                             | Yes       |
+| List sites                                                                                              | Yes       |
+| Read or edit access rights                                                                              | Yes       |
+| Read or update workflow settings and perform workflow transitions                                       | Yes       |
+| List messages, mark messages, delete messages, and inspect subscribers/relationships                    | Yes       |
+| Read audit logs and system preferences                                                                  | Yes       |
+| Inspect raw asset content, references, strings, links, paths, and structured-data nodelets after a read | Yes       |
+| Fetch additional bytes from large/truncated responses                                                   | Yes       |
+| Persist blocked-call rules that prevent matching Cascade tool calls from running                        | Yes       |
+| Generate site and root-folder removal safeguards                                                        | Yes       |
+
+Use your MCP client's tool list or inspector for exact request schemas.
+
+## Tool Permissions
+
+Use these groups when configuring MCP client approvals. Client config syntax varies, but a common policy is to allow read-only tools by default and require approval for tools that create, update, delete, publish, check in/out, or otherwise change Cascade state.
+
+Read-only tools:
+
+| Tool                                | Purpose                                            |
+| ----------------------------------- | -------------------------------------------------- |
+| `cascade_read`                      | Read an asset and return a preview or raw response |
+| `cascade_search`                    | Search Cascade assets                              |
+| `cascade_list_sites`                | List Cascade sites                                 |
+| `cascade_read_access_rights`        | Read access rights for an asset                    |
+| `cascade_read_workflow_settings`    | Read workflow settings for an asset                |
+| `cascade_read_workflow_information` | Read workflow information for an asset             |
+| `cascade_list_subscribers`          | List subscribers for an asset                      |
+| `cascade_list_messages`             | List Cascade messages                              |
+| `cascade_read_audits`               | Read audit log entries                             |
+| `cascade_read_preferences`          | Read system preferences                            |
+| `cascade_server_version`            | Read this MCP server's name and version            |
+| `cascade_read_response`             | Fetch more text from a cached oversized response   |
+
+`cascade_read` helper tools:
+
+These tools do not call Cascade directly. They inspect the in-memory `asset_handle` created by a prior `cascade_read` preview response.
+
+| Tool                                  | Purpose                                                            |
+| ------------------------------------- | ------------------------------------------------------------------ |
+| `cascade_asset_list_facts`            | List indexed raw JSON facts from a cached read                     |
+| `cascade_asset_search_values`         | Search scalar values in a cached read                              |
+| `cascade_asset_search_keys`           | Search object keys in a cached read                                |
+| `cascade_asset_get_value`             | Fetch one raw JSON value from a cached read                        |
+| `cascade_asset_list_scalar_artifacts` | List links, paths, and similar scalar artifacts from a cached read |
+| `cascade_asset_list_references`       | List Cascade references found in a cached read                     |
+| `cascade_asset_list_nodelets`         | List structured-data nodelets from a cached read                   |
+| `cascade_asset_get_nodelet`           | Fetch one structured-data nodelet from a cached read               |
+
+Approval recommended:
+
+| Tool                                  | State change                                                                              |
+| ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `cascade_create`                      | Creates an asset                                                                          |
+| `cascade_edit`                        | Edits an asset                                                                            |
+| `cascade_move`                        | Moves or renames an asset                                                                 |
+| `cascade_copy`                        | Copies an asset                                                                           |
+| `cascade_site_copy`                   | Copies a site                                                                             |
+| `cascade_edit_access_rights`          | Changes asset access rights                                                               |
+| `cascade_edit_workflow_settings`      | Changes workflow settings                                                                 |
+| `cascade_perform_workflow_transition` | Performs a workflow transition                                                            |
+| `cascade_mark_message`                | Marks a message                                                                           |
+| `cascade_check_out`                   | Checks out an asset                                                                       |
+| `cascade_check_in`                    | Checks in an asset                                                                        |
+| `cascade_edit_preference`             | Changes a system preference                                                               |
+| `cascade_tool_blocks`                 | Changes the local blocked-call repository                                                 |
+| `cascade_protect_site_removal`        | Changes the local blocked-call repository after reading accessible sites and root folders |
+
+High-impact approval recommended:
+
+| Tool                        | State change                      |
+| --------------------------- | --------------------------------- |
+| `cascade_remove`            | Deletes an asset                  |
+| `cascade_delete_message`    | Deletes a message                 |
+| `cascade_publish_unpublish` | Publishes or unpublishes an asset |
+
+## Examples
+
+Read a page by id:
+
+```json
+{
+  "tool": "cascade_read",
+  "arguments": {
+    "identifier": {
+      "id": "d3631e59ac1easd2434bd70be3fbfe8148abc",
+      "type": "page"
+    }
+  }
+}
+```
+
+Read a folder by path:
+
+```json
+{
+  "tool": "cascade_read",
+  "arguments": {
+    "identifier": {
+      "path": { "path": "/about/team", "siteName": "www" },
+      "type": "folder"
+    }
+  }
+}
+```
+
+Inspect cached read data after a preview:
+
+```json
+{
+  "tool": "cascade_asset_search_values",
+  "arguments": {
+    "asset_handle": "a_550e8400-e29b-41d4-a716-446655440000",
+    "value_contains": "admissions"
+  }
+}
+```
+
+Use the `asset_handle` returned by `cascade_read`; `cascade_asset_*` tools are follow-ups, not first-step Cascade reads.
+
+Search for pages:
+
+```json
+{
+  "tool": "cascade_search",
+  "arguments": {
+    "searchInformation": {
+      "searchTerms": "admissions",
+      "searchTypes": ["page"],
+      "searchFields": ["title", "summary"],
+      "siteName": "www"
+    },
+    "limit": 100,
+    "offset": 0
+  }
+}
+```
+
+Create a page:
+
+```json
+{
+  "tool": "cascade_create",
+  "arguments": {
+    "asset": {
+      "page": {
+        "name": "new-page",
+        "parentFolderPath": "/about",
+        "siteName": "www",
+        "contentTypePath": "/standard/content-type"
+      }
+    }
+  }
+}
+```
+
+Publish an asset:
+
+```json
+{
+  "tool": "cascade_publish_unpublish",
+  "arguments": {
+    "identifier": { "id": "abc123", "type": "page" },
+    "publishInformation": { "unpublish": false }
+  }
+}
+```
+
+## Guardrails: Blocked Tool Calls
 
 Use `cascade_tool_blocks` to list or add blocked Cascade tool-call rules. The rules live in a local JSON file at `~/.cascade-cms-mcp-server/tool-blocks.json`. If the file does not exist, the repository is treated as empty; deleting the file removes all stored blocks until new rules are added.
 
@@ -178,198 +398,6 @@ Example management calls:
 }
 ```
 
-The bundled runtime dependency is not exposed as a `dotseal` shell command. Use `bunx`, `npx`, or a separate global install when you want to generate ciphertexts:
-
-```bash
-bunx dotseal encrypt "your_api_key_here"
-# or:
-npx dotseal encrypt "your_api_key_here"
-```
-
-Paste the `enc:...` output into your MCP config or shell environment. If you prefer a global CLI install, `bun install -g dotseal` or `npm install -g dotseal` is also fine; it is not required for this server to decrypt values at runtime.
-
-Example MCP config with an encrypted API key:
-
-```json
-{
-  "mcpServers": {
-    "cascade-cms": {
-      "command": "bunx",
-      "args": ["cascade-cms-mcp-server"],
-      "env": {
-        "CASCADE_API_KEY": "enc:...",
-        "CASCADE_URL": "https://yourorg.cascadecms.com/api/v1/"
-      }
-    }
-  }
-}
-```
-
-## Capabilities
-
-Use this section to decide whether this MCP covers the job. Your MCP client or agent will see the exact tool schemas and choose the specific tool calls.
-
-| Need                                                                                                    | Supported |
-| ------------------------------------------------------------------------------------------------------- | --------- |
-| Read Cascade assets by id or path                                                                       | Yes       |
-| Search assets by terms, fields, type, and site                                                          | Yes       |
-| Create, edit, move, copy, rename, or delete assets                                                      | Yes       |
-| Publish or unpublish assets                                                                             | Yes       |
-| List sites                                                                                              | Yes       |
-| Read or edit access rights                                                                              | Yes       |
-| Read or update workflow settings and perform workflow transitions                                       | Yes       |
-| List messages, mark messages, delete messages, and inspect subscribers/relationships                    | Yes       |
-| Read audit logs and system preferences                                                                  | Yes       |
-| Inspect raw asset content, references, strings, links, paths, and structured-data nodelets after a read | Yes       |
-| Fetch additional bytes from large/truncated responses                                                   | Yes       |
-| Persist blocked-call rules that prevent matching Cascade tool calls from running                         | Yes       |
-| Generate site and root-folder removal safeguards                                                         | Yes       |
-
-Tool responses are JSON text, and `structuredContent` is the authoritative machine-readable result when the response fits. Oversized responses return bounded `_cache` metadata; use `cascade_read_response` with that handle to page through the full serialized response. The beta `response_format` option was removed; callers should parse `content[0].text` as JSON or prefer `structuredContent` when their client exposes it. `cascade_read` returns a compact preview by default plus an `asset_handle` for follow-up inspection. Use `read_mode: "raw"` for the full Cascade payload. Follow-up tools inspect the cached asset and do not call Cascade again. Handles are process-scoped and may be evicted after later calls.
-
-Use your MCP client's tool list or inspector for exact request schemas.
-
-## Tool Permissions
-
-Use these groups when configuring MCP client approvals. Client config syntax varies, but a common policy is to allow read-only tools by default and require approval for tools that create, update, delete, publish, check in/out, or otherwise change Cascade state.
-
-Read-only tools:
-
-| Tool | Purpose |
-| ---- | ------- |
-| `cascade_read` | Read an asset and return a preview or raw response |
-| `cascade_search` | Search Cascade assets |
-| `cascade_list_sites` | List Cascade sites |
-| `cascade_read_access_rights` | Read access rights for an asset |
-| `cascade_read_workflow_settings` | Read workflow settings for an asset |
-| `cascade_read_workflow_information` | Read workflow information for an asset |
-| `cascade_list_subscribers` | List subscribers for an asset |
-| `cascade_list_messages` | List Cascade messages |
-| `cascade_read_audits` | Read audit log entries |
-| `cascade_read_preferences` | Read system preferences |
-| `cascade_server_version` | Read this MCP server's name and version |
-| `cascade_read_response` | Fetch more text from a cached oversized response |
-
-`cascade_read` helper tools:
-
-These tools do not call Cascade directly. They inspect the in-memory `asset_handle` created by a prior `cascade_read` preview response.
-
-| Tool | Purpose |
-| ---- | ------- |
-| `cascade_asset_list_facts` | List indexed raw JSON facts from a cached read |
-| `cascade_asset_search_values` | Search scalar values in a cached read |
-| `cascade_asset_search_keys` | Search object keys in a cached read |
-| `cascade_asset_get_value` | Fetch one raw JSON value from a cached read |
-| `cascade_asset_list_scalar_artifacts` | List links, paths, and similar scalar artifacts from a cached read |
-| `cascade_asset_list_references` | List Cascade references found in a cached read |
-| `cascade_asset_list_nodelets` | List structured-data nodelets from a cached read |
-| `cascade_asset_get_nodelet` | Fetch one structured-data nodelet from a cached read |
-
-Approval recommended:
-
-| Tool | State change |
-| ---- | ------------ |
-| `cascade_create` | Creates an asset |
-| `cascade_edit` | Edits an asset |
-| `cascade_move` | Moves or renames an asset |
-| `cascade_copy` | Copies an asset |
-| `cascade_site_copy` | Copies a site |
-| `cascade_edit_access_rights` | Changes asset access rights |
-| `cascade_edit_workflow_settings` | Changes workflow settings |
-| `cascade_perform_workflow_transition` | Performs a workflow transition |
-| `cascade_mark_message` | Marks a message |
-| `cascade_check_out` | Checks out an asset |
-| `cascade_check_in` | Checks in an asset |
-| `cascade_edit_preference` | Changes a system preference |
-| `cascade_tool_blocks` | Changes the local blocked-call repository |
-| `cascade_protect_site_removal` | Changes the local blocked-call repository after reading accessible sites and root folders |
-
-High-impact approval recommended:
-
-| Tool | State change |
-| ---- | ------------ |
-| `cascade_remove` | Deletes an asset |
-| `cascade_delete_message` | Deletes a message |
-| `cascade_publish_unpublish` | Publishes or unpublishes an asset |
-
-## Examples
-
-Read a page by id:
-
-```json
-{
-  "tool": "cascade_read",
-  "arguments": {
-    "identifier": {
-      "id": "d3631e59ac1easd2434bd70be3fbfe8148abc",
-      "type": "page"
-    }
-  }
-}
-```
-
-Read a folder by path:
-
-```json
-{
-  "tool": "cascade_read",
-  "arguments": {
-    "identifier": {
-      "path": { "path": "/about/team", "siteName": "www" },
-      "type": "folder"
-    }
-  }
-}
-```
-
-Search for pages:
-
-```json
-{
-  "tool": "cascade_search",
-  "arguments": {
-    "searchInformation": {
-      "searchTerms": "admissions",
-      "searchTypes": ["page"],
-      "searchFields": ["title", "summary"],
-      "siteName": "www"
-    },
-    "limit": 100,
-    "offset": 0
-  }
-}
-```
-
-Create a page:
-
-```json
-{
-  "tool": "cascade_create",
-  "arguments": {
-    "asset": {
-      "page": {
-        "name": "new-page",
-        "parentFolderPath": "/about",
-        "siteName": "www",
-        "contentTypePath": "/standard/content-type"
-      }
-    }
-  }
-}
-```
-
-Publish an asset:
-
-```json
-{
-  "tool": "cascade_publish_unpublish",
-  "arguments": {
-    "identifier": { "id": "abc123", "type": "page" },
-    "publishInformation": { "unpublish": false }
-  }
-}
-```
-
 ## Resources
 
 | URI                            |   Kind   | Description                                               |
@@ -388,7 +416,7 @@ Publish an asset:
 
 ## Security Notes
 
-- API keys are loaded from environment variables only.
+- API keys are loaded from environment variables only. Do not commit MCP config files that contain real credentials.
 - `cascade_read` preview mode caches exact raw asset JSON in memory for follow-up inspection. Restart the MCP server to clear cached asset data.
 - Error messages are redacted before being logged or returned.
 - Input validation rejects unknown fields at the MCP boundary except for bounded passthrough cases.
