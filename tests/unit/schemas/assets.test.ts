@@ -399,7 +399,7 @@ describe("AssetInputSchema (envelope union)", () => {
 
 describe("AssetInputSchema description", () => {
   test("carries a description for agent guidance", () => {
-    expect((AssetInputSchema as unknown as { _def: { description?: string } })._def.description).toBeTruthy();
+    expect(AssetInputSchema.description).toBeTruthy();
   });
 });
 

@@ -20,10 +20,10 @@ export type Config = {
 
 const ConfigSchema = z.object({
   CASCADE_API_KEY: z
-    .string({ required_error: "CASCADE_API_KEY is required" })
+    .string("CASCADE_API_KEY is required")
     .min(1, "CASCADE_API_KEY must not be empty"),
   CASCADE_URL: z
-    .string({ required_error: "CASCADE_URL is required" })
+    .string("CASCADE_URL is required")
     .min(1, "CASCADE_URL must not be empty")
     .url("CASCADE_URL must be a valid URL"),
   CASCADE_TIMEOUT_MS: z

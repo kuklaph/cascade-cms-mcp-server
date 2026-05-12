@@ -162,14 +162,16 @@ function objectShapeForSdk(schema: z.ZodTypeAny): z.ZodRawShape {
 function looseSchemaForSdk(schema: z.ZodTypeAny): z.ZodObject<z.ZodRawShape> {
   const shape = objectShapeForSdk(schema);
   const looseShape = Object.fromEntries(
-    Object.entries(shape).map(([key, value]) => [key, looseField(value)]),
-  );
+    Object.entries(shape).map(([key, value]) => [
+      key,
+      looseField(value as z.ZodTypeAny),
+    ]),
+  ) as z.ZodRawShape;
   return z.object(looseShape).passthrough();
 }
 
 function unwrapObjectSchema(schema: z.ZodTypeAny): z.ZodObject<z.ZodRawShape> {
   if (schema instanceof z.ZodObject) return schema;
-  if (schema instanceof z.ZodEffects) return unwrapObjectSchema(schema.innerType());
   throw new Error("registerCascadeTool inputSchema must wrap a Zod object");
 }
 
@@ -197,29 +199,54 @@ function validationErrorResponse(
 }
 
 function validationIssue(issue: z.ZodIssue): Record<string, unknown> {
+  const issueInfo = issue as unknown as {
+    code: string;
+    path: PropertyKey[];
+    message: string;
+    keys?: string[];
+    options?: unknown[];
+    values?: unknown[];
+  };
   const out: Record<string, unknown> = {
-    path: redactSecrets(issue.path.join(".")),
-    code: issue.code,
-    message: redactSecrets(issue.message),
+    path: redactSecrets(issueInfo.path.join(".")),
+    code: issueInfo.code,
+    message: redactSecrets(issueInfo.message),
     hint: redactSecrets(validationHint(issue)),
   };
-  if (issue.code === "invalid_enum_value") {
-    out.valid_values = issue.options;
+  if (issueInfo.code === "invalid_enum_value" && issueInfo.options) {
+    out.valid_values = issueInfo.options;
   }
-  if (issue.code === "unrecognized_keys") {
-    out.keys = issue.keys.map((key) => redactSecrets(key));
+  if (issueInfo.code === "invalid_value" && issueInfo.values) {
+    out.valid_values = issueInfo.values;
+  }
+  if (issueInfo.code === "unrecognized_keys" && issueInfo.keys) {
+    out.keys = issueInfo.keys.map((key) => redactSecrets(key));
   }
   return out;
 }
 
 function validationHint(issue: z.ZodIssue): string {
-  if (issue.code === "unrecognized_keys") {
-    return `Remove unsupported field${issue.keys.length === 1 ? "" : "s"}: ${issue.keys.join(", ")}.`;
+  const issueInfo = issue as unknown as {
+    code: string;
+    keys?: string[];
+    options?: unknown[];
+    values?: unknown[];
+    input?: unknown;
+    received?: string;
+  };
+  if (issueInfo.code === "unrecognized_keys" && issueInfo.keys) {
+    return `Remove unsupported field${issueInfo.keys.length === 1 ? "" : "s"}: ${issueInfo.keys.join(", ")}.`;
   }
-  if (issue.code === "invalid_enum_value") {
-    return `Use one of: ${issue.options.map((v) => JSON.stringify(v)).join(", ")}.`;
+  if (issueInfo.code === "invalid_enum_value" && issueInfo.options) {
+    return `Use one of: ${issueInfo.options.map((v) => JSON.stringify(v)).join(", ")}.`;
   }
-  if (issue.code === "invalid_type" && issue.received === "undefined") {
+  if (issueInfo.code === "invalid_value" && issueInfo.values) {
+    return `Use one of: ${issueInfo.values.map((v) => JSON.stringify(v)).join(", ")}.`;
+  }
+  if (
+    issueInfo.code === "invalid_type" &&
+    (issueInfo.received === "undefined" || issueInfo.input === undefined)
+  ) {
     return "Provide the required field.";
   }
   return "Use the schema fields and value types described by this tool.";

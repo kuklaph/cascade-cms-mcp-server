@@ -199,7 +199,7 @@ Read-only tools:
 | `cascade_search`                    | Search Cascade assets                              |
 | `cascade_list_sites`                | List Cascade sites                                 |
 | `cascade_read_access_rights`        | Read access rights for an asset                    |
-| `cascade_read_workflow_settings`    | Read workflow settings for an asset                |
+| `cascade_read_workflow_settings`    | Read workflow settings for a folder or site        |
 | `cascade_read_workflow_information` | Read workflow information for an asset             |
 | `cascade_list_subscribers`          | List subscribers for an asset                      |
 | `cascade_list_messages`             | List Cascade messages                              |

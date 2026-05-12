@@ -31,6 +31,14 @@ const EnumSchema = z
   })
   .strict();
 
+const SecretMessageSchema = z
+  .object({
+    token: z.string().refine(() => false, {
+      message: "Rejected token sk-testsecret123456",
+    }),
+  })
+  .strict();
+
 const RefinedSchema = z
   .object({
     originalSiteId: z.string().optional(),
@@ -199,7 +207,7 @@ describe("registerCascadeTool", () => {
       name: "cascade_sample",
       title: "Sample",
       description: "desc",
-      inputSchema: EnumSchema,
+      inputSchema: SecretMessageSchema,
       annotations: SAMPLE_ANNOTATIONS,
       handler,
     });
@@ -208,7 +216,7 @@ describe("registerCascadeTool", () => {
       input: unknown,
     ) => Promise<CallToolResult>;
 
-    const result = await wrapped({ mode: "sk-testsecret123456" });
+    const result = await wrapped({ token: "sk-testsecret123456" });
     const body = parsedText(result) as Record<string, any>;
     const issue = body.error.issues[0];
 

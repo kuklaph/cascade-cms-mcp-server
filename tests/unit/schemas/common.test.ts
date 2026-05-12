@@ -80,8 +80,8 @@ describe("IdentifierSchema", () => {
 
 describe("Schema descriptions (MCP client help)", () => {
   test("IdentifierSchema fields have .describe() metadata", () => {
-    const shape = (IdentifierSchema as any)._def.schema.shape;
-    expect(shape.id._def.description).toBeTruthy();
-    expect(shape.type._def.description).toBeTruthy();
+    const shape = IdentifierSchema.shape;
+    expect(shape.id.description).toBeTruthy();
+    expect(shape.type.description).toBeTruthy();
   });
 });

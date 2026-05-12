@@ -1,6 +1,6 @@
 {
   "name": "cascade-cms",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Cascade CMS MCP server with 37 tools for reading, editing, searching, auditing, publishing, and managing Cascade CMS content.",
   "author": {
     "name": "kuklaph"
