@@ -19,7 +19,7 @@ The example credentials below are placeholders. For real credentials, use your M
 
 ### MCP Client Config
 
-Use one of these shapes for JSON-based MCP configs. Prefer the Bun example when available.
+Use one of these shapes for JSON-based MCP configs. Prefer the Bun example when available. If you prefer to encrypt your API key at rest, continue to [Encrypted Environment Values](#encrypted-environment-values).
 
 Preferred, with Bun:
 
