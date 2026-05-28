@@ -2,9 +2,8 @@
  * Zod schemas for Cascade-backed tools, handle-based asset inspection tools,
  * and MCP-native local utility tools.
  *
- * Every schema is strict at the top level unless the upstream shape requires
- * passthrough
- * (e.g., complex nested objects where Cascade does its own validation).
+ * Every schema is strict at the MCP boundary and mirrors the generated
+ * Cascade API request shapes used by the underlying client.
  */
 
 import { z } from "zod";
@@ -13,7 +12,7 @@ import {
   IdentifierSchema,
   ReadModeSchema,
 } from "./common.js";
-import { AssetInputSchema } from "./assets.js";
+import { CreateAssetInputSchema, EditAssetInputSchema } from "./assets.js";
 import { CHARACTER_LIMIT } from "../constants.js";
 
 
@@ -38,35 +37,50 @@ const PaginationFields = {
     ),
 };
 
-/** Passthrough record for unbounded nested objects handed off to the library. */
-const PassthroughRecord = z
-  .object({})
-  .passthrough()
-  .describe(
-    "Arbitrary nested object passed through to Cascade. Structure depends on the operation; Cascade's server-side validation applies.",
-  );
+const AclEntryFields = {
+  level: z
+    .enum(["read", "write"])
+    .describe('REQUIRED: The access level, either "read" or "write".'),
+  type: z
+    .enum(["user", "group"])
+    .describe('REQUIRED: The ACL entry type, either "user" or "group".'),
+};
 
 const AclEntrySchema = z
-  .object({
-    level: z
-      .enum(["read", "write"])
-      .describe('REQUIRED: The access level, either "read" or "write".'),
-    type: z
-      .enum(["user", "group"])
-      .describe('REQUIRED: The ACL entry type, either "user" or "group".'),
-    name: z
-      .string()
-      .describe(
-        "REQUIRED: The user or group name this ACL entry applies to.",
-      ),
-    id: z
-      .string()
-      .optional()
-      .describe(
-        "Optional group id. Include it when Cascade returned one for this group ACL entry; prefer id over name when available.",
-      ),
-  })
-  .strict()
+  .union([
+    z
+      .object({
+        ...AclEntryFields,
+        name: z
+          .string()
+          .describe(
+            "The user or group name this ACL entry applies to. One of name or id is required.",
+          ),
+        id: z
+          .string()
+          .optional()
+          .describe(
+            "Optional user or group id. Include it when Cascade returned one for this ACL entry; prefer id over name when available.",
+          ),
+      })
+      .strict(),
+    z
+      .object({
+        ...AclEntryFields,
+        name: z
+          .string()
+          .optional()
+          .describe(
+            "The user or group name this ACL entry applies to. One of name or id is required.",
+          ),
+        id: z
+          .string()
+          .describe(
+            "Required when name is not provided: the user or group id. Prefer id over name when available.",
+          ),
+      })
+      .strict(),
+  ])
   .describe("A single access control list entry.");
 
 const AccessRightsInformationSendSchema = z
@@ -83,6 +97,185 @@ const AccessRightsInformationSendSchema = z
   .describe(
     "Access rights information sent to Cascade when editing asset ACLs.",
   );
+
+const AssetIdentifiersSchema = IdentifierSchema;
+
+const UnpublishParametersFields = {
+  unpublish: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe("When true, unpublish the asset. Default false."),
+  destinations: z
+    .array(AssetIdentifiersSchema)
+    .nullable()
+    .optional()
+    .describe(
+      "Destinations for publish/unpublish behavior. Omit for all enabled destinations.",
+    ),
+};
+
+const WorkflowStepConfigurationSchema = z
+  .object({
+    stepIdentifier: z
+      .string()
+      .describe("REQUIRED: Workflow step identifier/name."),
+    stepAssignment: z
+      .string()
+      .describe("REQUIRED: User or group assignment for this workflow step."),
+  })
+  .strict()
+  .describe("Workflow step assignment configuration.");
+
+const WorkflowConfigurationFields = {
+  workflowName: z
+    .string()
+    .describe("REQUIRED: Name for the workflow instance."),
+  workflowComments: z
+    .string()
+    .describe("REQUIRED: Comments recorded with the workflow operation."),
+  workflowStepConfigurations: z
+    .array(WorkflowStepConfigurationSchema)
+    .optional()
+    .describe("Optional workflow step assignments."),
+  endDate: z.string().optional().describe("Optional workflow due date."),
+};
+
+const WorkflowDefinitionIdSchema = z
+  .string()
+  .describe("Workflow definition id. Priority: id > path.");
+
+const WorkflowDefinitionPathSchema = z
+  .string()
+  .describe("Workflow definition path (alt).");
+
+const WorkflowConfigurationSchema = z
+  .union([
+    z
+      .object({
+        ...WorkflowConfigurationFields,
+        workflowDefinitionId: WorkflowDefinitionIdSchema,
+        workflowDefinitionPath: WorkflowDefinitionPathSchema.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        ...WorkflowConfigurationFields,
+        workflowDefinitionId: WorkflowDefinitionIdSchema.optional(),
+        workflowDefinitionPath: WorkflowDefinitionPathSchema,
+      })
+      .strict(),
+  ])
+  .describe(
+    "Cascade WorkflowConfiguration payload. Include either workflowDefinitionId or workflowDefinitionPath when sending workflowConfiguration; if both are present, Cascade prioritizes workflowDefinitionId.",
+  );
+
+const DeleteParametersSchema = z
+  .object({
+    ...UnpublishParametersFields,
+    doWorkflow: z
+      .boolean()
+      .describe("REQUIRED: Whether to execute workflow for deletion."),
+  })
+  .strict()
+  .describe("Cascade DeleteParameters payload.");
+
+const WorkflowSettingsSendSchema = z
+  .object({
+    workflowDefinitions: z
+      .array(AssetIdentifiersSchema)
+      .optional()
+      .describe("Workflow definitions associated with this folder."),
+    inheritWorkflows: z
+      .boolean()
+      .optional()
+      .describe("Whether workflow settings are inherited from parent."),
+    requireWorkflow: z
+      .boolean()
+      .optional()
+      .describe("Whether workflow is required for this folder."),
+    inheritedWorkflowDefinitions: z
+      .array(AssetIdentifiersSchema)
+      .optional()
+      .describe("Read-side inherited workflow definitions; ignored on edit."),
+  })
+  .strict()
+  .describe("Cascade WorkflowSettingsSend payload.");
+
+const AuditTypeSchema = z.enum([
+  "login",
+  "login_failed",
+  "logout",
+  "start_workflow",
+  "advance_workflow",
+  "edit",
+  "copy",
+  "create",
+  "reference",
+  "delete",
+  "delete_unpublish",
+  "check_in",
+  "check_out",
+  "activate_version",
+  "publish",
+  "unpublish",
+  "recycle",
+  "restore",
+  "move",
+]);
+
+const AuditParametersSchema = z
+  .object({
+    identifier: IdentifierSchema.optional().describe(
+      "Filter events to a specific Cascade asset.",
+    ),
+    username: z.string().optional().describe("Filter audits by username."),
+    groupname: z.string().optional().describe("Filter audits by group name."),
+    rolename: z.string().optional().describe("Filter audits by role name."),
+    startDate: z.string().optional().describe("Earliest audit event timestamp."),
+    endDate: z.string().optional().describe("Latest audit event timestamp."),
+    auditType: AuditTypeSchema.optional().describe("Audit action type filter."),
+  })
+  .strict()
+  .describe("Cascade AuditParameters payload.");
+
+const PublishInformationSchema = z
+  .object({
+    destinations: z
+      .array(IdentifierSchema)
+      .optional()
+      .describe("Destinations to which the asset should be published."),
+    unpublish: z
+      .boolean()
+      .nullable()
+      .optional()
+      .describe("When true, unpublish instead of publish. Default false."),
+    publishRelatedAssets: z
+      .boolean()
+      .nullable()
+      .optional()
+      .describe("Whether to publish related assets."),
+    publishRelatedPublishSet: z
+      .boolean()
+      .nullable()
+      .optional()
+      .describe("Whether to publish related publish sets."),
+    scheduledDate: z
+      .string()
+      .nullable()
+      .optional()
+      .describe("Optional scheduled publish date."),
+  })
+  .strict()
+  .describe("Cascade PublishInformation payload.");
+
+const PreferenceSchema = z
+  .object({
+    name: z.string().describe("REQUIRED: Preference name."),
+    value: z.string().describe("REQUIRED: Preference value."),
+  })
+  .strict()
+  .describe("Cascade preference payload.");
 
 /** -------------------------------------------------------------------------
  * 1. ReadRequest
@@ -266,8 +459,8 @@ export type AssetGetNodeletInput = z.infer<typeof AssetGetNodeletRequestSchema>;
  * ------------------------------------------------------------------------ */
 export const CreateRequestSchema = z
   .object({
-    asset: AssetInputSchema.describe(
-      "The asset payload to create. `type` chooses the branch (page/file/folder/block/symlink get strict validation; other types pass through).",
+    asset: CreateAssetInputSchema.describe(
+      "The asset payload to create. Provide one concrete Cascade asset envelope key, with optional workflowConfiguration alongside it.",
     ),
   })
   .strict();
@@ -275,12 +468,12 @@ export const CreateRequestSchema = z
 export type CreateInput = z.infer<typeof CreateRequestSchema>;
 
 /** -------------------------------------------------------------------------
- * 3. EditRequest — same shape as CreateRequest
+ * 3. EditRequest — same asset envelope wrapper, with edit-specific validation
  * ------------------------------------------------------------------------ */
 export const EditRequestSchema = z
   .object({
-    asset: AssetInputSchema.describe(
-      "The asset payload to edit. Must include `id` to identify the target asset. Parent-folder fields are ignored on edit — use move to relocate.",
+    asset: EditAssetInputSchema.describe(
+      "The asset payload to edit: one concrete asset envelope, with optional workflowConfiguration alongside it. Include `id` when available to identify the target asset. Parent-folder fields are ignored on edit — use move to relocate.",
     ),
   })
   .strict();
@@ -295,11 +488,11 @@ export const RemoveRequestSchema = z
     identifier: IdentifierSchema.describe(
       "The asset to remove (moves to recycle bin by default).",
     ),
-    workflowConfiguration: PassthroughRecord.optional().describe(
+    workflowConfiguration: WorkflowConfigurationSchema.optional().describe(
       "Optional workflow configuration to apply during removal. Matches Cascade's WorkflowConfiguration shape.",
     ),
-    deleteParameters: PassthroughRecord.optional().describe(
-      "Optional delete parameters (e.g., to bypass the recycle bin or unpublish first). Matches Cascade's DeleteParameters shape.",
+    deleteParameters: DeleteParametersSchema.optional().describe(
+      "Optional delete parameters (workflow flag plus optional unpublish behavior). Matches Cascade's DeleteParameters shape.",
     ),
   })
   .strict()
@@ -323,6 +516,7 @@ export type RemoveInput = z.infer<typeof RemoveRequestSchema>;
  * ------------------------------------------------------------------------ */
 const MoveParametersSchema = z
   .object({
+    ...UnpublishParametersFields,
     destinationContainerIdentifier: IdentifierSchema.optional().describe(
       "Destination container (folder). Omit to keep the asset in place and only rename it.",
     ),
@@ -347,7 +541,7 @@ export const MoveRequestSchema = z
     moveParameters: MoveParametersSchema.describe(
       "Move parameters: destination container and/or new name.",
     ),
-    workflowConfiguration: PassthroughRecord.optional().describe(
+    workflowConfiguration: WorkflowConfigurationSchema.optional().describe(
       "Optional workflow configuration applied when doWorkflow=true.",
     ),
   })
@@ -383,7 +577,7 @@ export const CopyRequestSchema = z
     copyParameters: CopyParametersSchema.describe(
       "Copy parameters: destination, new name, and workflow flag.",
     ),
-    workflowConfiguration: PassthroughRecord.optional().describe(
+    workflowConfiguration: WorkflowConfigurationSchema.optional().describe(
       "Optional workflow configuration applied when doWorkflow=true.",
     ),
   })
@@ -466,41 +660,54 @@ export type SearchInput = z.infer<typeof SearchRequestSchema>;
 /** -------------------------------------------------------------------------
  * 8. SiteCopyRequest
  * ------------------------------------------------------------------------ */
-export const SiteCopyRequestSchema = z
-  .object({
-    originalSiteId: z
-      .string()
-      .optional()
-      .describe(
-        "ID of the site to copy. Takes precedence over originalSiteName when both are provided. One of originalSiteId/originalSiteName is required.",
-      ),
-    originalSiteName: z
-      .string()
-      .optional()
-      .describe(
-        "Name of the site to copy. Alternative to originalSiteId. One of originalSiteId/originalSiteName is required.",
-      ),
-    newSiteName: z
-      .string()
-      .min(1, "newSiteName is required")
-      .describe(
-        "REQUIRED: Name of the new site that will be created from the copy.",
-      ),
-  })
-  .strict()
-  .refine(
-    (v) =>
-      v.originalSiteId !== undefined || v.originalSiteName !== undefined,
-    {
-      message: "Either originalSiteId or originalSiteName must be provided",
-      path: ["originalSiteId"],
-    },
-  );
+const SiteCopyFields = {
+  newSiteName: z
+    .string()
+    .min(1, "newSiteName is required")
+    .describe(
+      "REQUIRED: Name of the new site that will be created from the copy.",
+    ),
+};
+
+export const SiteCopyRequestSchema = z.union([
+  z
+    .object({
+      ...SiteCopyFields,
+      originalSiteId: z
+        .string()
+        .describe(
+          "ID of the site to copy. Takes precedence over originalSiteName when both are provided. One of originalSiteId/originalSiteName is required.",
+        ),
+      originalSiteName: z
+        .string()
+        .optional()
+        .describe(
+          "Name of the site to copy. Alternative to originalSiteId. One of originalSiteId/originalSiteName is required.",
+        ),
+    })
+    .strict(),
+  z
+    .object({
+      ...SiteCopyFields,
+      originalSiteId: z
+        .string()
+        .optional()
+        .describe(
+          "ID of the site to copy. Takes precedence over originalSiteName when both are provided. One of originalSiteId/originalSiteName is required.",
+        ),
+      originalSiteName: z
+        .string()
+        .describe(
+          "Name of the site to copy. Alternative to originalSiteId. One of originalSiteId/originalSiteName is required.",
+        ),
+    })
+    .strict(),
+]);
 
 export type SiteCopyInput = z.infer<typeof SiteCopyRequestSchema>;
 
 /** -------------------------------------------------------------------------
- * 9. ListSitesRequest — library accepts `any`
+ * 9. ListSitesRequest — cascade-cms-api declares an empty request object
  * ------------------------------------------------------------------------ */
 export const ListSitesRequestSchema = z
   .object({
@@ -571,7 +778,7 @@ export const EditWorkflowSettingsRequestSchema = z
     identifier: IdentifierSchema.describe(
       "The folder whose workflow settings to modify.",
     ),
-    workflowSettings: PassthroughRecord.describe(
+    workflowSettings: WorkflowSettingsSendSchema.describe(
       "REQUIRED: Workflow settings payload (inheritWorkflows, requireWorkflow, workflowDefinitions, etc.). Matches Cascade's WorkflowSettingsSend shape.",
     ),
     applyInheritWorkflowsToChildren: z
@@ -609,7 +816,7 @@ export type ListSubscribersInput = z.infer<
 >;
 
 /** -------------------------------------------------------------------------
- * 15. ListMessagesRequest — library accepts `any`
+ * 15. ListMessagesRequest — MCP pagination wrapper over cascade-cms-api's empty ListMessagesRequest
  * ------------------------------------------------------------------------ */
 export const ListMessagesRequestSchema = z
   .object({
@@ -626,9 +833,9 @@ export const MarkMessageRequestSchema = z
   .object({
     identifier: IdentifierSchema.describe("The message to mark."),
     markType: z
-      .enum(["read", "unread", "archive", "unarchive"])
+      .enum(["read", "unread"])
       .describe(
-        "REQUIRED: Action to apply to the message: 'read' | 'unread' | 'archive' | 'unarchive'.",
+        "REQUIRED: Action to apply to the message: 'read' | 'unread'.",
       ),
   })
   .strict();
@@ -660,7 +867,7 @@ export const CheckOutRequestSchema = z
 export type CheckOutInput = z.infer<typeof CheckOutRequestSchema>;
 
 /** -------------------------------------------------------------------------
- * 19. CheckInRequest — library requires `comments` (types.d.ts line 3567)
+ * 19. CheckInRequest — library requires `comments`
  * ------------------------------------------------------------------------ */
 export const CheckInRequestSchema = z
   .object({
@@ -682,8 +889,8 @@ export type CheckInInput = z.infer<typeof CheckInRequestSchema>;
  * ------------------------------------------------------------------------ */
 export const ReadAuditsRequestSchema = z
   .object({
-    auditParameters: PassthroughRecord.describe(
-      "REQUIRED: Audit filters (identifier, username, groupname, role, auditType, start/end dates). Matches Cascade's AuditParameters shape.",
+    auditParameters: AuditParametersSchema.describe(
+      "REQUIRED: Audit filters (identifier, username, groupname, rolename, auditType, start/end dates). Matches Cascade's AuditParameters shape.",
     ),
     ...PaginationFields,
   })
@@ -711,18 +918,24 @@ export type ReadWorkflowInformationInput = z.infer<
  * ------------------------------------------------------------------------ */
 export const PerformWorkflowTransitionRequestSchema = z
   .object({
-    workflowId: z
-      .string()
-      .describe("REQUIRED: The ID of the active workflow to transition."),
-    actionIdentifier: z
-      .string()
-      .describe(
-        "REQUIRED: The identifier of the workflow action/transition to perform (e.g., 'approve', 'reject').",
-      ),
-    transitionComment: z
-      .string()
-      .optional()
-      .describe("Optional comment recorded with the workflow transition."),
+    workflowTransitionInformation: z
+      .object({
+        workflowId: z
+          .string()
+          .describe("REQUIRED: The ID of the active workflow to transition."),
+        actionIdentifier: z
+          .string()
+          .describe(
+            "REQUIRED: The identifier of the workflow action/transition to perform (e.g., 'approve', 'reject').",
+          ),
+        transitionComment: z
+          .string()
+          .nullable()
+          .optional()
+          .describe("Optional comment recorded with the workflow transition."),
+      })
+      .strict()
+      .describe("REQUIRED: Workflow transition information."),
   })
   .strict();
 
@@ -731,7 +944,7 @@ export type PerformWorkflowTransitionInput = z.infer<
 >;
 
 /** -------------------------------------------------------------------------
- * 23. ReadPreferencesRequest — library accepts `any`
+ * 23. ReadPreferencesRequest — cascade-cms-api declares an empty request object
  * ------------------------------------------------------------------------ */
 export const ReadPreferencesRequestSchema = z
   .object({
@@ -762,7 +975,7 @@ export const PublishUnpublishRequestSchema = z
     identifier: IdentifierSchema.describe(
       "The asset to publish or unpublish.",
     ),
-    publishInformation: PassthroughRecord.describe(
+    publishInformation: PublishInformationSchema.describe(
       "REQUIRED: Publish parameters (unpublish flag, destinations list, etc.). Matches Cascade's PublishInformation shape.",
     ),
   })
@@ -777,7 +990,7 @@ export type PublishUnpublishInput = z.infer<
  * ------------------------------------------------------------------------ */
 export const EditPreferenceRequestSchema = z
   .object({
-    preference: PassthroughRecord.describe(
+    preference: PreferenceSchema.describe(
       "REQUIRED: The preference to create or update. Shape: `{ name: string, value: string }`.",
     ),
   })

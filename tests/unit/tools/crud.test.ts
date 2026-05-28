@@ -1,4 +1,5 @@
 import { describe, test, expect, mock } from "bun:test";
+import { readFileSync } from "node:fs";
 import type { ToolAnnotations, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { registerCrudTools } from "../../../src/tools/crud.js";
 import {
@@ -38,13 +39,28 @@ import {
 const ID_PAGE = { id: "abc123", type: "page" as const };
 const VALID_ASSET = {
   page: {
-    type: "page" as const,
     name: "index",
     parentFolderPath: "/",
     siteName: "my-site",
     contentTypePath: "/content-types/default",
+    xhtml: "<p>Home</p>",
   },
 };
+
+function assetPropertyKeysFromTypes(): string[] {
+  const source = readFileSync(
+    "node_modules/cascade-cms-api/types/types.d.ts",
+    "utf8",
+  );
+  const match = source.match(/export type AssetPropertiesBase = \{([\s\S]*?)\n\};/);
+  if (!match) throw new Error("AssetPropertiesBase type not found");
+  expect(source).toContain("export type AssetProperties = RequireExactlyOne<");
+  expect(source).toContain("AssetPropertiesBase,");
+  return [...match[1].matchAll(/^\s*([A-Za-z0-9_]+)\?:/gm)]
+    .map((item) => item[1])
+    .filter((key) => key !== "workflowConfiguration")
+    .sort((a, b) => a.localeCompare(b));
+}
 
 // =============================================================================
 // cascade_read
@@ -294,6 +310,19 @@ describe("cascade_create tool", () => {
   test("schema validation: rejects input with missing asset", () => {
     const parsed = CreateRequestSchema.safeParse({});
     expect(parsed.success).toBe(false);
+  });
+
+  test("description lists current generated asset branches", () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient();
+
+    registerCrudTools(server as any, client);
+    const tool = findTool(tools, "cascade_create");
+
+    for (const key of assetPropertyKeysFromTypes()) {
+      expect(tool.config.description).toContain(key);
+    }
+    expect(tool.config.description).not.toMatch(/(^|[ (,])target([, )]|$)/);
   });
 
   test("library throws: returns isError response", async () => {

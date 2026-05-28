@@ -118,7 +118,6 @@ describe("cascade_edit_workflow_settings tool", () => {
     expect(tool.config.annotations.openWorldHint).toBe(true);
 
     const workflowSettings = {
-      identifier: ID_FOLDER,
       workflowDefinitions: [],
       inheritWorkflows: true,
       requireWorkflow: false,
@@ -227,7 +226,7 @@ describe("cascade_read_workflow_information tool", () => {
 // =============================================================================
 
 describe("cascade_perform_workflow_transition tool", () => {
-  test("happy path: calls client.performWorkflowTransition with workflowId + actionIdentifier", async () => {
+  test("happy path: calls client.performWorkflowTransition with wrapped workflowTransitionInformation", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
       performWorkflowTransition: mock(() => Promise.resolve(OK_RESULT)),
@@ -242,23 +241,29 @@ describe("cascade_perform_workflow_transition tool", () => {
     expect(tool.config.annotations.openWorldHint).toBe(true);
 
     const result = await tool.handler({
-      workflowId: "wf-1",
-      actionIdentifier: "approve",
-      transitionComment: "Looks good",
+      workflowTransitionInformation: {
+        workflowId: "wf-1",
+        actionIdentifier: "approve",
+        transitionComment: "Looks good",
+      },
     });
 
     expect(client.performWorkflowTransition).toHaveBeenCalledTimes(1);
     expect(client.performWorkflowTransition.mock.calls[0][0]).toEqual({
-      workflowId: "wf-1",
-      actionIdentifier: "approve",
-      transitionComment: "Looks good",
+      workflowTransitionInformation: {
+        workflowId: "wf-1",
+        actionIdentifier: "approve",
+        transitionComment: "Looks good",
+      },
     });
     expect(result.isError).not.toBe(true);
   });
 
   test("schema validation: rejects missing workflowId", () => {
     const parsed = PerformWorkflowTransitionRequestSchema.safeParse({
-      actionIdentifier: "approve",
+      workflowTransitionInformation: {
+        actionIdentifier: "approve",
+      },
     });
     expect(parsed.success).toBe(false);
   });
@@ -275,8 +280,10 @@ describe("cascade_perform_workflow_transition tool", () => {
     const tool = findTool(tools, "cascade_perform_workflow_transition");
 
     const result = await tool.handler({
-      workflowId: "wf-1",
-      actionIdentifier: "approve",
+      workflowTransitionInformation: {
+        workflowId: "wf-1",
+        actionIdentifier: "approve",
+      },
     });
 
     expect(result.isError).toBe(true);

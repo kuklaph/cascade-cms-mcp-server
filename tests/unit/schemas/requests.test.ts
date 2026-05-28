@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test";
+import { readFileSync } from "node:fs";
 import {
   ReadRequestSchema,
   CreateRequestSchema,
@@ -35,15 +36,27 @@ import {
   AssetGetNodeletRequestSchema,
 } from "../../../src/schemas/requests.js";
 
+function stringUnionFromTypes(typeName: string): string[] {
+  const source = readFileSync(
+    "node_modules/cascade-cms-api/types/types.d.ts",
+    "utf8",
+  );
+  const match = source.match(
+    new RegExp(`export type ${typeName} =([\\s\\S]*?);`),
+  );
+  if (!match) throw new Error(`${typeName} union not found`);
+  return [...match[1].matchAll(/"([^"]+)"/g)].map((item) => item[1]).sort();
+}
+
 // Reusable fixtures
 const ID_PAGE = { id: "abc123", type: "page" as const };
 const VALID_ASSET = {
   page: {
-    type: "page" as const,
     name: "index",
     parentFolderPath: "/",
     siteName: "my-site",
     contentTypePath: "/content-types/default",
+    xhtml: "<p>Home</p>",
   },
 };
 
@@ -62,7 +75,7 @@ describe("CreateRequestSchema", () => {
 });
 
 describe("EditRequestSchema", () => {
-  test("should accept a valid edit request (same shape as create)", () => {
+  test("should accept a valid edit request using the asset envelope wrapper", () => {
     const res = EditRequestSchema.safeParse({
       asset: { page: { ...VALID_ASSET.page, id: "existing-id" } },
     });
@@ -144,6 +157,26 @@ describe("SearchRequestSchema", () => {
     });
     expect(res.success).toBe(true);
   });
+
+  test("searchFields should match generated SearchFieldString values", () => {
+    for (const field of stringUnionFromTypes("SearchFieldString")) {
+      const res = SearchRequestSchema.safeParse({
+        searchInformation: {
+          searchTerms: "hello world",
+          searchFields: [field],
+        },
+      });
+      expect(res.success).toBe(true);
+    }
+
+    const invalid = SearchRequestSchema.safeParse({
+      searchInformation: {
+        searchTerms: "hello world",
+        searchFields: ["content"],
+      },
+    });
+    expect(invalid.success).toBe(false);
+  });
 });
 
 describe("SiteCopyRequestSchema", () => {
@@ -182,6 +215,53 @@ describe("EditAccessRightsRequestSchema", () => {
     expect(res.success).toBe(true);
   });
 
+  test("ACL enum values should match generated unions", () => {
+    for (const level of stringUnionFromTypes("AllLevel")) {
+      expect(
+        EditAccessRightsRequestSchema.safeParse({
+          identifier: ID_PAGE,
+          accessRightsInformation: { allLevel: level, aclEntries: [] },
+        }).success,
+      ).toBe(true);
+    }
+
+    for (const level of stringUnionFromTypes("AclEntryLevel")) {
+      for (const type of stringUnionFromTypes("AclEntryType")) {
+        expect(
+          EditAccessRightsRequestSchema.safeParse({
+            identifier: ID_PAGE,
+            accessRightsInformation: {
+              allLevel: "read",
+              aclEntries: [{ level, type, id: "acl-1" }],
+            },
+          }).success,
+        ).toBe(true);
+      }
+    }
+  });
+
+  test("should accept v2 ACL entries identified by id instead of name", () => {
+    const res = EditAccessRightsRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      accessRightsInformation: {
+        allLevel: "read",
+        aclEntries: [{ level: "write", type: "group", id: "group-1" }],
+      },
+    });
+    expect(res.success).toBe(true);
+  });
+
+  test("should accept v2 ACL entries identified by name instead of id", () => {
+    const res = EditAccessRightsRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      accessRightsInformation: {
+        allLevel: "read",
+        aclEntries: [{ level: "read", type: "user", name: "alice" }],
+      },
+    });
+    expect(res.success).toBe(true);
+  });
+
   test("should reject access rights with unsupported allLevel", () => {
     const res = EditAccessRightsRequestSchema.safeParse({
       identifier: ID_PAGE,
@@ -196,6 +276,17 @@ describe("EditAccessRightsRequestSchema", () => {
       accessRightsInformation: {
         allLevel: "none",
         aclEntries: [{ level: "all", type: "role", name: "editors" }],
+      },
+    });
+    expect(res.success).toBe(false);
+  });
+
+  test("should reject ACL entries without name or id", () => {
+    const res = EditAccessRightsRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      accessRightsInformation: {
+        allLevel: "read",
+        aclEntries: [{ level: "read", type: "user" }],
       },
     });
     expect(res.success).toBe(false);
@@ -247,6 +338,32 @@ describe("MarkMessageRequestSchema", () => {
     });
     expect(res.success).toBe(true);
   });
+
+  test("should reject archive/unarchive because generated markType is read or unread only", () => {
+    expect(
+      MarkMessageRequestSchema.safeParse({
+        identifier: { id: "msg-1", type: "message" },
+        markType: "archive",
+      }).success,
+    ).toBe(false);
+    expect(
+      MarkMessageRequestSchema.safeParse({
+        identifier: { id: "msg-1", type: "message" },
+        markType: "unarchive",
+      }).success,
+    ).toBe(false);
+  });
+
+  test("accepts cascade-cms-api MessageMarkType literals", () => {
+    for (const markType of stringUnionFromTypes("MessageMarkType")) {
+      expect(
+        MarkMessageRequestSchema.safeParse({
+          identifier: { id: "msg-1", type: "message" },
+          markType,
+        }).success,
+      ).toBe(true);
+    }
+  });
 });
 
 describe("DeleteMessageRequestSchema", () => {
@@ -276,7 +393,7 @@ describe("CheckInRequestSchema", () => {
 });
 
 describe("ReadAuditsRequestSchema", () => {
-  test("should accept a valid read audits request with passthrough auditParameters", () => {
+  test("should accept a valid read audits request with strict auditParameters", () => {
     const res = ReadAuditsRequestSchema.safeParse({
       auditParameters: {
         username: "alice",
@@ -285,6 +402,17 @@ describe("ReadAuditsRequestSchema", () => {
     });
     expect(res.success).toBe(true);
   });
+
+  test("should reject unknown auditParameters fields", () => {
+    const res = ReadAuditsRequestSchema.safeParse({
+      auditParameters: {
+        username: "alice",
+        action: "login",
+      },
+    });
+    expect(res.success).toBe(false);
+  });
+
 });
 
 describe("ReadWorkflowInformationRequestSchema", () => {
@@ -297,13 +425,35 @@ describe("ReadWorkflowInformationRequestSchema", () => {
 });
 
 describe("PerformWorkflowTransitionRequestSchema", () => {
-  test("should accept a valid perform workflow transition request", () => {
+  test("should accept a valid wrapped perform workflow transition request", () => {
+    const res = PerformWorkflowTransitionRequestSchema.safeParse({
+      workflowTransitionInformation: {
+        workflowId: "wf-1",
+        actionIdentifier: "approve",
+        transitionComment: "Looks good",
+      },
+    });
+    expect(res.success).toBe(true);
+  });
+
+  test("should accept v2 nullable workflow transition comment", () => {
+    const res = PerformWorkflowTransitionRequestSchema.safeParse({
+      workflowTransitionInformation: {
+        workflowId: "wf-1",
+        actionIdentifier: "approve",
+        transitionComment: null,
+      },
+    });
+    expect(res.success).toBe(true);
+  });
+
+  test("should reject the legacy flat workflow transition shape", () => {
     const res = PerformWorkflowTransitionRequestSchema.safeParse({
       workflowId: "wf-1",
       actionIdentifier: "approve",
       transitionComment: "Looks good",
     });
-    expect(res.success).toBe(true);
+    expect(res.success).toBe(false);
   });
 });
 
@@ -325,6 +475,16 @@ describe("PublishUnpublishRequestSchema", () => {
     });
     expect(res.success).toBe(true);
   });
+
+  test("should accept an empty publish destinations array", () => {
+    const res = PublishUnpublishRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      publishInformation: {
+        destinations: [],
+      },
+    });
+    expect(res.success).toBe(true);
+  });
 });
 
 describe("EditPreferenceRequestSchema", () => {
@@ -333,6 +493,40 @@ describe("EditPreferenceRequestSchema", () => {
       preference: { name: "some.key", value: "some.value" },
     });
     expect(res.success).toBe(true);
+  });
+
+  test("should accept only v2 nullable publish information fields", () => {
+    const res = PublishUnpublishRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      publishInformation: {
+        unpublish: null,
+        publishRelatedAssets: null,
+        publishRelatedPublishSet: null,
+        scheduledDate: null,
+      },
+    });
+    expect(res.success).toBe(true);
+    expect(
+      PublishUnpublishRequestSchema.safeParse({
+        identifier: ID_PAGE,
+        publishInformation: {
+          destinations: null,
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  test("should reject preferences without generated required name and value strings", () => {
+    expect(
+      EditPreferenceRequestSchema.safeParse({
+        preference: { name: "some.key" },
+      }).success,
+    ).toBe(false);
+    expect(
+      EditPreferenceRequestSchema.safeParse({
+        preference: { name: "some.key", value: true },
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -364,7 +558,9 @@ describe("Edge cases", () => {
 
   test("PerformWorkflowTransitionRequestSchema should reject when workflowId is missing", () => {
     const res = PerformWorkflowTransitionRequestSchema.safeParse({
-      actionIdentifier: "approve",
+      workflowTransitionInformation: {
+        actionIdentifier: "approve",
+      },
     });
     expect(res.success).toBe(false);
   });
@@ -405,7 +601,7 @@ describe("Edge cases", () => {
     expect(res.success).toBe(false);
   });
 
-  test("PublishUnpublishRequestSchema should allow passthrough arbitrary fields on publishInformation", () => {
+  test("PublishUnpublishRequestSchema should reject arbitrary fields on publishInformation", () => {
     const res = PublishUnpublishRequestSchema.safeParse({
       identifier: ID_PAGE,
       publishInformation: {
@@ -414,7 +610,7 @@ describe("Edge cases", () => {
         vendorExtension: { nested: true },
       },
     });
-    expect(res.success).toBe(true);
+    expect(res.success).toBe(false);
   });
 });
 
@@ -526,6 +722,188 @@ describe("ReadAuditsRequestSchema pagination", () => {
       offset: 0,
     });
     expect(res.success).toBe(true);
+  });
+});
+
+describe("Generated request body schemas", () => {
+  test("RemoveRequestSchema should validate deleteParameters fields", () => {
+    expect(
+      RemoveRequestSchema.safeParse({
+        identifier: ID_PAGE,
+        deleteParameters: {
+          doWorkflow: false,
+          unpublish: true,
+          destinations: [{ id: "dest-1", type: "destination" }],
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      RemoveRequestSchema.safeParse({
+        identifier: ID_PAGE,
+        deleteParameters: {
+          doWorkflow: "false",
+          destinations: "dest-1",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  test("RemoveRequestSchema should accept v2 nullable unpublish parameters", () => {
+    expect(
+      RemoveRequestSchema.safeParse({
+        identifier: ID_PAGE,
+        deleteParameters: {
+          doWorkflow: false,
+          unpublish: null,
+          destinations: null,
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  test("MoveRequestSchema should accept generated unpublish fields on moveParameters", () => {
+    const res = MoveRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      moveParameters: {
+        destinationContainerIdentifier: { id: "parent-id", type: "folder" },
+        doWorkflow: false,
+        newName: "renamed",
+        unpublish: true,
+        destinations: [{ id: "dest-1", type: "destination" }],
+      },
+    });
+    expect(res.success).toBe(true);
+  });
+
+  test("MoveRequestSchema should accept v2 nullable unpublish fields", () => {
+    const res = MoveRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      moveParameters: {
+        destinationContainerIdentifier: { id: "parent-id", type: "folder" },
+        doWorkflow: false,
+        unpublish: null,
+        destinations: null,
+      },
+    });
+    expect(res.success).toBe(true);
+  });
+
+  test("EditWorkflowSettingsRequestSchema should validate workflow settings fields", () => {
+    expect(
+      EditWorkflowSettingsRequestSchema.safeParse({
+        identifier: ID_PAGE,
+        workflowSettings: {
+          workflowDefinitions: [{ id: "wf-def-1", type: "workflowdefinition" }],
+          inheritWorkflows: true,
+          requireWorkflow: false,
+          inheritedWorkflowDefinitions: [],
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      EditWorkflowSettingsRequestSchema.safeParse({
+        identifier: ID_PAGE,
+        workflowSettings: {
+          workflowDefinitions: "wf-def-1",
+          inheritWorkflows: "true",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  test("ReadAuditsRequestSchema should validate auditParameters fields", () => {
+    expect(
+      ReadAuditsRequestSchema.safeParse({
+        auditParameters: {
+          identifier: ID_PAGE,
+          username: "alice",
+          auditType: "publish",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      ReadAuditsRequestSchema.safeParse({
+        auditParameters: {
+          auditType: "not-real",
+          startDate: 123,
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  test("ReadAuditsRequestSchema accepts cascade-cms-api AuditTypes literals", () => {
+    for (const auditType of stringUnionFromTypes("AuditTypes")) {
+      expect(
+        ReadAuditsRequestSchema.safeParse({
+          auditParameters: { auditType },
+        }).success,
+      ).toBe(true);
+    }
+
+    expect(
+      ReadAuditsRequestSchema.safeParse({
+        auditParameters: { auditType: "archive" },
+      }).success,
+    ).toBe(false);
+  });
+
+  test("workflowConfiguration should validate generated required fields when supplied", () => {
+    const validWorkflowConfiguration = {
+      workflowName: "Review",
+      workflowDefinitionId: "workflow-definition-1",
+      workflowComments: "Route for approval",
+      workflowStepConfigurations: [
+        {
+          stepIdentifier: "review",
+          stepAssignment: "editors",
+        },
+      ],
+    };
+    expect(
+      RemoveRequestSchema.safeParse({
+        identifier: ID_PAGE,
+        workflowConfiguration: validWorkflowConfiguration,
+      }).success,
+    ).toBe(true);
+    expect(
+      RemoveRequestSchema.safeParse({
+        identifier: ID_PAGE,
+        workflowConfiguration: {
+          workflowName: "Review",
+          workflowDefinitionPath: "/workflows/review",
+          workflowComments: "Route for approval",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      RemoveRequestSchema.safeParse({
+        identifier: ID_PAGE,
+        workflowConfiguration: {
+          workflowName: "Review",
+          workflowComments: "Definition id/path omitted",
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      RemoveRequestSchema.safeParse({
+        identifier: ID_PAGE,
+        workflowConfiguration: {
+          workflowName: "Review",
+          workflowDefinitionId: "workflow-definition-1",
+          workflowDefinitionPath: "/workflows/review",
+          workflowComments: "Route for approval",
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      RemoveRequestSchema.safeParse({
+        identifier: ID_PAGE,
+        workflowConfiguration: {
+          workflowDefinitionId: "workflow-definition-1",
+          workflowComments: "Missing workflow name",
+        },
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -683,5 +1061,17 @@ describe("asset follow-up request schemas", () => {
       include_text: false,
     });
     expect(res.success).toBe(true);
+  });
+
+  test("should reject malformed publish information fields", () => {
+    const res = PublishUnpublishRequestSchema.safeParse({
+      identifier: ID_PAGE,
+      publishInformation: {
+        unpublish: "true",
+        destinations: "dest-1",
+        unexpected: true,
+      },
+    });
+    expect(res.success).toBe(false);
   });
 });

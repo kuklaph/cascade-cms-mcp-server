@@ -14,30 +14,20 @@
 
 import { z } from "zod";
 import { BaseAssetFields, NamedAssetFields } from "./base.js";
-import { RoleTypeSchema, UserAuthTypeSchema } from "./enums.js";
+import { UserAuthTypeSchema } from "./enums.js";
 
 // ─── User (envelope: `user`) ────────────────────────────────────────────────
-// User has no allOf in OpenAPI — no inherited BaseAsset. `id` is NOT declared.
+// User has no inherited BaseAsset. `id` is NOT declared.
 
 export const UserAssetSchema = z
   .object({
-    type: z
-      .string()
-      .optional()
-      .describe("Entity type echoed on read; informational."),
     username: z.string().describe("REQUIRED: Login username."),
     fullName: z
       .string()
-      .optional()
-      .describe(
-        "Full name. Description says REQUIRED but OpenAPI `required` array omits it — optional at schema level.",
-      ),
+      .describe("REQUIRED: Full name."),
     email: z
       .string()
-      .optional()
-      .describe(
-        "Email address. Description says REQUIRED but OpenAPI `required` array omits it — optional at schema level.",
-      ),
+      .describe("REQUIRED: Email address."),
     authType: UserAuthTypeSchema.describe(
       "REQUIRED: Auth mode — 'normal', 'ldap', or 'custom'.",
     ),
@@ -50,15 +40,13 @@ export const UserAssetSchema = z
     groups: z
       .string()
       .describe("REQUIRED: Semicolon-delimited list of group names the user belongs to."),
-    role: z.string().describe("REQUIRED: Role name assigned to the user."),
+    roles: z.string().describe("REQUIRED: Semicolon-delimited role names assigned to the user."),
     defaultSiteId: z
       .string()
-      .nullable()
       .optional()
       .describe("Default site id the user lands in. Priority: defaultSiteId > defaultSiteName."),
     defaultSiteName: z
       .string()
-      .nullable()
       .optional()
       .describe("Default site name (alt)."),
     ldapDN: z
@@ -220,19 +208,24 @@ export type SiteAbilities = z.infer<typeof SiteAbilitiesSchema>;
 // ─── Role (envelope: `role`) ────────────────────────────────────────────────
 
 export const RoleAssetSchema = z
-  .object({
-    ...NamedAssetFields,
-    roleType: RoleTypeSchema.describe(
-      "REQUIRED: Role scope — 'site' (per-site abilities) or 'global' (system-wide abilities).",
-    ),
-    globalAbilities: GlobalAbilitiesSchema.optional().describe(
-      "Global abilities. Provide when roleType='global'.",
-    ),
-    siteAbilities: SiteAbilitiesSchema.optional().describe(
-      "Site abilities. Provide when roleType='site'.",
-    ),
-  })
-  .strict()
+  .union([
+    z
+      .object({
+        ...NamedAssetFields,
+        roleType: z.literal("global").describe("REQUIRED: Global role scope."),
+        globalAbilities: GlobalAbilitiesSchema.describe(
+          "REQUIRED for global roles.",
+        ),
+      })
+      .strict(),
+    z
+      .object({
+        ...NamedAssetFields,
+        roleType: z.literal("site").describe("REQUIRED: Site role scope."),
+        siteAbilities: SiteAbilitiesSchema.describe("REQUIRED for site roles."),
+      })
+      .strict(),
+  ])
   .describe("Cascade role — a named bundle of abilities granted to users/groups.");
 
 export type RoleAsset = z.infer<typeof RoleAssetSchema>;

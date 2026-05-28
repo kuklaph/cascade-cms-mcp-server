@@ -40,6 +40,7 @@ Args:
     - id (string, optional): Asset ID (preferred)
     - path (object, optional): { path, siteId OR siteName }
     - type (string, required): Entity type of the asset
+    - requires type plus either id or path; prefer id when known
 
 Returns:
   Cascade OperationResult:
@@ -47,7 +48,7 @@ Returns:
     success: true,
     accessRightsInformation: {
       identifier: { ... },
-      aclEntries: [ { name, type: "user"|"group", level }, ... ],
+      aclEntries: [ { id, name, type: "user"|"group", level }, ... ],
       allLevel: "none"|"read"|"write"
     }
   }
@@ -86,8 +87,9 @@ Args:
     - id (string, optional): Asset ID (preferred)
     - path (object, optional): { path, siteId OR siteName }
     - type (string, required): Entity type of the asset
+    - requires type plus either id or path; prefer id when known
   - accessRightsInformation (object, required):
-    - aclEntries (array, optional): Full explicit ACL. Each entry: { name, type: "user"|"group", level: "read"|"write", id? }; include id for group entries when Cascade provides it.
+    - aclEntries (array, optional): Full explicit ACL. Each entry: { name? OR id?, type: "user"|"group", level: "read"|"write" }; prefer id when Cascade provides it.
     - allLevel (string): Default for everyone not listed. One of "none" | "read" | "write".
   - applyToChildren (boolean, optional): For containers only. Default false. Propagates the ACL to all descendants.
 

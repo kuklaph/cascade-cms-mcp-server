@@ -1,8 +1,8 @@
 /**
  * Base field definitions for Cascade asset inheritance chains.
  *
- * Cascade's OpenAPI spec builds every concrete asset via `allOf` from a small
- * set of base types:
+ * cascade-cms-api generated TypeScript types build every concrete asset from
+ * a small set of base types:
  *
  *   BaseAsset
  *     └─ NamedAsset (+ name)
@@ -16,15 +16,11 @@
  * `Group` extends BaseAsset directly (uses `groupName` instead of `name`).
  *
  * Each `*Fields` export below is a plain field bag that can be spread into a
- * `z.object({...}).strict()` definition, mirroring the OpenAPI composition.
- * All base fields are optional at the schema level — Cascade validates
- * "required on create" server-side (this schema is shared across create and
- * edit).
+ * `z.object({...}).strict()` definition, mirroring the generated type composition.
+ * Shared placement/site fields are relaxed for create/edit reuse because
+ * Cascade enforces some create-only requirements server-side. Generated
+ * required fields such as NamedAsset.name remain required in their field bags.
  *
- * A tolerant `type?: string` field is included on BaseAsset so the response
- * shape from `cascade_read` (which echoes the entity type) round-trips
- * through `cascade_edit` without rejection. Its value is informational; the
- * envelope key is the real discriminator.
  */
 
 import { z } from "zod";
@@ -38,12 +34,6 @@ export const BaseAssetFields = {
     .optional()
     .describe(
       "Asset id. Omit on create (Cascade assigns it); provide on edit to identify the target.",
-    ),
-  type: z
-    .string()
-    .optional()
-    .describe(
-      "Entity type — echoed by `cascade_read` responses and accepted here for round-trip compatibility. The envelope key is the true discriminator; this field is informational.",
     ),
 };
 
@@ -66,35 +56,32 @@ export const FolderContainedAssetFields = {
     .string()
     .optional()
     .describe(
-      "Parent folder id. REQUIRED on BOTH create and edit (use this or parentFolderPath). On edit, parent-folder fields identify the asset's current location — use cascade_move to relocate, not edit. Priority: parentFolderId > parentFolderPath.",
+      "Parent folder id. REQUIRED on create (use this or parentFolderPath); ignored on edit. Use cascade_move to relocate. Priority: parentFolderId > parentFolderPath.",
     ),
   parentFolderPath: z
     .string()
     .optional()
-    .describe("Parent folder path. REQUIRED on BOTH create and edit (alt to parentFolderId). See cascade_move to relocate."),
+    .describe("Parent folder path. REQUIRED on create if id is not provided; ignored on edit. See cascade_move to relocate."),
   path: z
     .string()
     .optional()
     .describe("Current path of the asset. Read-only on create; may be present on edit."),
-  lastModifiedDate: z.string().nullable().optional().describe("Read-only audit field."),
-  lastModifiedBy: z.string().nullable().optional().describe("Read-only audit field."),
-  createdDate: z.string().nullable().optional().describe("Read-only audit field."),
-  createdBy: z.string().nullable().optional().describe("Read-only audit field."),
+  lastModifiedDate: z.string().optional().describe("Read-only audit field."),
+  lastModifiedBy: z.string().optional().describe("Read-only audit field."),
+  createdDate: z.string().optional().describe("Read-only audit field."),
+  createdBy: z.string().optional().describe("Read-only audit field."),
   siteId: z
     .string()
-    .nullable()
     .optional()
     .describe(
       "Owning site id. REQUIRED (use this or siteName). Priority: siteId > siteName.",
     ),
   siteName: z
     .string()
-    .nullable()
     .optional()
     .describe("Owning site name (alt to siteId)."),
   tags: z
     .array(TagSchema)
-    .nullable()
     .optional()
     .describe("Content tags. Each: { name: string }."),
 };
@@ -113,14 +100,10 @@ export const DublinAwareAssetFields = {
   metadataSetPath: z.string().optional().describe("Metadata set path (alt)."),
   reviewOnSchedule: z
     .boolean()
-    .nullable()
     .optional()
     .describe("Whether Cascade sends periodic review reminders for this asset."),
   reviewEvery: z
     .number()
-    .int()
-    .min(0)
-    .nullable()
     .optional()
     .describe("Review interval in days. Only meaningful when reviewOnSchedule=true."),
 };
@@ -154,8 +137,8 @@ export const PublishableAssetFields = {
     .boolean()
     .optional()
     .describe("Whether this asset appears in indexes. Default true."),
-  lastPublishedDate: z.string().nullable().optional().describe("Read-only publish audit field."),
-  lastPublishedBy: z.string().nullable().optional().describe("Read-only publish audit field."),
+  lastPublishedDate: z.string().optional().describe("Read-only publish audit field."),
+  lastPublishedBy: z.string().optional().describe("Read-only publish audit field."),
 };
 
 // ─── ContaineredAsset = NamedAsset + container placement + site ────────────
@@ -168,26 +151,24 @@ export const ContaineredAssetFields = {
     .string()
     .optional()
     .describe(
-      "Parent container id. REQUIRED on create. Priority: parentContainerId > parentContainerPath.",
+      "Parent container id. REQUIRED on create; ignored on edit. Priority: parentContainerId > parentContainerPath. Use cascade_move to relocate existing assets.",
     ),
   parentContainerPath: z
     .string()
     .optional()
-    .describe("Parent container path (alt). REQUIRED on create if id not provided."),
+    .describe("Parent container path (alt). REQUIRED on create if id not provided; ignored on edit. Use cascade_move to relocate existing assets."),
   path: z
     .string()
     .optional()
     .describe("Current path of the asset. Omit on create; may be present on edit."),
   siteId: z
     .string()
-    .nullable()
     .optional()
     .describe(
-      "Owning site id. REQUIRED for per-site admin assets; omit for system-wide ones. Priority: siteId > siteName.",
+      "Owning site id. REQUIRED (use this or siteName). Priority: siteId > siteName.",
     ),
   siteName: z
     .string()
-    .nullable()
     .optional()
     .describe("Owning site name (alt to siteId)."),
 };

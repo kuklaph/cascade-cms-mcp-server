@@ -1,10 +1,10 @@
 /**
  * Content asset schemas — page, file, folder, symlink, reference.
  *
- * Each inner object mirrors its OpenAPI counterpart exactly, inheriting base
- * fields via the `*Fields` bags from `./base.ts`. Envelope wrappers live at
- * the bottom; each is `.strict()` so only the expected single typed key is
- * accepted.
+ * Each inner object mirrors its generated cascade-cms-api TypeScript
+ * counterpart, inheriting base fields via the `*Fields` bags from `./base.ts`.
+ * Envelope wrappers live at the bottom; each is `.strict()` so only the
+ * expected single typed key is accepted.
  */
 
 import { z } from "zod";
@@ -19,9 +19,11 @@ import {
 } from "./enums.js";
 import {
   EmbeddedIdentifierSchema,
+  EmbeddedWriteIdentifierSchema,
   PageConfigurationSchema,
   StructuredDataSchema,
 } from "./nested.js";
+import { objectWithRequiredAlternatives } from "../requiredAlternatives.js";
 
 // ─── Page (envelope: `page`) ────────────────────────────────────────────────
 
@@ -86,7 +88,7 @@ export const FileAssetSchema = z
         "Plaintext file content. One of text/data REQUIRED on create. Priority: text > data.",
       ),
     data: z
-      .array(z.number().int().min(0).max(255).describe("Byte 0-255."))
+      .array(z.number().describe("Binary data number."))
       .optional()
       .describe("Binary content as a byte array. Used for non-text files."),
     rewriteLinks: z
@@ -114,12 +116,9 @@ export const FolderAssetSchema = z
   .object({
     ...PublishableAssetFields,
     children: z
-      .array(EmbeddedIdentifierSchema)
-      .nullable()
+      .array(EmbeddedWriteIdentifierSchema)
       .optional()
-      .describe(
-        "Read-only array of child Identifier objects. Cascade populates this on read; omit on create/edit.",
-      ),
+      .describe("Child Identifier objects. If supplied in a write payload, each child requires id or path."),
     includeInStaleContent: z
       .boolean()
       .optional()
@@ -161,25 +160,28 @@ export const SymlinkEnvelopeSchema = z
 // ─── Reference (envelope: `reference`) ──────────────────────────────────────
 // Reference extends FolderContainedAsset — no metadata, expiration, or publish flags.
 
-export const ReferenceAssetSchema = z
-  .object({
-    ...FolderContainedAssetFields,
-    referencedAssetId: z
-      .string()
-      .optional()
-      .describe(
-        "Referenced asset id. One of referencedAssetId/referencedAssetPath REQUIRED. Priority: id > path.",
-      ),
-    referencedAssetPath: z
-      .string()
-      .optional()
-      .describe("Referenced asset path (alt)."),
-    referencedAssetType: EntityTypeStringSchema.describe(
-      "REQUIRED: Entity type of the referenced asset.",
+const ReferenceAssetShape = {
+  ...FolderContainedAssetFields,
+  referencedAssetId: z
+    .string()
+    .optional()
+    .describe(
+      "Referenced asset id. One of referencedAssetId/referencedAssetPath REQUIRED. Priority: id > path.",
     ),
-  })
-  .strict()
-  .describe("Cascade reference asset — a pointer to another asset in the same or another site.");
+  referencedAssetPath: z
+    .string()
+    .optional()
+    .describe("Referenced asset path (alt)."),
+  referencedAssetType: EntityTypeStringSchema.describe(
+    "REQUIRED: Entity type of the referenced asset.",
+  ),
+};
+
+export const ReferenceAssetSchema = objectWithRequiredAlternatives(
+  ReferenceAssetShape,
+  [["referencedAssetId", "referencedAssetPath"]],
+  "Cascade reference asset — a pointer to another asset in the same or another site.",
+);
 
 export type ReferenceAsset = z.infer<typeof ReferenceAssetSchema>;
 

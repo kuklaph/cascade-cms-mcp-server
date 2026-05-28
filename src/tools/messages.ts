@@ -3,7 +3,7 @@
  *
  *   cascade_list_subscribers — list an asset's relationships (what references it) and notification subscribers
  *   cascade_list_messages    — list the authenticated user's messages
- *   cascade_mark_message     — change a message's read/archive state
+ *   cascade_mark_message     — change a message's read state
  *   cascade_delete_message   — permanently delete a message
  *
  * Each tool is a thin `registerCascadeTool` call delegating to the
@@ -49,6 +49,7 @@ Args:
     - id (string, optional): Asset ID. Prefer id when known; Cascade auto-resolves path→id server-side when only path is given.
     - path (object, optional): { path, siteId OR siteName } — valid fallback when id is unknown.
     - type (string, required): Entity type of the asset. Use the EntityType string (e.g. "page", "block_XHTML_DATADEFINITION", "contenttype") — NOT the camelCase envelope key ("xhtmlDataDefinitionBlock", "contentType"). Most asset kinds differ between the two schemes; see IdentifierSchema.type / cascade://entity-types.
+    - requires type plus either id or path; prefer id when known
 
 Returns:
   Cascade OperationResult:
@@ -141,15 +142,15 @@ Error Handling:
     name: "cascade_mark_message",
     title: "Mark Message",
     description: buildCascadeToolDescription(
-      `Mark a Cascade inbox message as read, unread, archive, or unarchive.
+      `Mark a Cascade inbox message as read or unread.
 
-Toggles the status of a single message. markType controls the action: "read"/"unread" swap the read flag; "archive"/"unarchive" move the message between the inbox and the archive. This is idempotent — marking an already-read message as "read" is a no-op.
+Toggles the read status of a single message. markType controls the action: "read" or "unread". This is idempotent — marking an already-read message as "read" is a no-op.
 
 Args:
   - identifier (object, required): The message to mark
     - id (string, required): Message ID (from cascade_list_messages)
     - type (string, required): Must be "message"
-  - markType (string, required): One of "read" | "unread" | "archive" | "unarchive"
+  - markType (string, required): One of "read" | "unread"
 
 Returns:
   Cascade OperationResult:
@@ -158,7 +159,6 @@ Returns:
 
 Examples:
   - Use when: "Mark a workflow notice as read" -> { identifier: { type: "message", id: "..." }, markType: "read" }
-  - Use when: "Archive an old notification" -> { identifier: { type: "message", id: "..." }, markType: "archive" }
   - Don't use when: You want to delete — use cascade_delete_message.
   - Don't use when: You want to list — use cascade_list_messages.
 
@@ -183,7 +183,7 @@ Error Handling:
     description: buildCascadeToolDescription(
       `Permanently delete a message from the authenticated user's Cascade mailbox.
 
-This is a DESTRUCTIVE operation — once deleted, the message cannot be recovered (archive is not the same as recycle-bin for messages). Prefer cascade_mark_message with markType: "archive" for retention. Messages must belong to the authenticated user; you cannot delete messages in another user's mailbox.
+This is a DESTRUCTIVE operation — once deleted, the message cannot be recovered. Messages must belong to the authenticated user; you cannot delete messages in another user's mailbox.
 
 Args:
   - identifier (object, required): The message to delete
@@ -197,7 +197,7 @@ Returns:
 
 Examples:
   - Use when: "Permanently clear spam-like notifications" -> { identifier: { type: "message", id: "..." } }
-  - Don't use when: You want to hide it without deleting — use cascade_mark_message with markType: "archive".
+  - Don't use when: You only want to mark it read/unread — use cascade_mark_message.
   - Don't use when: You want to delete in bulk — this deletes one message per call.
 
 Error Handling:

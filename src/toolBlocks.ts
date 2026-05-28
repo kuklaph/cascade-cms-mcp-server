@@ -2,6 +2,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { EntityTypeSchema } from "./schemas/common.js";
+
+type EntityType = z.infer<typeof EntityTypeSchema>;
 
 const SelectorSchema = z.union([
   z.string().min(1),
@@ -10,7 +13,7 @@ const SelectorSchema = z.union([
 
 export const ToolBlockRuleSchema = z
   .object({
-    type: z.string().min(1).optional(),
+    type: EntityTypeSchema.optional(),
     id: SelectorSchema.optional(),
     path: SelectorSchema.optional(),
     url: SelectorSchema.optional(),
@@ -146,7 +149,10 @@ function inputMatchesRule(input: unknown, rule: ToolBlockRule): boolean {
     if (isRecord(value)) {
       if (objectMatchesRule(value, rule, impliedType)) return true;
       for (const [key, child] of Object.entries(value)) {
-        stack.push({ value: child, impliedType: isRecord(child) ? key : undefined });
+        stack.push({
+          value: child,
+          impliedType: isRecord(child) || Array.isArray(child) ? key : undefined,
+        });
       }
     } else if (Array.isArray(value)) {
       stack.push(...value.map((child) => ({ value: child, impliedType })));
@@ -185,6 +191,11 @@ function typeMatches(expected: string, actual: unknown): boolean {
   if (typeof actual !== "string") return false;
   if (actual === expected) return true;
   if (typeAliases(expected).includes(actual)) return true;
+  if (actual === "format" && isFormatType(expected)) return true;
+  if (actual === "transport" && isTransportType(expected)) return true;
+  if (actual === "block" && isBlockType(expected)) return true;
+  if (expected === "format" && isFormatType(actual)) return true;
+  if (expected === "transport" && isTransportType(actual)) return true;
   return expected === "block" && isBlockType(actual);
 }
 
@@ -192,6 +203,8 @@ function typeAliases(expected: string): string[] {
   switch (expected) {
     case "assetfactory":
       return ["assetFactory"];
+    case "assetfactorycontainer":
+      return ["assetFactoryContainer"];
     case "block_FEED":
       return ["feedBlock"];
     case "block_INDEX":
@@ -206,10 +219,18 @@ function typeAliases(expected: string): string[] {
       return ["xmlBlock"];
     case "contenttype":
       return ["contentType"];
+    case "contenttypecontainer":
+      return ["contentTypeContainer"];
+    case "connectorcontainer":
+      return ["connectorContainer"];
     case "datadefinition":
       return ["dataDefinition"];
+    case "datadefinitioncontainer":
+      return ["dataDefinitionContainer"];
     case "editorconfiguration":
       return ["editorConfiguration"];
+    case "facebookconnector":
+      return ["facebookConnector"];
     case "format_SCRIPT":
       return ["scriptFormat"];
     case "format_XSLT":
@@ -218,10 +239,26 @@ function typeAliases(expected: string): string[] {
       return ["googleAnalyticsConnector"];
     case "metadataset":
       return ["metadataSet"];
+    case "metadatasetcontainer":
+      return ["metadataSetContainer"];
+    case "pageconfiguration":
+      return ["pageConfiguration", "pageConfigurations"];
     case "pageconfigurationset":
       return ["pageConfigurationSet"];
+    case "pageconfigurationsetcontainer":
+      return ["pageConfigurationSetContainer"];
+    case "pageregion":
+      return ["pageRegion", "pageRegions"];
     case "publishset":
       return ["publishSet"];
+    case "publishsetcontainer":
+      return ["publishSetContainer"];
+    case "sharedfield":
+      return ["sharedField"];
+    case "sharedfieldcontainer":
+      return ["sharedFieldContainer"];
+    case "sitedestinationcontainer":
+      return ["siteDestinationContainer"];
     case "transport_cloud":
       return ["cloudTransport"];
     case "transport_db":
@@ -230,6 +267,18 @@ function typeAliases(expected: string): string[] {
       return ["ftpTransport"];
     case "transport_fs":
       return ["fileSystemTransport"];
+    case "transportcontainer":
+      return ["transportContainer"];
+    case "twitterconnector":
+      return ["twitterConnector"];
+    case "workflowdefinition":
+      return ["workflowDefinition"];
+    case "workflowdefinitioncontainer":
+      return ["workflowDefinitionContainer"];
+    case "workflowemail":
+      return ["workflowEmail"];
+    case "workflowemailcontainer":
+      return ["workflowEmailContainer"];
     case "wordpressconnector":
       return ["wordPressConnector"];
     default:
@@ -243,6 +292,30 @@ function isBlockType(value: string): boolean {
     value.startsWith("block_") ||
     value.endsWith("Block") ||
     value === "xhtmlDataDefinitionBlock"
+  );
+}
+
+function isFormatType(value: string): boolean {
+  return (
+    value === "format" ||
+    value === "format_XSLT" ||
+    value === "format_SCRIPT" ||
+    value === "xsltFormat" ||
+    value === "scriptFormat"
+  );
+}
+
+function isTransportType(value: string): boolean {
+  return (
+    value === "transport" ||
+    value === "transport_fs" ||
+    value === "transport_ftp" ||
+    value === "transport_db" ||
+    value === "transport_cloud" ||
+    value === "fileSystemTransport" ||
+    value === "ftpTransport" ||
+    value === "databaseTransport" ||
+    value === "cloudTransport"
   );
 }
 
@@ -278,7 +351,7 @@ function cascadeUrlMatchesObject(
 
 function parseCascadeUrlSelector(
   url: string,
-): { id: string; type: string } | null {
+): { id: string; type: EntityType } | null {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -296,8 +369,9 @@ function parseCascadeUrlSelector(
 
   const id = parsed.searchParams.get("id") ?? "";
   const type = parsed.searchParams.get("type") ?? "";
+  const parsedType = EntityTypeSchema.safeParse(type);
 
-  return id && type ? { id, type } : null;
+  return id && parsedType.success ? { id, type: parsedType.data } : null;
 }
 
 function selectors(value: string | string[]): string[] {

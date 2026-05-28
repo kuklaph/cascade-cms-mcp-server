@@ -4,11 +4,11 @@
  * Covers types that appear inside multiple concrete asset variants —
  * `Metadata`, `Tag`, `StructuredData` + `StructuredDataNode` (recursive),
  * `PageConfiguration`, `PageRegion`, and a re-exported Identifier for child
- * collections. Each object mirrors its upstream `openapi.yaml` definition.
+ * collections. Each object mirrors its generated cascade-cms-api TypeScript
+ * definition.
  *
- * Everything is `.strict()` — every declared OpenAPI field is modelled;
- * unknown keys are rejected so typos are caught early. Fields that upstream
- * marks `nullable: true` accept both `null` and omission.
+ * Everything is `.strict()` — every generated TypeScript field is modelled;
+ * unknown keys are rejected so typos are caught early.
  */
 
 import { z } from "zod";
@@ -18,20 +18,13 @@ import {
   StructuredDataAssetTypeSchema,
   StructuredDataTypeSchema,
 } from "./enums.js";
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** Accept `null`, `undefined`, or the underlying value — mirrors OpenAPI `nullable + optional`. */
-const nullish = <T extends z.ZodTypeAny>(schema: T) =>
-  schema.nullable().optional();
+import { objectWithRequiredAlternatives } from "../requiredAlternatives.js";
 
 // ─── Tag ────────────────────────────────────────────────────────────────────
 
 export const TagSchema = z
   .object({
-    name: nullish(z.string()).describe(
-      "Tag value. OpenAPI permits null/missing on read responses; we mirror that for round-trip.",
-    ),
+    name: z.string().describe("REQUIRED: Tag value."),
   })
   .strict()
   .describe("Content tag. Used on every FolderContainedAsset-derived type.");
@@ -42,14 +35,14 @@ export type Tag = z.infer<typeof TagSchema>;
 
 const FieldValueSchema = z
   .object({
-    value: nullish(z.string()).describe("Value for a single dynamic-metadata option."),
+    value: z.string().optional().describe("Value for a single dynamic-metadata option."),
   })
   .strict();
 
 const DynamicMetadataFieldSchema = z
   .object({
     name: z.string().describe("REQUIRED: Dynamic metadata field name (matches the set's field definition)."),
-    fieldValues: nullish(z.array(FieldValueSchema)).describe(
+    fieldValues: z.array(FieldValueSchema).optional().describe(
       "Zero or more values — single-select fields provide one value; multi-select fields provide several.",
     ),
   })
@@ -59,11 +52,11 @@ export const MetadataSchema = z
   .object({
     author: z.string().optional().describe("Dublin-core author."),
     displayName: z.string().optional().describe("Display name — often used in navigation."),
-    endDate: nullish(z.string()).describe("Content end date (ISO 8601)."),
+    endDate: z.string().optional().describe("Content end date (ISO 8601)."),
     keywords: z.string().optional().describe("Comma-separated keywords."),
     metaDescription: z.string().optional().describe("HTML meta-description tag content."),
-    reviewDate: nullish(z.string()).describe("Scheduled review date (ISO 8601)."),
-    startDate: nullish(z.string()).describe("Content start date (ISO 8601)."),
+    reviewDate: z.string().optional().describe("Scheduled review date (ISO 8601)."),
+    startDate: z.string().optional().describe("Content start date (ISO 8601)."),
     summary: z.string().optional().describe("Short summary of the asset."),
     teaser: z.string().optional().describe("Teaser text."),
     title: z.string().optional().describe("Content title (distinct from the asset name)."),
@@ -161,12 +154,6 @@ export type StructuredData = z.infer<typeof StructuredDataSchema>;
 export const PageRegionSchema = z
   .object({
     id: z.string().optional().describe("Optional id — populated on read; omit on create/edit."),
-    type: z
-      .string()
-      .optional()
-      .describe(
-        "Entity type echoed on read (e.g. 'pageregion'); informational only on input.",
-      ),
     name: z.string().describe("REQUIRED: Region name matching the template region."),
     blockId: z.string().optional().describe("Block assigned to this region (by id). Priority: blockId > blockPath."),
     blockPath: z.string().optional().describe("Block assigned to this region (by path)."),
@@ -187,12 +174,6 @@ export type PageRegion = z.infer<typeof PageRegionSchema>;
 export const PageConfigurationSchema = z
   .object({
     id: z.string().optional().describe("Optional id — populated on read; omit on create."),
-    type: z
-      .string()
-      .optional()
-      .describe(
-        "Entity type echoed on read (e.g. 'pageconfiguration'); informational only on input.",
-      ),
     name: z.string().describe("REQUIRED: Configuration name, unique within the set."),
     defaultConfiguration: z
       .boolean()
@@ -206,15 +187,25 @@ export const PageConfigurationSchema = z
       .array(PageRegionSchema)
       .optional()
       .describe("Page-level region/block/format overrides."),
-    outputExtension: nullish(z.string()).describe("File extension applied on publish (e.g. '.html')."),
-    serializationType: nullish(SerializationTypeSchema).describe("Serialization format for the rendered output."),
-    includeXMLDeclaration: nullish(z.boolean()).describe("Whether to emit an XML declaration on render."),
-    publishable: nullish(z.boolean()).describe("Whether this configuration produces a publishable output."),
+    outputExtension: z.string().optional().describe("File extension applied on publish (e.g. '.html')."),
+    serializationType: SerializationTypeSchema.optional().describe("Serialization format for the rendered output."),
+    includeXMLDeclaration: z.boolean().optional().describe("Whether to emit an XML declaration on render."),
+    publishable: z.boolean().optional().describe("Whether this configuration produces a publishable output."),
   })
   .strict()
   .describe("Page configuration — a named combination of template, format, and region assignments.");
 
 export type PageConfiguration = z.infer<typeof PageConfigurationSchema>;
+
+export const PageConfigurationSetPageConfigurationSchema = objectWithRequiredAlternatives(
+  PageConfigurationSchema.shape,
+  [["templateId", "templatePath"]],
+  "Page configuration in a page configuration set — templateId or templatePath is required.",
+);
+
+export type PageConfigurationSetPageConfiguration = z.infer<
+  typeof PageConfigurationSetPageConfigurationSchema
+>;
 
 // ─── Re-export Identifier so asset modules import from one place ────────────
 
@@ -242,7 +233,35 @@ export const EmbeddedIdentifierSchema = z
   })
   .strict()
   .describe(
-    "Identifier embedded inside an asset body. Unlike the request-level IdentifierSchema, does not enforce 'id or path required' — Cascade may return bare identifiers on read.",
+    "Identifier embedded inside an asset body. Unlike the request-level IdentifierSchema, does not enforce 'id or path required' — Cascade may return type-only identifiers on read.",
   );
 
 export type EmbeddedIdentifier = z.infer<typeof EmbeddedIdentifierSchema>;
+
+const EmbeddedIdentifierFields = {
+  type: EntityTypeStringSchema.describe("REQUIRED: Entity type of the referenced asset."),
+  recycled: z.boolean().optional().describe("True if the referenced asset is in the recycle bin."),
+};
+
+export const EmbeddedWriteIdentifierSchema = z
+  .union([
+    z
+      .object({
+        ...EmbeddedIdentifierFields,
+        id: z.string().describe("Asset id. Priority: id > path."),
+        path: PathSchema.optional().describe("Asset path (alt to id)."),
+      })
+      .strict(),
+    z
+      .object({
+        ...EmbeddedIdentifierFields,
+        id: z.string().optional().describe("Asset id. Priority: id > path."),
+        path: PathSchema.describe("Asset path (alt to id)."),
+      })
+      .strict(),
+  ])
+  .describe(
+    "Identifier embedded inside a writeable asset body. Requires type plus either id or path; prefer id when available.",
+  );
+
+export type EmbeddedWriteIdentifier = z.infer<typeof EmbeddedWriteIdentifierSchema>;

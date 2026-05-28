@@ -39,6 +39,7 @@ Args:
     - id (string, optional): Asset ID (preferred)
     - path (object, optional): { path, siteId OR siteName }
     - type (string, required): Entity type of the asset
+    - requires type plus either id or path; prefer id when known
 
 Returns:
   Cascade OperationResult:
@@ -82,6 +83,7 @@ Args:
     - id (string, optional): Asset ID (preferred)
     - path (object, optional): { path, siteId OR siteName }
     - type (string, required): Entity type of the asset
+    - requires type plus either id or path; prefer id when known
   - comments (string, required): Description of the changes — stored in version history
 
 Returns:

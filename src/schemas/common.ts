@@ -29,14 +29,13 @@ import { z } from "zod";
  *
  * A handful of types ('page', 'file', 'folder', 'symlink', 'template',
  * 'reference', 'destination', 'role', 'site', 'user', 'group', 'message',
- * 'workflow', 'target', 'format', 'block', 'transport', 'pageregion',
+ * 'workflow', 'format', 'block', 'transport', 'pageregion',
  * 'pageconfiguration') spell the same in both schemes; most do not. Only the
  * EntityType strings are valid as identifier.type — envelope keys must not
  * appear here.
  *
- * Mirrors `cascade-cms-api/types/types.d.ts::EntityTypeString`, minus the
- * erroneous `xhtmlDataDefinitionBlock` entry upstream includes (an envelope
- * key that Cascade does not accept as an identifier type).
+ * Mirrors `cascade-cms-api/types/types.d.ts::EntityTypeString`. The generated
+ * TypeScript type is the source of truth for accepted MCP input values.
  */
 export const EntityTypeSchema = z
   .enum([
@@ -83,7 +82,6 @@ export const EntityTypeSchema = z
     "site",
     "sitedestinationcontainer",
     "symlink",
-    "target",
     "template",
     "transport",
     "transport_fs",
@@ -99,7 +97,7 @@ export const EntityTypeSchema = z
     "workflowemailcontainer",
   ])
   .describe(
-    "Cascade CMS asset type discriminator — used in identifier.type. Values are EntityType strings (lowercase or snake_case): 'page', 'file', 'folder', 'block', 'symlink', 'template', 'contenttype', 'editorconfiguration', 'metadataset', 'block_TEXT', 'block_XML', 'block_FEED', 'block_INDEX', 'block_XHTML_DATADEFINITION', 'block_TWITTER_FEED', 'format_XSLT', 'format_SCRIPT', 'transport_fs', 'transport_ftp', 'transport_db', 'transport_cloud', 'wordpressconnector', 'googleanalyticsconnector', etc. These are DISTINCT from the camelCase envelope keys used on the Asset body ('contentType', 'editorConfiguration', 'metadataSet', 'textBlock', 'xhtmlDataDefinitionBlock', 'xsltFormat', 'ftpTransport', 'wordPressConnector', etc.). A handful of types spell the same in both schemes ('page', 'file', 'folder', 'symlink', 'template', 'reference', 'site', 'user', 'group', 'role'); most do not. Only EntityType strings are valid here — never use an envelope key.",
+    "Cascade CMS asset type discriminator — used in identifier.type. Values are EntityType strings from cascade-cms-api generated TypeScript types: 'page', 'file', 'folder', 'block', 'symlink', 'template', 'contenttype', 'editorconfiguration', 'metadataset', 'block_TEXT', 'block_XML', 'block_FEED', 'block_INDEX', 'block_XHTML_DATADEFINITION', 'block_TWITTER_FEED', 'format_XSLT', 'format_SCRIPT', 'transport_fs', 'transport_ftp', 'transport_db', 'transport_cloud', 'facebookconnector', 'twitterconnector', 'wordpressconnector', 'googleanalyticsconnector', etc.",
   );
 
 export type EntityType = z.infer<typeof EntityTypeSchema>;
@@ -132,32 +130,48 @@ export const PathSchema = z
 
 export type Path = z.infer<typeof PathSchema>;
 
+const IdentifierFields = {
+  type: EntityTypeSchema.describe(
+    "REQUIRED: The entity type of this asset. Use the EntityTypeString literal from cascade-cms-api generated TypeScript types. Most values differ from Asset body envelope keys — e.g. identifier uses 'block_XHTML_DATADEFINITION' / 'block_TEXT' / 'format_XSLT' / 'transport_ftp' / 'contenttype' / 'editorconfiguration' / 'wordpressconnector', while the Asset body envelope uses 'xhtmlDataDefinitionBlock' / 'textBlock' / 'xsltFormat' / 'ftpTransport' / 'contentType' / 'editorConfiguration' / 'wordPressConnector'. See cascade://entity-types for the full list.",
+  ),
+  recycled: z
+    .boolean()
+    .optional()
+    .describe(
+      "Set true to target an asset inside the recycle bin. For reading only; ignored on edit/copy/move.",
+    ),
+};
+
 export const IdentifierSchema = z
-  .object({
-    id: z
-      .string()
-      .optional()
-      .describe(
-        "Asset ID. Prefer this over path whenever the ID is known — IDs are stable across moves/renames and, when both are supplied, id takes precedence. One of `id` or `path` is required.",
-      ),
-    path: PathSchema.optional().describe(
-      "Asset path object (path + site). A valid fallback when the id is unknown, or when working from a known path is more natural. Cascade resolves path→id server-side, so there is no need to read the asset first just to get the id. Works only for non-recycled assets. One of `id` or `path` is required.",
-    ),
-    type: EntityTypeSchema.describe(
-      "REQUIRED: The entity type of this asset. Use the EntityType string (lowercase or snake_case) — NOT the camelCase envelope key used on the Asset body. A few types are spelled the same in both schemes ('page', 'file', 'folder', 'symlink', 'template', 'reference', 'site', 'user', 'group', 'role'), but most differ — e.g. identifier uses 'block_XHTML_DATADEFINITION' / 'block_TEXT' / 'format_XSLT' / 'transport_ftp' / 'contenttype' / 'editorconfiguration' / 'wordpressconnector', while the Asset body envelope uses 'xhtmlDataDefinitionBlock' / 'textBlock' / 'xsltFormat' / 'ftpTransport' / 'contentType' / 'editorConfiguration' / 'wordPressConnector'. See cascade://entity-types for the full list.",
-    ),
-    recycled: z
-      .boolean()
-      .optional()
-      .describe(
-        "Set true to target an asset inside the recycle bin. For reading only; ignored on edit/copy/move.",
-      ),
-  })
-  .strict()
-  .refine((v) => v.id !== undefined || v.path !== undefined, {
-    message: "Either id or path must be provided",
-    path: ["id"],
-  })
+  .union([
+    z
+      .object({
+        ...IdentifierFields,
+        id: z
+          .string()
+          .describe(
+            "Asset ID. Prefer this over path whenever the ID is known — IDs are stable across moves/renames and, when both are supplied, id takes precedence. One of `id` or `path` is required.",
+          ),
+        path: PathSchema.optional().describe(
+          "Asset path object (path + site). A valid fallback when the id is unknown, or when working from a known path is more natural. Cascade resolves path→id server-side, so there is no need to read the asset first just to get the id. Works only for non-recycled assets. One of `id` or `path` is required.",
+        ),
+      })
+      .strict(),
+    z
+      .object({
+        ...IdentifierFields,
+        id: z
+          .string()
+          .optional()
+          .describe(
+            "Asset ID. Prefer this over path whenever the ID is known — IDs are stable across moves/renames and, when both are supplied, id takes precedence. One of `id` or `path` is required.",
+          ),
+        path: PathSchema.describe(
+          "Asset path object (path + site). A valid fallback when the id is unknown, or when working from a known path is more natural. Cascade resolves path→id server-side, so there is no need to read the asset first just to get the id. Works only for non-recycled assets. One of `id` or `path` is required.",
+        ),
+      })
+      .strict(),
+  ])
   .describe(
     "Uniquely identifies a Cascade asset. Supply either `id` (preferred when known) or `path` plus the asset `type`. This id-over-path preference applies to every id/path pair Cascade exposes (parentFolderId vs parentFolderPath, siteId vs siteName, etc.).",
   );

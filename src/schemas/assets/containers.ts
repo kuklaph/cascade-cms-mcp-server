@@ -9,7 +9,7 @@
 
 import { z } from "zod";
 import { ContaineredAssetFields } from "./base.js";
-import { EmbeddedIdentifierSchema } from "./nested.js";
+import { EmbeddedWriteIdentifierSchema } from "./nested.js";
 
 // ─── AssetFactoryContainer ─────────────────────────────────────────────────
 
@@ -22,10 +22,9 @@ export const AssetFactoryContainerAssetSchema = z
       .describe("Semicolon-delimited list of groups permitted to use factories in this container."),
     description: z.string().optional().describe("Free-form container description."),
     children: z
-      .array(EmbeddedIdentifierSchema)
-      .nullable()
+      .array(EmbeddedWriteIdentifierSchema)
       .optional()
-      .describe("Read-only: Identifiers of child assets."),
+      .describe("Child Identifier objects. If supplied in a write payload, each child requires id or path."),
   })
   .strict()
   .describe("Asset factory container — groups asset factories and asset factory containers.");
@@ -47,10 +46,9 @@ function simpleContainerSchema(description: string) {
     .object({
       ...ContaineredAssetFields,
       children: z
-        .array(EmbeddedIdentifierSchema)
-        .nullable()
+        .array(EmbeddedWriteIdentifierSchema)
         .optional()
-        .describe("Read-only: Identifiers of child assets."),
+        .describe("Child Identifier objects. If supplied in a write payload, each child requires id or path."),
     })
     .strict()
     .describe(description);

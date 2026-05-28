@@ -7,8 +7,8 @@
  * `indexBlock`, `textBlock`, `xhtmlDataDefinitionBlock`, `xmlBlock`,
  * `twitterFeedBlock`.
  *
- * All block variants extend `ExpiringAsset` (via an abstract `Block` alias
- * in the OpenAPI spec). They inherit the full folder-contained + metadata +
+ * All block variants extend `ExpiringAsset` (via the generated `Block` alias).
+ * They inherit the full folder-contained + metadata +
  * expiration field set but NOT the publish flags.
  */
 
@@ -75,13 +75,9 @@ export const IndexBlockAssetSchema = z
       .describe("Read-only: true if the indexed folder is recycled."),
     maxRenderedAssets: z
       .number()
-      .int()
-      .min(0)
       .describe("REQUIRED: Maximum number of assets to include in the rendered output."),
     depthOfIndex: z
       .number()
-      .int()
-      .min(0)
       .describe("REQUIRED: How many levels of children to descend into."),
     renderingBehavior: IndexBlockRenderingBehaviorSchema.optional().describe(
       "How the index tree is walked during render. Default 'render-normally'.",
@@ -218,8 +214,6 @@ export const TwitterFeedBlockAssetSchema = z
       .describe("Search string. REQUIRED when queryType is 'search-terms'."),
     maxResults: z
       .number()
-      .int()
-      .min(0)
       .describe("REQUIRED: Maximum number of tweets to render."),
     useDefaultStyle: z
       .boolean()

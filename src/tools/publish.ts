@@ -35,12 +35,13 @@ Args:
     - id (string, optional): Asset ID (preferred)
     - path (object, optional): { path, siteId OR siteName }
     - type (string, required): Entity type of the asset
-  - publishInformation (object, required, shape varies — see Cascade docs):
+    - requires type plus either id or path; prefer id when known
+  - publishInformation (object, required): Parameters matching cascade-cms-api PublishInformation
     - destinations (array, optional): Specific destination identifiers. Omit for "all enabled destinations".
-    - unpublish (boolean, optional, default false): When true, unpublish instead of publish.
-    - publishRelatedAssets (boolean, optional): Also publish referenced assets.
-    - publishRelatedPublishSet (boolean, optional): Also publish related publish sets.
-    - scheduledDate (string, optional): ISO-ish date for scheduled (future) publish.
+    - unpublish (boolean | null, optional, default false): When true, unpublish instead of publish.
+    - publishRelatedAssets (boolean | null, optional): Also publish referenced assets.
+    - publishRelatedPublishSet (boolean | null, optional): Also publish related publish sets.
+    - scheduledDate (string | null, optional): ISO-ish date for scheduled (future) publish.
 
 Returns:
   Cascade OperationResult:

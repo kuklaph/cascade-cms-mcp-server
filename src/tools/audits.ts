@@ -38,7 +38,7 @@ export function registerAuditTools(
 Queries Cascade's system audit log for events like edits, publishes, logins, check-outs, deletes, and workflow transitions. All auditParameters fields are optional — providing none returns every recorded event (expect large volumes; always apply a date range filter). Results are always returned newest-first by Cascade; this MCP layer then slices the page.
 
 Args:
-  - auditParameters (object, required, shape varies — see Cascade docs): Filter conditions
+  - auditParameters (object, required): Filter conditions matching cascade-cms-api AuditParameters
     - identifier (object, optional): Limit to events on a specific asset
     - username (string, optional): Limit to events by a specific user
     - groupname (string, optional): Limit to events by users in a group
@@ -140,12 +140,12 @@ Error Handling:
     description: buildCascadeToolDescription(
       `Update a single Cascade system preference.
 
-Accepts a preference object with name and value. The name must exactly match an existing preference key (see cascade_read_preferences for the full list); value is always sent as a string, even for numeric or boolean preferences (Cascade parses it). Changes take effect server-wide immediately. Requires system-admin-level credentials.
+Accepts a generated Preference object with name and value strings. The name must exactly match an existing preference key (see cascade_read_preferences for the full list). Changes take effect server-wide immediately. Requires system-admin-level credentials.
 
 Args:
-  - preference (object, required, shape varies — see Cascade docs): The preference to update
+  - preference (object, required): The preference to update
     - name (string, required): Exact preference key
-    - value (string, required): New value (serialized as string even for numbers/booleans)
+    - value (string, required): New preference value
 
 Returns:
   Cascade OperationResult:
@@ -153,8 +153,8 @@ Returns:
   On failure: { success: false, message: "<error>" }
 
 Examples:
-  - Use when: "Increase the server's API timeout" -> { preference: { name: "api.request.timeoutSeconds", value: "60" } }
-  - Use when: "Toggle a feature flag" -> { preference: { name: "feature.somefeature.enabled", value: "true" } }
+  - Use when: "Update a text-valued server preference" -> { preference: { name: "some.preference.key", value: "some-string-value" } }
+  - Use when: "Replace a configured preference value after reading the current key" -> { preference: { name: "some.preference.key", value: "new-string-value" } }
   - Don't use when: You want to read current values — use cascade_read_preferences first.
   - Don't use when: The target is user-scoped — system preferences are server-wide.
 

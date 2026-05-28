@@ -345,6 +345,27 @@ describe("asset nodelet index", () => {
     expect(ambiguous.assetIdentity).toEqual({});
   });
 
+  test("uses the concrete asset key when workflowConfiguration is present", () => {
+    const index = buildAssetIndex(
+      {
+        workflowConfiguration: {
+          workflowName: "Review",
+          workflowComments: "Route for approval",
+        },
+        page: {
+          id: "page-id",
+          type: "page",
+          name: "index",
+          structuredData: { structuredDataNodes: [] },
+        },
+      },
+      "a_workflow_companion",
+    );
+
+    expect(index.assetType).toBe("page");
+    expect(index.assetIdentity.id).toBe("page-id");
+  });
+
   test("keeps decoded inner asset fallback when the object itself has a type", () => {
     const index = buildAssetIndex(
       {

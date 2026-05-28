@@ -199,7 +199,7 @@ Read-only tools:
 | `cascade_search`                    | Search Cascade assets                              |
 | `cascade_list_sites`                | List Cascade sites                                 |
 | `cascade_read_access_rights`        | Read access rights for an asset                    |
-| `cascade_read_workflow_settings`    | Read workflow settings for a folder or site        |
+| `cascade_read_workflow_settings`    | Read workflow settings for a folder                |
 | `cascade_read_workflow_information` | Read workflow information for an asset             |
 | `cascade_list_subscribers`          | List subscribers for an asset                      |
 | `cascade_list_messages`             | List Cascade messages                              |
@@ -323,7 +323,8 @@ Create a page:
         "name": "new-page",
         "parentFolderPath": "/about",
         "siteName": "www",
-        "contentTypePath": "/standard/content-type"
+        "contentTypePath": "/standard/content-type",
+        "xhtml": "<p>Page content</p>"
       }
     }
   }
@@ -419,7 +420,7 @@ Example management calls:
 - API keys are loaded from environment variables only. Do not commit MCP config files that contain real credentials.
 - `cascade_read` preview mode caches exact raw asset JSON in memory for follow-up inspection. Restart the MCP server to clear cached asset data.
 - Error messages are redacted before being logged or returned.
-- Input validation rejects unknown fields at the MCP boundary except for bounded passthrough cases.
+- Input validation rejects unknown fields at the MCP boundary using Zod schemas that mirror the generated Cascade API request shapes.
 
 ## License
 

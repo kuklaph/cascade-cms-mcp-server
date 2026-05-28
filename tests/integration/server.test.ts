@@ -10,7 +10,11 @@
  */
 
 import { describe, test, expect, mock } from "bun:test";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { readFileSync } from "node:fs";
+import {
+  ListToolsResultSchema,
+  type CallToolResult,
+} from "@modelcontextprotocol/sdk/types.js";
 import { createServer } from "../../src/server.js";
 import { createMockClient } from "../fixtures/mock-client.js";
 import type { ToolBlockStore } from "../../src/toolBlocks.js";
@@ -62,6 +66,135 @@ async function callToolViaSdkPath(
     },
     {},
   );
+}
+
+async function listToolsResultViaSdkPath(server: unknown): Promise<Record<string, any>> {
+  const protocol = (server as { server: { _requestHandlers: Map<string, any> } }).server;
+  const handler = protocol._requestHandlers.get("tools/list");
+  if (!handler) throw new Error("tools/list handler not registered");
+  return handler(
+    {
+      method: "tools/list",
+      params: {},
+    },
+    {},
+  );
+}
+
+async function listToolsViaSdkPath(server: unknown): Promise<Record<string, any>> {
+  const result = await listToolsResultViaSdkPath(server);
+  return Object.fromEntries(
+    result.tools.map((tool: Record<string, any>) => [tool.name, tool]),
+  );
+}
+
+function schemaTypes(schema: any): string[] {
+  const types = new Set<string>();
+  collectSchemaTypes(schema, types);
+  return Array.from(types).sort();
+}
+
+function collectSchemaTypes(schema: any, types: Set<string>): void {
+  if (!schema || typeof schema !== "object") return;
+  if (typeof schema.type === "string") types.add(schema.type);
+  for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+    if (Array.isArray(schema[key])) {
+      for (const child of schema[key]) collectSchemaTypes(child, types);
+    }
+  }
+}
+
+function schemaHasRequiredBranch(schema: any, field: string): boolean {
+  if (!schema || typeof schema !== "object") return false;
+  if (Array.isArray(schema.required) && schema.required.includes(field)) {
+    return true;
+  }
+  return ["anyOf", "oneOf", "allOf"].some((key) =>
+    Array.isArray(schema[key])
+      ? schema[key].some((child: any) => schemaHasRequiredBranch(child, field))
+      : false,
+  );
+}
+
+function schemaHasProperty(schema: any, field: string): boolean {
+  if (!schema || typeof schema !== "object") return false;
+  if (schema.properties && Object.hasOwn(schema.properties, field)) return true;
+  return ["anyOf", "oneOf", "allOf"].some((key) =>
+    Array.isArray(schema[key])
+      ? schema[key].some((child: any) => schemaHasProperty(child, field))
+      : false,
+  );
+}
+
+function schemasAtPath(schema: any, path: string[]): any[] {
+  if (!schema || typeof schema !== "object") return [];
+  if (path.length === 0) return [schema];
+
+  const [field, ...rest] = path;
+  const matches: any[] = [];
+  if (field === "[]" && schema.items) {
+    matches.push(...schemasAtPath(schema.items, rest));
+  }
+  if (field !== "[]" && schema.properties && Object.hasOwn(schema.properties, field)) {
+    matches.push(...schemasAtPath(schema.properties[field], rest));
+  }
+  for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+    if (Array.isArray(schema[key])) {
+      for (const child of schema[key]) matches.push(...schemasAtPath(child, path));
+    }
+  }
+  return matches;
+}
+
+function schemaPathTypes(schema: any, path: string[]): string[] {
+  const types = new Set<string>();
+  for (const match of schemasAtPath(schema, path)) {
+    for (const type of schemaTypes(match)) types.add(type);
+  }
+  return Array.from(types).sort();
+}
+
+function schemaPathHasRequiredBranch(schema: any, path: string[], field: string): boolean {
+  return schemasAtPath(schema, path).some((match) =>
+    schemaHasRequiredBranch(match, field),
+  );
+}
+
+function assertStrictObjectBranches(schema: any): void {
+  if (!schema || typeof schema !== "object") return;
+  if (schema.type === "object" && schema.properties) {
+    expect(schema.additionalProperties).toBe(false);
+  }
+  for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+    if (Array.isArray(schema[key])) {
+      for (const child of schema[key]) assertStrictObjectBranches(child);
+    }
+  }
+  if (schema.properties) {
+    for (const child of Object.values(schema.properties)) {
+      assertStrictObjectBranches(child);
+    }
+  }
+  if (schema.items) assertStrictObjectBranches(schema.items);
+}
+
+function assetPropertyEntriesFromTypes(): Array<{ key: string; optional: boolean }> {
+  const source = readFileSync(
+    "node_modules/cascade-cms-api/types/types.d.ts",
+    "utf8",
+  );
+  const match = source.match(/export type AssetPropertiesBase = \{([\s\S]*?)\n\};/);
+  if (!match) throw new Error("AssetPropertiesBase type not found");
+  expect(source).toContain("export type AssetProperties = RequireExactlyOne<");
+  expect(source).toContain("AssetPropertiesBase,");
+  return [...match[1].matchAll(/^\s*([A-Za-z0-9_]+)(\?)?:/gm)]
+    .map((item) => ({ key: item[1], optional: item[2] === "?" }))
+    .filter((entry) => entry.key !== "workflowConfiguration")
+    .sort((a, b) => a.key.localeCompare(b.key));
+}
+
+function assetPropertyKeysFromTypes(): string[] {
+  return assetPropertyEntriesFromTypes().map((entry) => entry.key).sort();
 }
 
 /** All 37 expected tool names: 33 Cascade-backed tools + 4 local tools. */
@@ -327,6 +460,394 @@ describe("createServer (server factory)", () => {
     expect(invalidBody.error.type).toBe("validation_error");
     expect(JSON.stringify(invalidBody)).not.toContain("sk-testsecret123456");
     expect(client.read).not.toHaveBeenCalled();
+  });
+
+  test("tools/list advertises exact typed schemas while tools/call keeps project validation errors", async () => {
+    const client = createMockClient({
+      read: mock(() => Promise.resolve(READ_PAGE_OK)),
+    });
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+
+    const listResult = await listToolsResultViaSdkPath(server);
+    const parsedListResult = ListToolsResultSchema.safeParse(listResult);
+
+    expect(parsedListResult.success).toBe(true);
+    for (const tool of listResult.tools) {
+      expect(tool.inputSchema.type).toBe("object");
+      assertStrictObjectBranches(tool.inputSchema);
+    }
+
+    const tools = Object.fromEntries(
+      listResult.tools.map((tool: Record<string, any>) => [tool.name, tool]),
+    );
+    const readSchema = tools["cascade_read"].inputSchema;
+    const createSchema = tools["cascade_create"].inputSchema;
+    const editSchema = tools["cascade_edit"].inputSchema;
+    const removeSchema = tools["cascade_remove"].inputSchema;
+    const moveSchema = tools["cascade_move"].inputSchema;
+    const copySchema = tools["cascade_copy"].inputSchema;
+    const accessSchema = tools["cascade_edit_access_rights"].inputSchema;
+    const workflowSettingsSchema =
+      tools["cascade_edit_workflow_settings"].inputSchema;
+    const publishSchema = tools["cascade_publish_unpublish"].inputSchema;
+    const searchSchema = tools["cascade_search"].inputSchema;
+    const siteCopySchema = tools["cascade_site_copy"].inputSchema;
+    const nodeletSchema = tools["cascade_asset_get_nodelet"].inputSchema;
+    const transitionSchema = tools["cascade_perform_workflow_transition"].inputSchema;
+    const auditSchema = tools["cascade_read_audits"].inputSchema;
+    const preferenceSchema = tools["cascade_edit_preference"].inputSchema;
+    const markSchema = tools["cascade_mark_message"].inputSchema;
+
+    expect(schemaTypes(readSchema.properties.identifier)).toContain("object");
+    expect(schemaHasRequiredBranch(readSchema.properties.identifier, "id")).toBe(true);
+    expect(schemaHasRequiredBranch(readSchema.properties.identifier, "path")).toBe(true);
+    expect(readSchema.required).toContain("identifier");
+    expect(readSchema.properties.read_mode.default).toBe("preview");
+    expect(JSON.stringify(readSchema.properties.read_mode)).toContain("raw");
+
+    expect(schemaTypes(createSchema.properties.asset)).toContain("object");
+    expect(schemaTypes(editSchema.properties.asset)).toContain("object");
+    for (const entry of assetPropertyEntriesFromTypes()) {
+      expect(entry.optional).toBe(true);
+    }
+    for (const key of assetPropertyKeysFromTypes()) {
+      expect(schemaHasRequiredBranch(createSchema.properties.asset, key)).toBe(true);
+      expect(schemaHasRequiredBranch(editSchema.properties.asset, key)).toBe(true);
+    }
+    expect(schemaHasProperty(createSchema.properties.asset, "workflowConfiguration")).toBe(true);
+    expect(schemaHasProperty(editSchema.properties.asset, "workflowConfiguration")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["reference"], "referencedAssetId")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["reference"], "referencedAssetPath")).toBe(true);
+    expect(schemaPathHasRequiredBranch(editSchema.properties.asset, ["page"], "siteId")).toBe(true);
+    expect(schemaPathHasRequiredBranch(editSchema.properties.asset, ["page"], "siteName")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["role"], "globalAbilities")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["role"], "siteAbilities")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["role"], "roleType")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["contentType"], "pageConfigurationSetId")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["contentType"], "pageConfigurationSetPath")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["contentType"], "metadataSetId")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["contentType"], "metadataSetPath")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["destination"], "transportId")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["destination"], "transportPath")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["destination"], "siteId")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["destination"], "siteName")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["pageConfigurationSet", "pageConfigurations", "[]"], "templateId")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["pageConfigurationSet", "pageConfigurations", "[]"], "templatePath")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["contentType", "contentTypePageConfigurations", "[]"], "pageConfigurationId")).toBe(true);
+    expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["contentType", "contentTypePageConfigurations", "[]"], "pageConfigurationName")).toBe(true);
+    expect(schemaPathTypes(createSchema.properties.asset, ["file", "data"])).toEqual(["array"]);
+    expect(schemaPathTypes(createSchema.properties.asset, ["file", "data", "[]"])).toEqual(["number"]);
+    expect(schemaPathTypes(createSchema.properties.asset, ["destination", "publishIntervalHours"])).toEqual(["number"]);
+    expect(schemaPathTypes(createSchema.properties.asset, ["ftpTransport", "port"])).toEqual(["number"]);
+    expect(schemaPathTypes(createSchema.properties.asset, ["site", "linkCheckerEnabled"])).toEqual(["boolean"]);
+    expect(schemaPathTypes(createSchema.properties.asset, ["folder", "shouldBePublished"])).toEqual(["boolean"]);
+    expect(schemaTypes(removeSchema.properties.identifier)).toContain("object");
+    expect(removeSchema.properties.deleteParameters.type).toBe("object");
+    expect(removeSchema.properties.deleteParameters.required).toContain("doWorkflow");
+    expect(schemaHasRequiredBranch(removeSchema.properties.workflowConfiguration, "workflowDefinitionId")).toBe(true);
+    expect(schemaHasRequiredBranch(removeSchema.properties.workflowConfiguration, "workflowDefinitionPath")).toBe(true);
+    expect(moveSchema.properties.moveParameters.type).toBe("object");
+    expect(schemaHasRequiredBranch(moveSchema.properties.workflowConfiguration, "workflowDefinitionId")).toBe(true);
+    expect(schemaHasRequiredBranch(moveSchema.properties.workflowConfiguration, "workflowDefinitionPath")).toBe(true);
+    expect(copySchema.properties.copyParameters.type).toBe("object");
+    expect(schemaHasRequiredBranch(copySchema.properties.workflowConfiguration, "workflowDefinitionId")).toBe(true);
+    expect(schemaHasRequiredBranch(copySchema.properties.workflowConfiguration, "workflowDefinitionPath")).toBe(true);
+
+    const aclEntrySchema =
+      accessSchema.properties.accessRightsInformation.properties.aclEntries.items;
+    expect(accessSchema.properties.accessRightsInformation.type).toBe("object");
+    expect(schemaHasRequiredBranch(aclEntrySchema, "name")).toBe(true);
+    expect(schemaHasRequiredBranch(aclEntrySchema, "id")).toBe(true);
+    expect(accessSchema.properties.applyToChildren.type).toBe("boolean");
+
+    expect(workflowSettingsSchema.properties.workflowSettings.type).toBe("object");
+    expect(
+      schemaTypes(
+        workflowSettingsSchema.properties.workflowSettings.properties.workflowDefinitions,
+      ),
+    ).toEqual(["array"]);
+    expect(
+      workflowSettingsSchema.properties.workflowSettings.properties.inheritWorkflows
+        .type,
+    ).toBe("boolean");
+    expect(
+      workflowSettingsSchema.properties.workflowSettings.properties.requireWorkflow
+        .type,
+    ).toBe("boolean");
+
+    expect(publishSchema.properties.publishInformation.type).toBe("object");
+    expect(
+      schemaTypes(publishSchema.properties.publishInformation.properties.destinations),
+    ).toEqual(["array"]);
+    expect(
+      schemaTypes(publishSchema.properties.publishInformation.properties.unpublish),
+    ).toEqual(["boolean", "null"]);
+
+    expect(searchSchema.properties.limit.type).toBe("number");
+    expect(searchSchema.properties.limit.default).toBe(50);
+    expect(searchSchema.properties.offset.type).toBe("number");
+    expect(searchSchema.properties.offset.default).toBe(0);
+    expect(schemaHasRequiredBranch(siteCopySchema, "originalSiteId")).toBe(true);
+    expect(schemaHasRequiredBranch(siteCopySchema, "originalSiteName")).toBe(true);
+    expect(schemaHasRequiredBranch(siteCopySchema, "newSiteName")).toBe(true);
+    expect(nodeletSchema.properties.depth.type).toBe("number");
+    expect(nodeletSchema.properties.depth.default).toBe(0);
+    expect(nodeletSchema.properties.include_text.type).toBe("boolean");
+    expect(nodeletSchema.properties.include_text.default).toBe(true);
+
+    expect(
+      transitionSchema.properties.workflowTransitionInformation.type,
+    ).toBe("object");
+    expect(
+      transitionSchema.properties.workflowTransitionInformation.required,
+    ).toEqual(expect.arrayContaining(["workflowId", "actionIdentifier"]));
+
+    expect(auditSchema.required).toContain("auditParameters");
+    expect(auditSchema.properties.auditParameters.type).toBe("object");
+    expect(
+      auditSchema.properties.auditParameters.properties.rolename.type,
+    ).toBe("string");
+    expect(auditSchema.properties.auditParameters.properties.role).toBeUndefined();
+
+    expect(preferenceSchema.required).toContain("preference");
+    expect(preferenceSchema.properties.preference.type).toBe("object");
+    expect(preferenceSchema.properties.preference.required).toEqual(
+      expect.arrayContaining(["name", "value"]),
+    );
+    expect(preferenceSchema.properties.preference.properties.name.type).toBe("string");
+    expect(preferenceSchema.properties.preference.properties.value.type).toBe("string");
+
+    const markTypeSchema = JSON.stringify(markSchema.properties.markType);
+    expect(markSchema.required).toEqual(
+      expect.arrayContaining(["identifier", "markType"]),
+    );
+    expect(markTypeSchema).toContain("read");
+    expect(markTypeSchema).toContain("unread");
+    expect(markTypeSchema).not.toContain("archive");
+
+    const invalid = await callToolViaSdkPath(server, "cascade_read", {
+      identifier: "{\"id\":\"abc\",\"type\":\"page\"}",
+    });
+    const body = JSON.parse((invalid.content[0] as any).text);
+
+    expect(invalid.isError).toBe(true);
+    expect(body.error.type).toBe("validation_error");
+    expect(body.error.valid_fields).toEqual(["identifier", "read_mode"]);
+    expect(client.read).not.toHaveBeenCalled();
+  });
+
+  test("tools/call rejects stringified object fields across write tools", async () => {
+    const client = createMockClient();
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+    const identifier = { id: "abc", type: "page" };
+
+    const cases = [
+      {
+        tool: "cascade_create",
+        method: client.create,
+        args: { asset: JSON.stringify({ page: { name: "index" } }) },
+      },
+      {
+        tool: "cascade_edit",
+        method: client.edit,
+        args: { asset: JSON.stringify({ page: { id: "abc" } }) },
+      },
+      {
+        tool: "cascade_remove",
+        method: client.remove,
+        args: { identifier: JSON.stringify(identifier) },
+      },
+      {
+        tool: "cascade_move",
+        method: client.move,
+        args: {
+          identifier,
+          moveParameters: JSON.stringify({
+            destinationContainerIdentifier: { id: "folder-1", type: "folder" },
+            doWorkflow: false,
+          }),
+        },
+      },
+      {
+        tool: "cascade_copy",
+        method: client.copy,
+        args: {
+          identifier,
+          copyParameters: JSON.stringify({
+            destinationContainerIdentifier: { id: "folder-1", type: "folder" },
+            doWorkflow: false,
+          }),
+        },
+      },
+      {
+        tool: "cascade_publish_unpublish",
+        method: client.publishUnpublish,
+        args: {
+          identifier,
+          publishInformation: JSON.stringify({ destinations: [] }),
+        },
+      },
+      {
+        tool: "cascade_edit_access_rights",
+        method: client.editAccessRights,
+        args: {
+          identifier,
+          accessRightsInformation: JSON.stringify({
+            allLevel: "read",
+            aclEntries: [],
+          }),
+        },
+      },
+      {
+        tool: "cascade_edit_workflow_settings",
+        method: client.editWorkflowSettings,
+        args: {
+          identifier: { id: "folder-1", type: "folder" },
+          workflowSettings: JSON.stringify({
+            workflowDefinitions: [],
+            inheritWorkflows: true,
+            requireWorkflow: false,
+          }),
+        },
+      },
+      {
+        tool: "cascade_perform_workflow_transition",
+        method: client.performWorkflowTransition,
+        args: {
+          workflowTransitionInformation: JSON.stringify({
+            workflowId: "wf-1",
+            actionIdentifier: "approve",
+          }),
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const result = await callToolViaSdkPath(server, testCase.tool, testCase.args);
+      const body = JSON.parse((result.content[0] as any).text);
+
+      expect(result.isError).toBe(true);
+      expect(body.error.type).toBe("validation_error");
+      if ("method" in testCase) {
+        expect(testCase.method).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  test("tools/call rejects string numeric and boolean fields", async () => {
+    const client = createMockClient();
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+
+    const cases = [
+      {
+        tool: "cascade_search",
+        method: client.search,
+        args: { searchInformation: { searchTerms: "x" }, limit: "50" },
+      },
+      {
+        tool: "cascade_search",
+        method: client.search,
+        args: { searchInformation: { searchTerms: "x" }, offset: "0" },
+      },
+      {
+        tool: "cascade_asset_get_nodelet",
+        args: { asset_handle: "a_abc", pointer: "", depth: "2" },
+      },
+      {
+        tool: "cascade_asset_get_nodelet",
+        args: { asset_handle: "a_abc", pointer: "", include_text: "false" },
+      },
+      {
+        tool: "cascade_remove",
+        method: client.remove,
+        args: {
+          identifier: { id: "abc", type: "page" },
+          deleteParameters: { doWorkflow: "false" },
+        },
+      },
+      {
+        tool: "cascade_move",
+        method: client.move,
+        args: {
+          identifier: { id: "abc", type: "page" },
+          moveParameters: {
+            destinationContainerIdentifier: { id: "folder-1", type: "folder" },
+            doWorkflow: "false",
+          },
+        },
+      },
+      {
+        tool: "cascade_copy",
+        method: client.copy,
+        args: {
+          identifier: { id: "abc", type: "page" },
+          copyParameters: {
+            destinationContainerIdentifier: { id: "folder-1", type: "folder" },
+            doWorkflow: "false",
+            newName: "copy",
+          },
+        },
+      },
+      {
+        tool: "cascade_publish_unpublish",
+        method: client.publishUnpublish,
+        args: {
+          identifier: { id: "abc", type: "page" },
+          publishInformation: { unpublish: "false" },
+        },
+      },
+      {
+        tool: "cascade_edit_workflow_settings",
+        method: client.editWorkflowSettings,
+        args: {
+          identifier: { id: "folder-1", type: "folder" },
+          workflowSettings: { inheritWorkflows: "true" },
+        },
+      },
+      {
+        tool: "cascade_edit_access_rights",
+        method: client.editAccessRights,
+        args: {
+          identifier: { id: "abc", type: "page" },
+          accessRightsInformation: { allLevel: "read" },
+          applyToChildren: "false",
+        },
+      },
+    ];
+
+    for (const testCase of cases) {
+      const result = await callToolViaSdkPath(server, testCase.tool, testCase.args);
+      const body = JSON.parse((result.content[0] as any).text);
+
+      expect(result.isError).toBe(true);
+      expect(body.error.type).toBe("validation_error");
+      if ("method" in testCase) {
+        expect(testCase.method).not.toHaveBeenCalled();
+      }
+    }
+  });
+
+  test("tools/call keeps cascade_remove safety policies at runtime", async () => {
+    const client = createMockClient();
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+
+    for (const args of [
+      { identifier: { id: "site-1", type: "site" } },
+      {
+        identifier: {
+          type: "folder",
+          path: { path: "/", siteName: "my-site" },
+        },
+      },
+    ]) {
+      const result = await callToolViaSdkPath(server, "cascade_remove", args);
+      const body = JSON.parse((result.content[0] as any).text);
+
+      expect(result.isError).toBe(true);
+      expect(body.error.type).toBe("validation_error");
+    }
+
+    expect(client.remove).not.toHaveBeenCalled();
   });
 
   test("cascade_read default preview omits heavy recursive fields", async () => {

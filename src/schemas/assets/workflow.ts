@@ -4,15 +4,12 @@
  * Includes:
  *   - `workflowDefinition` envelope — the WorkflowDefinition asset
  *   - `workflowEmail` envelope — the WorkflowEmail asset
- *   - `workflowConfiguration` envelope — standalone, not an asset; attached
- *     alongside the asset body on operations that require workflow context
+ *   - `workflowConfiguration` payload — not an asset; attached alongside
+ *     the asset body on operations that require workflow context
  *
- * WorkflowConfiguration lives on the top-level `Asset` object as its first
- * property (openapi.yaml:3844). It's not an envelope "choice" — it travels
- * alongside an asset envelope. For our purposes, we expose it as one of the
- * acceptable envelope shapes since some Cascade operations accept just
- * `{ workflowConfiguration: ... }` (e.g. re-transitioning an existing
- * workflow without modifying the asset).
+ * WorkflowConfiguration is the first property on generated AssetProperties,
+ * which is nested under the top-level Asset.asset wrapper. It's not an
+ * envelope "choice" — it travels alongside an asset envelope.
  */
 
 import { z } from "zod";
@@ -84,7 +81,7 @@ export const WorkflowEmailEnvelopeSchema = z
   })
   .strict();
 
-// ─── WorkflowConfiguration (envelope: `workflowConfiguration`) ─────────────
+// ─── WorkflowConfiguration (`workflowConfiguration` companion property) ───
 // Plain object, not an asset. Travels alongside an asset body on Cascade
 // requests where the caller must supply workflow step assignments.
 
@@ -95,32 +92,45 @@ const WorkflowStepConfigurationSchema = z
   })
   .strict();
 
+const WorkflowConfigurationFields = {
+  workflowName: z.string().describe("REQUIRED: Name for the workflow instance being started."),
+  workflowComments: z
+    .string()
+    .describe("REQUIRED: Comments recorded against the workflow instance."),
+  workflowStepConfigurations: z
+    .array(WorkflowStepConfigurationSchema)
+    .optional()
+    .describe("Optional step assignments — who owns each step."),
+  endDate: z.string().optional().describe("Optional workflow end date (ISO 8601)."),
+};
+
+const WorkflowDefinitionIdSchema = z
+  .string()
+  .describe("Workflow definition id. Priority: id > path.");
+
+const WorkflowDefinitionPathSchema = z
+  .string()
+  .describe("Workflow definition path (alt).");
+
 export const WorkflowConfigurationSchema = z
-  .object({
-    workflowName: z.string().describe("REQUIRED: Name for the workflow instance being started."),
-    workflowDefinitionId: z
-      .string()
-      .optional()
-      .describe("Workflow definition id. One of id/path REQUIRED."),
-    workflowDefinitionPath: z
-      .string()
-      .optional()
-      .describe("Workflow definition path (alt)."),
-    workflowComments: z
-      .string()
-      .describe("REQUIRED: Comments recorded against the workflow instance."),
-    workflowStepConfigurations: z
-      .array(WorkflowStepConfigurationSchema)
-      .optional()
-      .describe("Optional step assignments — who owns each step."),
-    endDate: z
-      .string()
-      .optional()
-      .describe("Optional workflow end date (ISO 8601)."),
-  })
-  .strict()
+  .union([
+    z
+      .object({
+        ...WorkflowConfigurationFields,
+        workflowDefinitionId: WorkflowDefinitionIdSchema,
+        workflowDefinitionPath: WorkflowDefinitionPathSchema.optional(),
+      })
+      .strict(),
+    z
+      .object({
+        ...WorkflowConfigurationFields,
+        workflowDefinitionId: WorkflowDefinitionIdSchema.optional(),
+        workflowDefinitionPath: WorkflowDefinitionPathSchema,
+      })
+      .strict(),
+  ])
   .describe(
-    "Workflow configuration accompanying an asset operation. Not an asset itself — travels alongside an asset envelope or alone when re-transitioning an existing workflow.",
+    "Workflow configuration accompanying an asset operation. Not an asset itself — travels alongside an asset envelope. Include workflowDefinitionId or workflowDefinitionPath; if both are present, Cascade prioritizes workflowDefinitionId.",
   );
 
 export type WorkflowConfiguration = z.infer<typeof WorkflowConfigurationSchema>;

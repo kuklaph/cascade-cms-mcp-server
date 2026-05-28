@@ -1,41 +1,30 @@
 /**
  * Zod schemas for Cascade CMS asset inputs — `AssetInputSchema` and friends.
  *
- * Cascade's REST API models asset payloads as a tagged-envelope object:
+ * Cascade's REST API models concrete asset payloads as a tagged-envelope object:
  *
  *     { <typeKey>: { ...fields } }
  *
- * where `<typeKey>` is one of 48 camelCase property names on the upstream
- * `Asset` schema (`openapi.yaml` line 3841). Each concrete Cascade type
+ * where `<typeKey>` is one of the concrete camelCase asset property names on
+ * the generated `cascade-cms-api` TypeScript `AssetProperties` type. Each concrete Cascade type
  * (Page, File, TextBlock, Template, User, ...) is keyed under its own
- * property. This file assembles per-variant Zod schemas from the
- * `./assets/` sub-modules into a single union that mirrors the REST API
- * exactly.
+ * property. `workflowConfiguration` is a companion property on generated
+ * `AssetProperties` under the `asset` wrapper, not a standalone concrete asset
+ * branch. This file assembles per-variant Zod schemas
+ * from the `./assets/` sub-modules into a single union that mirrors the installed API types.
  *
  * Design notes:
  *
- * - **Shape mirror**. Every field declared in the upstream OpenAPI spec is
- *   present here with the correct `required`/`optional`/`nullable` marker.
+ * - **Shape mirror**. Every field declared in the installed generated
+ *   TypeScript types is present here with the correct required/optional marker.
  *   Unknown keys on an asset object are rejected (`.strict()`) to catch
- *   typos early. Round-trip from `cascade_read` works because every field
- *   Cascade returns (including the echoed `type` string at the top of each
- *   inner object) is modelled.
+ *   typos early. Read responses may include server-only fields; create/edit
+ *   input validation stays aligned to the generated request type surface.
  *
- * - **Required vs optional rule.** A field is `.required()` here if and
- *   only if it appears in the upstream OpenAPI `required:` array for its
- *   type. `NamedAssetFields.name` is required (OpenAPI requires it), even
- *   though description text says "ignored on edit" — Cascade's spec is our
- *   single source of truth. `parentFolderId`/`parentFolderPath` and
- *   `parentContainerId/Path` are optional here because OpenAPI never
- *   declares them required (the "required on create" rule lives only in
- *   description prose). Cascade validates create-side constraints
- *   server-side in both cases.
- *
- * - **No cross-field refinements**. Several types document rules like
- *   "one of xhtml/structuredData REQUIRED" or "searchString REQUIRED when
- *   queryType='search-terms'". The upstream OpenAPI does NOT express these
- *   in its `required:` arrays — they are documentation-only. We mirror the
- *   spec and leave enforcement to Cascade.
+ * - **Required alternatives**. Generated `RequireAtLeastOne` /
+ *   `RequireExactlyOne` declarations and create/edit comments define
+ *   id/path-style alternatives. This file turns those groups into
+ *   JSON-schema-visible unions for tool inputs.
  *
  * - **Union, not discriminated union**. Envelope keys are object keys, not
  *   fields — Zod's `discriminatedUnion` requires a discriminator field, so
@@ -74,6 +63,7 @@ import {
   RoleEnvelopeSchema,
 } from "./assets/admin.js";
 import {
+  FacebookConnectorEnvelopeSchema,
   WordPressConnectorEnvelopeSchema,
   GoogleAnalyticsConnectorEnvelopeSchema,
 } from "./assets/connectors.js";
@@ -86,7 +76,7 @@ import {
 import {
   WorkflowDefinitionEnvelopeSchema,
   WorkflowEmailEnvelopeSchema,
-  WorkflowConfigurationEnvelopeSchema,
+  WorkflowConfigurationSchema,
 } from "./assets/workflow.js";
 import {
   AssetFactoryEnvelopeSchema,
@@ -114,9 +104,9 @@ import {
   WorkflowDefinitionContainerEnvelopeSchema,
   WorkflowEmailContainerEnvelopeSchema,
 } from "./assets/containers.js";
+import { objectWithRequiredAlternatives } from "./requiredAlternatives.js";
 
 export const ASSET_ENVELOPE_KEYS = [
-  "workflowConfiguration",
   "feedBlock",
   "indexBlock",
   "textBlock",
@@ -139,6 +129,7 @@ export const ASSET_ENVELOPE_KEYS = [
   "contentType",
   "contentTypeContainer",
   "connectorContainer",
+  "facebookConnector",
   "wordPressConnector",
   "googleAnalyticsConnector",
   "pageConfigurationSet",
@@ -170,105 +161,368 @@ export type AssetEnvelopeKey = (typeof ASSET_ENVELOPE_KEYS)[number];
 
 // ─── AssetInputSchema: the envelope union ───────────────────────────────────
 
+const withWorkflowConfiguration = <TSchema extends z.ZodObject<z.ZodRawShape>>(
+  schema: TSchema,
+) =>
+  schema
+    .extend({
+      workflowConfiguration: WorkflowConfigurationSchema.optional().describe(
+        "Optional workflow configuration accompanying this asset operation.",
+      ),
+    })
+    .strict();
+
+const singleEnvelopeEntry = (
+  schema: z.ZodObject<z.ZodRawShape>,
+): [string, z.ZodTypeAny] => {
+  const entries = Object.entries(schema.shape);
+  if (entries.length !== 1) {
+    throw new Error("Asset envelope schema must contain exactly one asset key");
+  }
+  return entries[0] as [string, z.ZodTypeAny];
+};
+
+const createRequiredAlternativeGroups = (shape: z.ZodRawShape): string[][] => [
+  ["parentFolderId", "parentFolderPath"],
+  ["parentContainerId", "parentContainerPath"],
+  ["siteId", "siteName"],
+  ["contentTypeId", "contentTypePath", "configurationSetId", "configurationSetPath"],
+  ["xhtml", "structuredData"],
+  ["text", "data"],
+];
+
+const editRequiredAlternativeGroups = (shape: z.ZodRawShape): string[][] => [
+  ["siteId", "siteName"],
+  ["contentTypeId", "contentTypePath", "configurationSetId", "configurationSetPath"],
+  ["xhtml", "structuredData"],
+  ["text", "data"],
+];
+
+const unionOptions = (schemas: z.ZodTypeAny[]): z.ZodTypeAny => {
+  if (schemas.length === 0) {
+    throw new Error("Expected at least one asset schema option");
+  }
+  if (schemas.length === 1) return schemas[0];
+  return z.union(
+    schemas as [
+      z.ZodTypeAny,
+      z.ZodTypeAny,
+      ...z.ZodTypeAny[],
+    ],
+  );
+};
+
+const objectSchemaOptions = (
+  schema: z.ZodTypeAny,
+): z.ZodObject<z.ZodRawShape>[] | null => {
+  if (schema instanceof z.ZodObject) return [schema];
+  if (schema instanceof z.ZodUnion) {
+    const options = schema.options as z.ZodTypeAny[];
+    if (options.every((option) => option instanceof z.ZodObject)) {
+      return options as z.ZodObject<z.ZodRawShape>[];
+    }
+  }
+  return null;
+};
+
+const createEnvelopeSchema = (schema: z.ZodObject<z.ZodRawShape>) => {
+  const [key, inner] = singleEnvelopeEntry(schema);
+  const options = objectSchemaOptions(inner);
+  if (!options) return schema;
+  return z
+    .object({
+      [key]: unionOptions(
+        options.map((option) => {
+          const { id: _id, ...createShape } = option.shape;
+          return objectWithRequiredAlternatives(
+            createShape,
+            createRequiredAlternativeGroups(createShape),
+            option.description,
+          );
+        }),
+      ),
+    })
+    .strict();
+};
+
+const editEnvelopeSchema = (schema: z.ZodObject<z.ZodRawShape>) => {
+  const [key, inner] = singleEnvelopeEntry(schema);
+  const options = objectSchemaOptions(inner);
+  if (!options) return schema;
+  return z
+    .object({
+      [key]: unionOptions(
+        options.map((option) =>
+          objectWithRequiredAlternatives(
+            option.shape,
+            editRequiredAlternativeGroups(option.shape),
+            option.description,
+          ),
+        ),
+      ),
+    })
+    .strict();
+};
+
 /**
  * Envelope union over every type-keyed property on Cascade's `Asset`
- * schema. The accepted shape is always `{ <oneTypeKey>: { ...fields } }`.
+ * schema. The accepted shape is always `{ <oneTypeKey>: { ...fields } }`,
+ * with optional `workflowConfiguration` alongside that concrete key.
  * Plain `z.union` — the discriminator is the object key itself, which
  * `z.discriminatedUnion` cannot express (it requires a discriminator
  * field).
  *
- * Listing follows the order of the upstream `Asset` properties: workflow
- * configuration, then blocks, content (file/folder/page), reference,
- * formats, symlink, template, admin-area (user/group/role), asset factory,
- * containers, content type, connectors, page configuration, data
- * definition, shared field, metadata set, publish set, destinations,
- * transports, workflow, twitter feed, site, editor configuration.
+ * Listing groups the upstream concrete `Asset` properties by asset family.
  */
 export const AssetInputSchema = z
   .union([
-    // Workflow (not technically an asset — but travels on the Asset object)
-    WorkflowConfigurationEnvelopeSchema,
-
     // Blocks
-    FeedBlockEnvelopeSchema,
-    IndexBlockEnvelopeSchema,
-    TextBlockEnvelopeSchema,
-    XhtmlDataDefinitionBlockEnvelopeSchema,
-    XmlBlockEnvelopeSchema,
-    TwitterFeedBlockEnvelopeSchema,
+    withWorkflowConfiguration(FeedBlockEnvelopeSchema),
+    withWorkflowConfiguration(IndexBlockEnvelopeSchema),
+    withWorkflowConfiguration(TextBlockEnvelopeSchema),
+    withWorkflowConfiguration(XhtmlDataDefinitionBlockEnvelopeSchema),
+    withWorkflowConfiguration(XmlBlockEnvelopeSchema),
+    withWorkflowConfiguration(TwitterFeedBlockEnvelopeSchema),
 
     // Core content
-    FileEnvelopeSchema,
-    FolderEnvelopeSchema,
-    PageEnvelopeSchema,
-    ReferenceEnvelopeSchema,
+    withWorkflowConfiguration(FileEnvelopeSchema),
+    withWorkflowConfiguration(FolderEnvelopeSchema),
+    withWorkflowConfiguration(PageEnvelopeSchema),
+    withWorkflowConfiguration(ReferenceEnvelopeSchema),
 
     // Formats + template
-    XsltFormatEnvelopeSchema,
-    ScriptFormatEnvelopeSchema,
-    SymlinkEnvelopeSchema,
-    TemplateEnvelopeSchema,
+    withWorkflowConfiguration(XsltFormatEnvelopeSchema),
+    withWorkflowConfiguration(ScriptFormatEnvelopeSchema),
+    withWorkflowConfiguration(SymlinkEnvelopeSchema),
+    withWorkflowConfiguration(TemplateEnvelopeSchema),
 
     // Admin-area principals
-    UserEnvelopeSchema,
-    GroupEnvelopeSchema,
-    RoleEnvelopeSchema,
+    withWorkflowConfiguration(UserEnvelopeSchema),
+    withWorkflowConfiguration(GroupEnvelopeSchema),
+    withWorkflowConfiguration(RoleEnvelopeSchema),
 
     // Asset factory + container
-    AssetFactoryEnvelopeSchema,
-    AssetFactoryContainerEnvelopeSchema,
+    withWorkflowConfiguration(AssetFactoryEnvelopeSchema),
+    withWorkflowConfiguration(AssetFactoryContainerEnvelopeSchema),
 
     // Content type + container
-    ContentTypeEnvelopeSchema,
-    ContentTypeContainerEnvelopeSchema,
+    withWorkflowConfiguration(ContentTypeEnvelopeSchema),
+    withWorkflowConfiguration(ContentTypeContainerEnvelopeSchema),
 
     // Connectors
-    ConnectorContainerEnvelopeSchema,
-    WordPressConnectorEnvelopeSchema,
-    GoogleAnalyticsConnectorEnvelopeSchema,
+    withWorkflowConfiguration(ConnectorContainerEnvelopeSchema),
+    withWorkflowConfiguration(FacebookConnectorEnvelopeSchema),
+    withWorkflowConfiguration(WordPressConnectorEnvelopeSchema),
+    withWorkflowConfiguration(GoogleAnalyticsConnectorEnvelopeSchema),
 
     // Page configuration
-    PageConfigurationSetEnvelopeSchema,
-    PageConfigurationSetContainerEnvelopeSchema,
+    withWorkflowConfiguration(PageConfigurationSetEnvelopeSchema),
+    withWorkflowConfiguration(PageConfigurationSetContainerEnvelopeSchema),
 
     // Data definition + shared field
-    DataDefinitionEnvelopeSchema,
-    DataDefinitionContainerEnvelopeSchema,
-    SharedFieldEnvelopeSchema,
-    SharedFieldContainerEnvelopeSchema,
+    withWorkflowConfiguration(DataDefinitionEnvelopeSchema),
+    withWorkflowConfiguration(DataDefinitionContainerEnvelopeSchema),
+    withWorkflowConfiguration(SharedFieldEnvelopeSchema),
+    withWorkflowConfiguration(SharedFieldContainerEnvelopeSchema),
 
     // Metadata set
-    MetadataSetEnvelopeSchema,
-    MetadataSetContainerEnvelopeSchema,
+    withWorkflowConfiguration(MetadataSetEnvelopeSchema),
+    withWorkflowConfiguration(MetadataSetContainerEnvelopeSchema),
 
     // Publish set
-    PublishSetEnvelopeSchema,
-    PublishSetContainerEnvelopeSchema,
+    withWorkflowConfiguration(PublishSetEnvelopeSchema),
+    withWorkflowConfiguration(PublishSetContainerEnvelopeSchema),
 
     // Destinations + transports
-    SiteDestinationContainerEnvelopeSchema,
-    DestinationEnvelopeSchema,
-    FileSystemTransportEnvelopeSchema,
-    FtpTransportEnvelopeSchema,
-    DatabaseTransportEnvelopeSchema,
-    CloudTransportEnvelopeSchema,
-    TransportContainerEnvelopeSchema,
+    withWorkflowConfiguration(SiteDestinationContainerEnvelopeSchema),
+    withWorkflowConfiguration(DestinationEnvelopeSchema),
+    withWorkflowConfiguration(FileSystemTransportEnvelopeSchema),
+    withWorkflowConfiguration(FtpTransportEnvelopeSchema),
+    withWorkflowConfiguration(DatabaseTransportEnvelopeSchema),
+    withWorkflowConfiguration(CloudTransportEnvelopeSchema),
+    withWorkflowConfiguration(TransportContainerEnvelopeSchema),
 
     // Workflow definitions + emails
-    WorkflowDefinitionEnvelopeSchema,
-    WorkflowDefinitionContainerEnvelopeSchema,
-    WorkflowEmailEnvelopeSchema,
-    WorkflowEmailContainerEnvelopeSchema,
+    withWorkflowConfiguration(WorkflowDefinitionEnvelopeSchema),
+    withWorkflowConfiguration(WorkflowDefinitionContainerEnvelopeSchema),
+    withWorkflowConfiguration(WorkflowEmailEnvelopeSchema),
+    withWorkflowConfiguration(WorkflowEmailContainerEnvelopeSchema),
 
     // Site + editor configuration
-    SiteEnvelopeSchema,
-    EditorConfigurationEnvelopeSchema,
+    withWorkflowConfiguration(SiteEnvelopeSchema),
+    withWorkflowConfiguration(EditorConfigurationEnvelopeSchema),
   ])
   .describe(
-    "Cascade asset payload. Wrap the asset under its envelope key — e.g. `{ page: {...} }`, `{ symlink: {...} }`, `{ textBlock: {...} }`. 48 envelope keys are accepted, one per concrete Cascade type. Matches the upstream `Asset` schema 1:1.",
+    "Cascade asset payload. Wrap one concrete asset under its envelope key — e.g. `{ page: {...} }`, `{ symlink: {...} }`, `{ textBlock: {...} }` — with optional `workflowConfiguration` alongside it. Uses generated `AssetProperties` branch names, which require exactly one concrete asset branch plus optional workflowConfiguration.",
   );
 
 export type AssetInput = z.infer<typeof AssetInputSchema>;
+
+export const CreateAssetInputSchema = z
+  .union([
+    // Blocks
+    withWorkflowConfiguration(createEnvelopeSchema(FeedBlockEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(IndexBlockEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(TextBlockEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(XhtmlDataDefinitionBlockEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(XmlBlockEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(TwitterFeedBlockEnvelopeSchema)),
+
+    // Core content
+    withWorkflowConfiguration(createEnvelopeSchema(FileEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(FolderEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(PageEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(ReferenceEnvelopeSchema)),
+
+    // Formats + template
+    withWorkflowConfiguration(createEnvelopeSchema(XsltFormatEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(ScriptFormatEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(SymlinkEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(TemplateEnvelopeSchema)),
+
+    // Admin-area principals
+    withWorkflowConfiguration(createEnvelopeSchema(UserEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(GroupEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(RoleEnvelopeSchema)),
+
+    // Asset factory + container
+    withWorkflowConfiguration(createEnvelopeSchema(AssetFactoryEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(AssetFactoryContainerEnvelopeSchema)),
+
+    // Content type + container
+    withWorkflowConfiguration(createEnvelopeSchema(ContentTypeEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(ContentTypeContainerEnvelopeSchema)),
+
+    // Connectors
+    withWorkflowConfiguration(createEnvelopeSchema(ConnectorContainerEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(FacebookConnectorEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(WordPressConnectorEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(GoogleAnalyticsConnectorEnvelopeSchema)),
+
+    // Page configuration
+    withWorkflowConfiguration(createEnvelopeSchema(PageConfigurationSetEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(PageConfigurationSetContainerEnvelopeSchema)),
+
+    // Data definition + shared field
+    withWorkflowConfiguration(createEnvelopeSchema(DataDefinitionEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(DataDefinitionContainerEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(SharedFieldEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(SharedFieldContainerEnvelopeSchema)),
+
+    // Metadata set
+    withWorkflowConfiguration(createEnvelopeSchema(MetadataSetEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(MetadataSetContainerEnvelopeSchema)),
+
+    // Publish set
+    withWorkflowConfiguration(createEnvelopeSchema(PublishSetEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(PublishSetContainerEnvelopeSchema)),
+
+    // Destinations + transports
+    withWorkflowConfiguration(createEnvelopeSchema(SiteDestinationContainerEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(DestinationEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(FileSystemTransportEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(FtpTransportEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(DatabaseTransportEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(CloudTransportEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(TransportContainerEnvelopeSchema)),
+
+    // Workflow definitions + emails
+    withWorkflowConfiguration(createEnvelopeSchema(WorkflowDefinitionEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(WorkflowDefinitionContainerEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(WorkflowEmailEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(WorkflowEmailContainerEnvelopeSchema)),
+
+    // Site + editor configuration
+    withWorkflowConfiguration(createEnvelopeSchema(SiteEnvelopeSchema)),
+    withWorkflowConfiguration(createEnvelopeSchema(EditorConfigurationEnvelopeSchema)),
+  ])
+  .describe(
+    "Cascade create asset payload. Wrap one concrete asset under its envelope key and omit server-assigned id fields.",
+  );
+
+export type CreateAssetInput = z.infer<typeof CreateAssetInputSchema>;
+
+export const EditAssetInputSchema = z
+  .union([
+    // Blocks
+    withWorkflowConfiguration(editEnvelopeSchema(FeedBlockEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(IndexBlockEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(TextBlockEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(XhtmlDataDefinitionBlockEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(XmlBlockEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(TwitterFeedBlockEnvelopeSchema)),
+
+    // Core content
+    withWorkflowConfiguration(editEnvelopeSchema(FileEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(FolderEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(PageEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(ReferenceEnvelopeSchema)),
+
+    // Formats + template
+    withWorkflowConfiguration(editEnvelopeSchema(XsltFormatEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(ScriptFormatEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(SymlinkEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(TemplateEnvelopeSchema)),
+
+    // Admin-area principals
+    withWorkflowConfiguration(editEnvelopeSchema(UserEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(GroupEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(RoleEnvelopeSchema)),
+
+    // Asset factory + container
+    withWorkflowConfiguration(editEnvelopeSchema(AssetFactoryEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(AssetFactoryContainerEnvelopeSchema)),
+
+    // Content type + container
+    withWorkflowConfiguration(editEnvelopeSchema(ContentTypeEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(ContentTypeContainerEnvelopeSchema)),
+
+    // Connectors
+    withWorkflowConfiguration(editEnvelopeSchema(ConnectorContainerEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(FacebookConnectorEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(WordPressConnectorEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(GoogleAnalyticsConnectorEnvelopeSchema)),
+
+    // Page configuration
+    withWorkflowConfiguration(editEnvelopeSchema(PageConfigurationSetEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(PageConfigurationSetContainerEnvelopeSchema)),
+
+    // Data definition + shared field
+    withWorkflowConfiguration(editEnvelopeSchema(DataDefinitionEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(DataDefinitionContainerEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(SharedFieldEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(SharedFieldContainerEnvelopeSchema)),
+
+    // Metadata set
+    withWorkflowConfiguration(editEnvelopeSchema(MetadataSetEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(MetadataSetContainerEnvelopeSchema)),
+
+    // Publish set
+    withWorkflowConfiguration(editEnvelopeSchema(PublishSetEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(PublishSetContainerEnvelopeSchema)),
+
+    // Destinations + transports
+    withWorkflowConfiguration(editEnvelopeSchema(SiteDestinationContainerEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(DestinationEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(FileSystemTransportEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(FtpTransportEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(DatabaseTransportEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(CloudTransportEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(TransportContainerEnvelopeSchema)),
+
+    // Workflow definitions + emails
+    withWorkflowConfiguration(editEnvelopeSchema(WorkflowDefinitionEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(WorkflowDefinitionContainerEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(WorkflowEmailEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(WorkflowEmailContainerEnvelopeSchema)),
+
+    // Site + editor configuration
+    withWorkflowConfiguration(editEnvelopeSchema(SiteEnvelopeSchema)),
+    withWorkflowConfiguration(editEnvelopeSchema(EditorConfigurationEnvelopeSchema)),
+  ])
+  .describe("Cascade edit asset payload. Wrap one concrete asset under its envelope key.");
+
+export type EditAssetInput = z.infer<typeof EditAssetInputSchema>;
 
 // ─── Re-exports of inner schemas + envelope schemas ────────────────────────
 //
@@ -332,8 +586,10 @@ export {
 
 export {
   // Connectors
+  FacebookConnectorAssetSchema,
   WordPressConnectorAssetSchema,
   GoogleAnalyticsConnectorAssetSchema,
+  FacebookConnectorEnvelopeSchema,
   WordPressConnectorEnvelopeSchema,
   GoogleAnalyticsConnectorEnvelopeSchema,
 } from "./assets/connectors.js";

@@ -235,6 +235,14 @@ describe("cascade_mark_message tool", () => {
     expect(parsed.success).toBe(false);
   });
 
+  test("schema validation: rejects archive because generated markType excludes it", () => {
+    const parsed = MarkMessageRequestSchema.safeParse({
+      identifier: ID_MESSAGE,
+      markType: "archive",
+    });
+    expect(parsed.success).toBe(false);
+  });
+
   test("library throws: returns isError response", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -248,7 +256,7 @@ describe("cascade_mark_message tool", () => {
 
     const result = await tool.handler({
       identifier: ID_MESSAGE,
-      markType: "archive",
+      markType: "unread",
     });
 
     expect(result.isError).toBe(true);

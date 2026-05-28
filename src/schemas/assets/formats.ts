@@ -52,17 +52,14 @@ export const TemplateAssetSchema = z
     ...FolderContainedAssetFields,
     formatId: z
       .string()
-      .nullable()
       .optional()
       .describe("Default format id applied when rendering this template."),
     formatPath: z
       .string()
-      .nullable()
       .optional()
       .describe("Default format path (alt)."),
     formatRecycled: z
       .boolean()
-      .nullable()
       .optional()
       .describe("Read-only: true if the default format is recycled."),
     xml: z.string().describe("REQUIRED: Template body (XHTML/XML)."),

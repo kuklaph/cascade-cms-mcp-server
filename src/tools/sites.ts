@@ -33,7 +33,7 @@ export function registerSiteTools(
     description: buildCascadeToolDescription(
       `List all sites accessible with the current API credentials.
 
-Returns identifiers (id, name, type="site") for every site the authenticated user can see. This is typically the first call an agent makes to discover which sites exist before reading or editing assets inside them. The response contains only identifiers — call cascade_read with { type: "site", ... } to fetch a site's full configuration.
+Returns site Identifier objects for every site the authenticated user can see. Site names appear in identifier.path.path, not in a top-level name field. This is typically the first call an agent makes to discover which sites exist before reading or editing assets inside them. The response contains only identifiers — call cascade_read with { identifier: <site identifier returned by cascade_list_sites> } to fetch a site's full configuration.
 
 Args:
   (none)
@@ -45,9 +45,9 @@ Returns:
 
 Examples:
   - Use when: "What sites do I have access to?" -> {}
-  - Use when: "I need to find a siteId before reading a page" -> call this, then match by name.
+  - Use when: "I need to find a siteId before reading a page" -> call this, then match by id or path.path.
   - Don't use when: You already know the site name/id — skip straight to cascade_read.
-  - Don't use when: You need a site's full config — use cascade_read with type "site".
+  - Don't use when: You need a site's full config — use cascade_read with { identifier: <site identifier> }.
 
 Error Handling:
   - "Permission denied" when credentials are invalid

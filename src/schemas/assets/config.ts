@@ -15,7 +15,8 @@
  *   - SharedField (envelope: `sharedField`)
  *   - Site (envelope: `site`)
  *
- * Each mirrors its OpenAPI counterpart and accepts every declared field.
+ * Each mirrors its generated cascade-cms-api TypeScript counterpart and
+ * accepts every declared field.
  */
 
 import { z } from "zod";
@@ -35,12 +36,14 @@ import {
   NamingRuleSpacingSchema,
   RecycleBinExpirationSchema,
   ScheduledDestinationModeSchema,
+  SerializationTypeSchema,
   SiteLinkRewritingSchema,
 } from "./enums.js";
 import {
-  EmbeddedIdentifierSchema,
-  PageConfigurationSchema,
+  EmbeddedWriteIdentifierSchema,
+  PageConfigurationSetPageConfigurationSchema,
 } from "./nested.js";
+import { objectWithRequiredAlternatives } from "../requiredAlternatives.js";
 
 // ═══ AssetFactory ══════════════════════════════════════════════════════════
 
@@ -95,9 +98,6 @@ export const AssetFactoryAssetSchema = z
       .describe("Allow placing new assets in subfolders of the placement folder. Default false."),
     folderPlacementPosition: z
       .number()
-      .int()
-      .min(0)
-      .nullable()
       .optional()
       .describe("Numeric position in the folder listing. Default 0."),
     overwrite: z
@@ -132,28 +132,31 @@ export const AssetFactoryEnvelopeSchema = z
 
 // ═══ ContentType ═══════════════════════════════════════════════════════════
 
-const ContentTypePageConfigurationSchema = z
-  .object({
-    pageConfigurationId: z
-      .string()
-      .optional()
-      .describe("Page configuration id. One of id/name REQUIRED."),
-    pageConfigurationName: z
-      .string()
-      .optional()
-      .describe("Page configuration name (alt)."),
-    publishMode: ContentTypePageConfigurationPublishModeSchema.describe(
-      "REQUIRED: Publish policy for this configuration.",
+const ContentTypePageConfigurationShape = {
+  pageConfigurationId: z
+    .string()
+    .optional()
+    .describe("Page configuration id. One of id/name REQUIRED."),
+  pageConfigurationName: z
+    .string()
+    .optional()
+    .describe("Page configuration name (alt)."),
+  publishMode: ContentTypePageConfigurationPublishModeSchema.describe(
+    "REQUIRED: Publish policy for this configuration.",
+  ),
+  destinations: z
+    .array(EmbeddedWriteIdentifierSchema)
+    .optional()
+    .describe(
+      "Destinations — REQUIRED when publishMode='selected-destinations'; ignored otherwise.",
     ),
-    destinations: z
-      .array(EmbeddedIdentifierSchema)
-      .nullable()
-      .optional()
-      .describe(
-        "Destinations — REQUIRED when publishMode='selected-destinations'; ignored otherwise.",
-      ),
-  })
-  .strict();
+};
+
+const ContentTypePageConfigurationSchema = objectWithRequiredAlternatives(
+  ContentTypePageConfigurationShape,
+  [["pageConfigurationId", "pageConfigurationName"]],
+  "Content type page configuration publish rule.",
+);
 
 const InlineEditableFieldSchema = z
   .object({
@@ -163,7 +166,6 @@ const InlineEditableFieldSchema = z
     pageRegionName: z.string().describe("REQUIRED: Region within the configuration."),
     dataDefinitionGroupPath: z
       .string()
-      .nullable()
       .optional()
       .describe("Data definition group path — optional for non-data-definition fields."),
     type: InlineEditableFieldTypeSchema.describe(
@@ -171,7 +173,6 @@ const InlineEditableFieldSchema = z
     ),
     name: z
       .string()
-      .nullable()
       .optional()
       .describe(
         "Field identifier. REQUIRED for metadata/data-definition field kinds; optional for xhtml.",
@@ -179,46 +180,50 @@ const InlineEditableFieldSchema = z
   })
   .strict();
 
-export const ContentTypeAssetSchema = z
-  .object({
-    ...ContaineredAssetFields,
-    pageConfigurationSetId: z
-      .string()
-      .optional()
-      .describe(
-        "Page configuration set id. One of id/path REQUIRED. Priority: id > path.",
-      ),
-    pageConfigurationSetPath: z
-      .string()
-      .optional()
-      .describe("Page configuration set path (alt)."),
-    metadataSetId: z
-      .string()
-      .optional()
-      .describe("Metadata set id. One of id/path REQUIRED. Priority: id > path."),
-    metadataSetPath: z.string().optional().describe("Metadata set path (alt)."),
-    dataDefinitionId: z
-      .string()
-      .optional()
-      .describe("Data definition id. Priority: id > path."),
-    dataDefinitionPath: z.string().optional().describe("Data definition path (alt)."),
-    editorConfigurationId: z.string().optional().describe("Editor configuration id."),
-    editorConfigurationPath: z.string().optional().describe("Editor configuration path (alt)."),
-    publishSetId: z.string().optional().describe("Publish set id."),
-    publishSetPath: z.string().optional().describe("Publish set path (alt)."),
-    contentTypePageConfigurations: z
-      .array(ContentTypePageConfigurationSchema)
-      .nullable()
-      .optional()
-      .describe("Page configuration publish rules."),
-    inlineEditableFields: z
-      .array(InlineEditableFieldSchema)
-      .nullable()
-      .optional()
-      .describe("Inline-editable field definitions exposed on pages of this content type."),
-  })
-  .strict()
-  .describe("Cascade content type — binds page configuration, metadata set, and data definition.");
+const ContentTypeAssetShape = {
+  ...ContaineredAssetFields,
+  pageConfigurationSetId: z
+    .string()
+    .optional()
+    .describe(
+      "Page configuration set id. One of id/path REQUIRED. Priority: id > path.",
+    ),
+  pageConfigurationSetPath: z
+    .string()
+    .optional()
+    .describe("Page configuration set path (alt)."),
+  metadataSetId: z
+    .string()
+    .optional()
+    .describe("Metadata set id. One of id/path REQUIRED. Priority: id > path."),
+  metadataSetPath: z.string().optional().describe("Metadata set path (alt)."),
+  dataDefinitionId: z
+    .string()
+    .optional()
+    .describe("Data definition id. Priority: id > path."),
+  dataDefinitionPath: z.string().optional().describe("Data definition path (alt)."),
+  editorConfigurationId: z.string().optional().describe("Editor configuration id."),
+  editorConfigurationPath: z.string().optional().describe("Editor configuration path (alt)."),
+  publishSetId: z.string().optional().describe("Publish set id."),
+  publishSetPath: z.string().optional().describe("Publish set path (alt)."),
+  contentTypePageConfigurations: z
+    .array(ContentTypePageConfigurationSchema)
+    .optional()
+    .describe("Page configuration publish rules."),
+  inlineEditableFields: z
+    .array(InlineEditableFieldSchema)
+    .optional()
+    .describe("Inline-editable field definitions exposed on pages of this content type."),
+};
+
+export const ContentTypeAssetSchema = objectWithRequiredAlternatives(
+  ContentTypeAssetShape,
+  [
+    ["pageConfigurationSetId", "pageConfigurationSetPath"],
+    ["metadataSetId", "metadataSetPath"],
+  ],
+  "Cascade content type — binds page configuration, metadata set, and data definition.",
+);
 
 export type ContentTypeAsset = z.infer<typeof ContentTypeAssetSchema>;
 
@@ -232,95 +237,97 @@ export const ContentTypeEnvelopeSchema = z
 // Destination extends NamedAsset but uses ContaineredAsset-style
 // parentContainerId/Path fields (not parentFolderId/Path).
 
-export const DestinationAssetSchema = z
-  .object({
-    ...NamedAssetFields,
-    parentContainerId: z
-      .string()
-      .optional()
-      .describe("Parent container id (SiteDestinationContainer or Target)."),
-    parentContainerPath: z.string().optional().describe("Parent container path (alt)."),
-    transportId: z
-      .string()
-      .optional()
-      .describe("Transport id. One of id/path REQUIRED. Priority: id > path."),
-    transportPath: z.string().optional().describe("Transport path (alt)."),
-    applicableGroupNames: z
-      .string()
-      .optional()
-      .describe("Semicolon-delimited list of groups that may publish to this destination."),
-    directory: z.string().optional().describe("Target sub-directory under the transport root."),
-    enabled: z.boolean().optional().describe("Whether this destination is active."),
-    checkedByDefault: z
-      .boolean()
-      .optional()
-      .describe("Whether this destination is pre-checked in the publish UI."),
-    publishASCII: z
-      .boolean()
-      .optional()
-      .describe("Convert non-ASCII characters to ASCII on publish."),
-    usesScheduledPublishing: z
-      .boolean()
-      .optional()
-      .describe("Enable scheduled publishing. When true, the schedule fields below become required."),
-    scheduledPublishDestinationMode: ScheduledDestinationModeSchema.nullable()
-      .optional()
-      .describe("Not used at destination level — ignored. Present for shape consistency."),
-    scheduledPublishDestinations: z
-      .array(EmbeddedIdentifierSchema)
-      .optional()
-      .describe("Not used at destination level — ignored."),
-    timeToPublish: z
-      .string()
-      .optional()
-      .describe("Time of day ('HH:MM') to run scheduled publish. Default '00:00'."),
-    sendReportToUsers: z
-      .string()
-      .optional()
-      .describe("Semicolon-delimited usernames to receive the publish report."),
-    sendReportToGroups: z
-      .string()
-      .optional()
-      .describe("Semicolon-delimited group names to receive the publish report."),
-    sendReportOnErrorOnly: z
-      .boolean()
-      .optional()
-      .describe("Send the report only if the publish encountered errors. Default false."),
-    webUrl: z
-      .string()
-      .nullable()
-      .optional()
-      .describe("Published output's public URL."),
-    extensionsToStrip: z
-      .string()
-      .nullable()
-      .optional()
-      .describe("Comma-separated extensions to strip on publish."),
-    siteId: z
-      .string()
-      .nullable()
-      .optional()
-      .describe("Site id. One of siteId/siteName REQUIRED."),
-    siteName: z.string().nullable().optional().describe("Site name (alt)."),
-    publishIntervalHours: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .describe(
-        "Publish interval hours (1-23). REQUIRED when usesScheduledPublishing=true.",
-      ),
-    publishDaysOfWeek: z
-      .array(DayOfWeekSchema)
-      .optional()
-      .describe("Publish days of week. REQUIRED when usesScheduledPublishing=true."),
-    cronExpression: z
-      .string()
-      .optional()
-      .describe("Cron expression. REQUIRED when usesScheduledPublishing=true."),
-  })
-  .strict()
-  .describe("Cascade destination — a transport + path pairing assets publish to.");
+const DestinationAssetShape = {
+  ...NamedAssetFields,
+  parentContainerId: z
+    .string()
+    .optional()
+    .describe("Parent container id. One of parentContainerId/parentContainerPath is REQUIRED. Priority: parentContainerId > parentContainerPath. When inside a site, refer to a SiteDestinationContainer."),
+  parentContainerPath: z.string().optional().describe("Parent container path. REQUIRED when parentContainerId is omitted."),
+  transportId: z
+    .string()
+    .optional()
+    .describe("Transport id. One of id/path REQUIRED. Priority: id > path."),
+  transportPath: z.string().optional().describe("Transport path (alt)."),
+  applicableGroupNames: z
+    .string()
+    .optional()
+    .describe("Semicolon-delimited list of groups that may publish to this destination."),
+  directory: z.string().optional().describe("Target sub-directory under the transport root."),
+  enabled: z.boolean().optional().describe("Whether this destination is active."),
+  checkedByDefault: z
+    .boolean()
+    .optional()
+    .describe("Whether this destination is pre-checked in the publish UI."),
+  publishASCII: z
+    .boolean()
+    .optional()
+    .describe("Convert non-ASCII characters to ASCII on publish."),
+  usesScheduledPublishing: z
+    .boolean()
+    .optional()
+    .describe("Enable scheduled publishing. When true, provide one schedule selector: publishIntervalHours, publishDaysOfWeek, or cronExpression; timeToPublish remains optional/defaulted, and destination-mode fields are ignored at destination level."),
+  scheduledPublishDestinationMode: ScheduledDestinationModeSchema
+    .optional()
+    .describe("Not used at destination level — ignored. Present for shape consistency."),
+  scheduledPublishDestinations: z
+    .array(EmbeddedWriteIdentifierSchema)
+    .optional()
+    .describe("Not used at destination level — ignored."),
+  timeToPublish: z
+    .string()
+    .optional()
+    .describe("Time of day ('HH:MM') to run scheduled publish. Default '00:00'."),
+  sendReportToUsers: z
+    .string()
+    .optional()
+    .describe("Semicolon-delimited usernames to receive the publish report."),
+  sendReportToGroups: z
+    .string()
+    .optional()
+    .describe("Semicolon-delimited group names to receive the publish report."),
+  sendReportOnErrorOnly: z
+    .boolean()
+    .optional()
+    .describe("Send the report only if the publish encountered errors. Default false."),
+  webUrl: z
+    .string()
+    .optional()
+    .describe("Published output's public URL."),
+  extensionsToStrip: z
+    .string()
+    .optional()
+    .describe("Comma-separated extensions to strip on publish."),
+  siteId: z
+    .string()
+    .optional()
+    .describe("Site id. One of siteId/siteName REQUIRED."),
+  siteName: z.string().optional().describe("Site name (alt)."),
+  publishIntervalHours: z
+    .number()
+    .optional()
+    .describe(
+      "Publish interval hours as a number. Cascade may enforce schedule interval rules server-side. One of interval hours, publish days, or cron expression is REQUIRED when usesScheduledPublishing=true.",
+    ),
+  publishDaysOfWeek: z
+    .array(DayOfWeekSchema)
+    .optional()
+    .describe("Publish days of week. One of interval hours, publish days, or cron expression is REQUIRED when usesScheduledPublishing=true."),
+  cronExpression: z
+    .string()
+    .optional()
+    .describe("Cron expression. One of interval hours, publish days, or cron expression is REQUIRED when usesScheduledPublishing=true."),
+};
+
+export const DestinationAssetSchema = objectWithRequiredAlternatives(
+  DestinationAssetShape,
+  [
+    ["parentContainerId", "parentContainerPath"],
+    ["transportId", "transportPath"],
+    ["siteId", "siteName"],
+  ],
+  "Cascade destination — a transport + path pairing assets publish to.",
+);
 
 export type DestinationAsset = z.infer<typeof DestinationAssetSchema>;
 
@@ -337,12 +344,11 @@ export const EditorConfigurationAssetSchema = z
     ...NamedAssetFields,
     siteId: z
       .string()
-      .nullable()
       .optional()
       .describe(
         "Site id. Optional for the system default editor configuration; REQUIRED for others.",
       ),
-    siteName: z.string().nullable().optional().describe("Site name (alt)."),
+    siteName: z.string().optional().describe("Site name (alt)."),
     cssFileId: z
       .string()
       .optional()
@@ -395,7 +401,6 @@ const DynamicMetadataFieldDefinitionSchema = z
     ),
     possibleValues: z
       .array(DynamicMetadataFieldDefinitionValueSchema)
-      .nullable()
       .optional()
       .describe(
         "Allowed values. REQUIRED for radio / checkbox / dropdown / multiselect types.",
@@ -458,7 +463,7 @@ export const PageConfigurationSetAssetSchema = z
   .object({
     ...ContaineredAssetFields,
     pageConfigurations: z
-      .array(PageConfigurationSchema)
+      .array(PageConfigurationSetPageConfigurationSchema)
       .describe("REQUIRED: Page configurations in this set (at least one)."),
   })
   .strict()
@@ -479,18 +484,18 @@ export const PageConfigurationSetEnvelopeSchema = z
 export const PublishSetAssetSchema = z
   .object({
     ...ContaineredAssetFields,
-    files: z.array(EmbeddedIdentifierSchema).optional().describe("Files in the publish set."),
-    folders: z.array(EmbeddedIdentifierSchema).optional().describe("Folders in the publish set."),
-    pages: z.array(EmbeddedIdentifierSchema).optional().describe("Pages in the publish set."),
+    files: z.array(EmbeddedWriteIdentifierSchema).optional().describe("Files in the publish set."),
+    folders: z.array(EmbeddedWriteIdentifierSchema).optional().describe("Folders in the publish set."),
+    pages: z.array(EmbeddedWriteIdentifierSchema).optional().describe("Pages in the publish set."),
     usesScheduledPublishing: z
       .boolean()
       .optional()
       .describe("Enable scheduled publishing. Default false."),
-    scheduledPublishDestinationMode: ScheduledDestinationModeSchema.nullable()
+    scheduledPublishDestinationMode: ScheduledDestinationModeSchema
       .optional()
       .describe("Which destinations the scheduled publish targets."),
     scheduledPublishDestinations: z
-      .array(EmbeddedIdentifierSchema)
+      .array(EmbeddedWriteIdentifierSchema)
       .optional()
       .describe("Scheduled destinations when mode='selected-destinations'."),
     timeToPublish: z
@@ -502,10 +507,8 @@ export const PublishSetAssetSchema = z
     sendReportOnErrorOnly: z.boolean().optional().describe("Send report only on errors. Default false."),
     publishIntervalHours: z
       .number()
-      .int()
-      .min(0)
       .optional()
-      .describe("Publish interval hours (1-23)."),
+      .describe("Publish interval hours as a number. Cascade may enforce schedule interval rules server-side."),
     publishDaysOfWeek: z.array(DayOfWeekSchema).optional().describe("Days of week to publish."),
     cronExpression: z.string().optional().describe("Cron expression for scheduled publish."),
   })
@@ -574,7 +577,6 @@ export const SiteAssetSchema = z
     url: z.string().describe("REQUIRED: Public URL of the site."),
     extensionsToStrip: z
       .string()
-      .nullable()
       .optional()
       .describe("Comma-separated extensions to strip on publish."),
     defaultMetadataSetId: z
@@ -615,11 +617,11 @@ export const SiteAssetSchema = z
       .boolean()
       .optional()
       .describe("Enable site-level scheduled publishing. Default false."),
-    scheduledPublishDestinationMode: ScheduledDestinationModeSchema.nullable()
+    scheduledPublishDestinationMode: ScheduledDestinationModeSchema
       .optional()
       .describe("Scheduled publish destination mode."),
     scheduledPublishDestinations: z
-      .array(EmbeddedIdentifierSchema)
+      .array(EmbeddedWriteIdentifierSchema)
       .optional()
       .describe("Scheduled publish destinations."),
     timeToPublish: z.string().optional().describe("Time of day to schedule publish. Default '00:00'."),
@@ -646,21 +648,17 @@ export const SiteAssetSchema = z
     accessibilityCheckEnabled: z
       .boolean()
       .describe("REQUIRED: Enable accessibility checking."),
-    accessibilityCheckerEnabled: z
-      .boolean()
-      .describe("REQUIRED: Enable the accessibility-check UI."),
     inheritNamingRules: z
       .boolean()
       .describe("REQUIRED: Inherit asset-naming rules from system defaults."),
-    namingRuleCase: NamingRuleCaseSchema.nullable()
+    namingRuleCase: NamingRuleCaseSchema
       .optional()
       .describe("Naming rule case policy."),
-    namingRuleSpacing: NamingRuleSpacingSchema.nullable()
+    namingRuleSpacing: NamingRuleSpacingSchema
       .optional()
       .describe("Naming rule spacing policy."),
     namingRuleAssets: z
       .array(NamingRuleAssetSchema)
-      .nullable()
       .optional()
       .describe("Asset types to which naming rules apply."),
     siteImproveIntegrationEnabled: z
@@ -671,65 +669,53 @@ export const SiteAssetSchema = z
     widenDamIntegrationEnabled: z.boolean().optional().describe("Enable Widen DAM integration."),
     widenDamIntegrationCategory: z.string().optional().describe("Widen DAM category."),
     webdamDamIntegrationEnabled: z.boolean().optional().describe("Enable Webdam DAM integration."),
-    rootFolderId: z.string().nullable().optional().describe("Read-only: root folder id."),
+    rootFolderId: z.string().optional().describe("Read-only: root folder id."),
     rootAssetFactoryContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root asset factory container id."),
     rootPageConfigurationSetContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root page-config-set container id."),
     rootContentTypeContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root content-type container id."),
     rootConnectorContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root connector container id."),
     rootDataDefinitionContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root data-definition container id."),
     rootSharedFieldContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root shared-field container id."),
     rootMetadataSetContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root metadata-set container id."),
     rootPublishSetContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root publish-set container id."),
     rootSiteDestinationContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root site-destination container id."),
     rootTransportContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root transport container id."),
     rootWorkflowDefinitionContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root workflow-definition container id."),
     rootWorkflowEmailContainerId: z
       .string()
-      .nullable()
       .optional()
       .describe("Read-only: root workflow-email container id."),
     linkRewriting: SiteLinkRewritingSchema.optional().describe(
@@ -737,15 +723,12 @@ export const SiteAssetSchema = z
     ),
     extraSettings: z
       .string()
-      .nullable()
       .optional()
       .describe("JSON string holding extra site settings."),
     publishIntervalHours: z
       .number()
-      .int()
-      .min(0)
       .optional()
-      .describe("Publish interval hours (1-23). Used when usesScheduledPublishing=true."),
+      .describe("Publish interval hours as a number. Cascade may enforce schedule interval rules server-side when usesScheduledPublishing=true."),
     publishDaysOfWeek: z.array(DayOfWeekSchema).optional().describe("Publish days of week."),
     cronExpression: z.string().optional().describe("Cron expression for scheduled publish."),
   })

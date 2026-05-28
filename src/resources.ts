@@ -79,7 +79,6 @@ const ENTITY_TYPE_DESCRIPTIONS: Record<string, string> = {
   site: "A Cascade site (top-level container for assets)",
   sitedestinationcontainer: "Container grouping a site's publish destinations",
   symlink: "A symbolic link asset pointing at an external URL",
-  target: "A publish target within a destination",
   template: "A page template (layout skeleton with regions)",
   transport: "A generic transport binding for publishing",
   transport_fs: "Filesystem transport (local or mounted path)",
@@ -99,7 +98,7 @@ const ENTITY_TYPE_DESCRIPTIONS: Record<string, string> = {
  * Build the JSON payload for `cascade://entity-types`.
  *
  * Derives the complete list of entity types from `EntityTypeSchema.options`
- * (the Zod enum source of truth) so adding a new type in `common.ts`
+ * (the local Zod enum mirror of cascade-cms-api's EntityTypeString) so adding a new type in `common.ts`
  * automatically surfaces here. Descriptions MUST exist for every type in
  * `ENTITY_TYPE_DESCRIPTIONS` — if a type is missing, an explicit placeholder
  * is emitted so drift is visible in the resource body (rather than silently

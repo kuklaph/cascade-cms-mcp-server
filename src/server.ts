@@ -13,7 +13,10 @@ import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { createResponseCache } from "./cache.js";
 import { createAssetCache } from "./assetIndex.js";
 import { createToolBlockStore } from "./toolBlocks.js";
-import type { CascadeDeps } from "./tools/helper.js";
+import {
+  registerExactToolSchemaListHandler,
+  type CascadeDeps,
+} from "./tools/helper.js";
 import { registerCrudTools } from "./tools/crud.js";
 import { registerSearchTools } from "./tools/search.js";
 import { registerSiteTools } from "./tools/sites.js";
@@ -75,6 +78,8 @@ export function createServer(
   registerSiteRemovalProtectionTool(server, client, resolved);
   registerServerVersionTool(server);
   registerReadResponseTool(server, resolved);
+
+  registerExactToolSchemaListHandler(server);
 
   return server;
 }

@@ -316,6 +316,7 @@ Args:
       - siteId OR siteName (string): Which site the path belongs to
     - type (string, required): Entity type — one of the 56 EntityTypeString values (page, file, folder, block, template, etc.)
     - recycled (boolean, optional): Read from recycle bin.
+    - requires type plus either id or path; prefer id when known
   - read_mode (string, optional): 'preview' (default, compact handle-based output) or 'raw' (full REST payload; expensive for structured assets).
 Returns:
   Preview mode:
@@ -376,7 +377,7 @@ Error Handling:
     description: buildCascadeToolDescription(
       `Create a new asset in Cascade CMS.
 
-The request body wraps a typed envelope under \`asset\` — one of 48 envelope keys (page, file, folder, symlink, textBlock, feedBlock, indexBlock, xmlBlock, xhtmlDataDefinitionBlock, twitterFeedBlock, reference, template, xsltFormat, scriptFormat, user, group, role, assetFactory, contentType, destination, editorConfiguration, metadataSet, pageConfigurationSet, publishSet, dataDefinition, sharedField, site, workflowDefinition, workflowEmail, wordPressConnector, googleAnalyticsConnector, fileSystemTransport, ftpTransport, databaseTransport, cloudTransport, and the *Container types). This matches the upstream Cascade REST API \`Asset\` schema exactly. Returns the new asset's ID on success.
+The request body wraps a typed concrete asset envelope under \`asset\` — one concrete key (page, file, folder, symlink, textBlock, feedBlock, indexBlock, xmlBlock, xhtmlDataDefinitionBlock, twitterFeedBlock, reference, template, xsltFormat, scriptFormat, user, group, role, assetFactory, contentType, destination, editorConfiguration, metadataSet, pageConfigurationSet, publishSet, dataDefinition, sharedField, site, workflowDefinition, workflowEmail, facebookConnector, wordPressConnector, googleAnalyticsConnector, fileSystemTransport, ftpTransport, databaseTransport, cloudTransport, assetFactoryContainer, contentTypeContainer, connectorContainer, pageConfigurationSetContainer, dataDefinitionContainer, sharedFieldContainer, metadataSetContainer, publishSetContainer, siteDestinationContainer, transportContainer, workflowDefinitionContainer, or workflowEmailContainer), with optional \`workflowConfiguration\` alongside it. Uses generated \`AssetProperties\` branch names; this MCP enforces exactly one concrete asset branch plus optional \`workflowConfiguration\`. Returns the new asset's ID on success.
 
 Payload conventions (apply to every create call):
   - Send ONLY the fields you actually need to set. Every optional field should be omitted unless you have a real value to provide — Cascade applies its own defaults server-side. Do not pad payloads with "reasonable defaults" like \`reviewOnSchedule: false\` or \`shouldBePublished: true\` when you do not need to override them.
@@ -384,14 +385,14 @@ Payload conventions (apply to every create call):
   - Text encoding: rich-text fields (xhtml, WYSIWYG structuredData text, xmlBlock xml) must be well-formed XML — named HTML entities like \`&nbsp;\` and astral-plane Unicode (including emoji) crash the render. See resource \`cascade://text-encoding\` for the per-field-category rules.
 
 Args:
-  - asset (object, required): Single-key envelope. Key is the camelCase type; value is the asset body.
-    Common shapes (only required fields shown — add optionals only when you need to set them):
-      - { page: { name, parentFolderId OR parentFolderPath, siteId OR siteName, contentTypeId OR contentTypePath, ... } }
-      - { file: { name, parentFolderId OR parentFolderPath, siteId OR siteName, text? OR data?, ... } }
+  - asset (object, required): One concrete asset envelope. Key is the camelCase type; value is the asset body. Optional \`workflowConfiguration\` may be included alongside the concrete asset key. If workflowConfiguration is supplied, include workflowName, workflowComments, and workflowDefinitionId or workflowDefinitionPath.
+    Common shapes (required fields plus representative optionals shown — omit optionals unless you need them):
+      - { page: { name, parentFolderId OR parentFolderPath, siteId OR siteName, contentTypeId OR contentTypePath, xhtml OR structuredData, ... } }
+      - { file: { name, parentFolderId OR parentFolderPath, siteId OR siteName, text OR data, ... } }
       - { folder: { name, parentFolderId OR parentFolderPath, siteId OR siteName, ... } }
       - { textBlock: { name, parentFolderId OR parentFolderPath, siteId OR siteName, text, ... } }
       - { xmlBlock: { name, parentFolderId OR parentFolderPath, siteId OR siteName, xml, ... } }
-      - { symlink: { name, parentFolderId OR parentFolderPath, siteId OR siteName, linkURL, ... } }
+      - { symlink: { name, parentFolderId OR parentFolderPath, siteId OR siteName, linkURL?, ... } }
     Admin-area types (assetFactory, contentType, transports, workflow*, *Container) use \`parentContainerId/Path\` instead of \`parentFolderId/Path\`.
 
 Returns:
@@ -400,7 +401,7 @@ Returns:
   On failure: { success: false, message: "<error>" }
 
 Examples:
-  - Use when: "Create a page under /about" -> { asset: { page: { name: "team", parentFolderPath: "/about", siteName: "www", contentTypePath: "/standard-page" } } }
+  - Use when: "Create a page under /about" -> { asset: { page: { name: "team", parentFolderPath: "/about", siteName: "www", contentTypePath: "/standard-page", xhtml: "<p>Team</p>" } } }
   - Use when: "Upload a text file" -> { asset: { file: { name: "robots.txt", parentFolderPath: "/", siteName: "www", text: "User-agent: *" } } }
   - Use when: "Create a text block" -> { asset: { textBlock: { name: "greeting", parentFolderPath: "/blocks", siteName: "www", text: "Hello" } } }
   - Don't use when: The asset already exists — use cascade_edit.
@@ -428,7 +429,7 @@ Error Handling:
     description: buildCascadeToolDescription(
       `Edit an existing Cascade CMS asset.
 
-Accepts the full asset body (same envelope shape as cascade_create). The workflow is symmetric when cascade_read is called with read_mode: "raw": modify the raw asset envelope and pass the same envelope back to cascade_edit. Some asset types require a prior cascade_check_out.
+Accepts the full asset body using the same envelope wrapper as cascade_create, with edit-specific validation. The workflow is symmetric when cascade_read is called with read_mode: "raw": remove read-only inner type fields from the raw asset envelope, modify the envelope, and pass it back to cascade_edit. Some asset types require a prior cascade_check_out.
 
 Payload conventions:
   - Edit replaces the asset body, so send the full object as read — do not try to send only the fields you are changing.
@@ -437,7 +438,7 @@ Payload conventions:
   - Text encoding: same rules as cascade_create — rich-text fields must be well-formed XML with only the five XML built-in entities (\`&amp;\`, \`&lt;\`, \`&gt;\`, \`&quot;\`, \`&apos;\`). See resource \`cascade://text-encoding\`.
 
 Args:
-  - asset (object, required): Single-key envelope (same as cascade_create). Inner object must include \`id\` to identify the existing asset.
+  - asset (object, required): One concrete asset envelope using the same wrapper as cascade_create, with edit-specific validation and optional workflowConfiguration alongside it. Include \`id\` when available/preferred. If workflowConfiguration is supplied, include workflowName, workflowComments, and workflowDefinitionId or workflowDefinitionPath.
 
 Returns:
   Cascade OperationResult:
@@ -445,9 +446,9 @@ Returns:
   On failure: { success: false, message: "<error>" }
 
 Examples:
-  - Use when: "Update a page's metadata" -> Read first with cascade_read; modify \`asset.page.metadata\`; pass { asset: asset.asset } back.
-  - Use when: "Change a block's structured data" -> { asset: { xhtmlDataDefinitionBlock: { id: "...", structuredData: { ... } } } }
-  - Use when: "Rewrite a symlink's target" -> { asset: { symlink: { id: "...", linkURL: "https://new.example.com" } } }
+  - Use when: "Update a page's metadata" -> Read first with cascade_read using read_mode: "raw"; remove read-only inner type fields; modify \`asset.page.metadata\`; pass { asset: raw.asset } back.
+  - Use when: "Change a block's structured data" -> Read raw first; remove read-only inner type fields; modify the full xhtmlDataDefinitionBlock envelope; pass { asset: raw.asset }.
+  - Use when: "Rewrite a symlink's target" -> Read raw first; remove read-only inner type fields; modify asset.symlink.linkURL on the full envelope; pass { asset: raw.asset }.
   - Don't use when: The asset doesn't exist — use cascade_create.
   - Don't use when: You want a partial patch — Cascade's edit replaces the asset body; always send the full object.
 
@@ -473,17 +474,19 @@ Error Handling:
     description: buildCascadeToolDescription(
       `Delete an asset from Cascade CMS.
 
-By default, deletion sends the asset to the recycle bin; deleteParameters can unpublish and/or hard-delete. Site removal and root-folder path "/" removal are rejected; root-folder ID safeguards require generated tool-block rules. If the asset is under a workflow that requires review, workflowConfiguration specifies the approval flow. This is a DESTRUCTIVE operation — confirm intent before calling.
+By default, deletion sends the asset to the recycle bin; deleteParameters can run workflow and optionally unpublish first. Site removal and root-folder path "/" removal are rejected; root-folder ID safeguards require generated tool-block rules. If the asset is under a workflow that requires review, workflowConfiguration specifies the approval flow. This is a DESTRUCTIVE operation — confirm intent before calling.
 
 Args:
   - identifier (object, required): The asset to delete
     - id (string, optional): Asset ID (preferred)
     - path (object, optional): { path, siteId OR siteName }
     - type (string, required): Entity type of the asset
-  - deleteParameters (object, optional, shape varies — see Cascade docs): Controls delete behavior
-    - doWorkflow (boolean): Whether to run the workflow on delete
-    - unpublish (boolean): Unpublish from destinations before deleting
-  - workflowConfiguration (object, optional, shape varies — see Cascade docs): Workflow step assignments when user can't bypass workflow
+    - requires type plus either id or path; prefer id when known
+  - deleteParameters (object, optional): Controls delete behavior
+    - doWorkflow (boolean, required if deleteParameters is provided): Whether to run the workflow on delete
+    - unpublish (boolean | null, optional): Unpublish from destinations before deleting
+    - destinations (array | null, optional): Destination identifiers for unpublish behavior
+  - workflowConfiguration (object, optional): Generated WorkflowConfiguration. If supplied, include workflowName, workflowComments, and workflowDefinitionId or workflowDefinitionPath; workflowStepConfigurations are optional.
 
 Returns:
   Cascade OperationResult:
@@ -492,7 +495,7 @@ Returns:
 
 Examples:
   - Use when: "Delete a page" -> { identifier: { type: "page", id: "..." } }
-  - Use when: "Unpublish then delete" -> { identifier: { type: "page", id: "..." }, deleteParameters: { unpublish: true } }
+  - Use when: "Unpublish then delete" -> { identifier: { type: "page", id: "..." }, deleteParameters: { doWorkflow: false, unpublish: true } }
   - Don't use when: You just want to move/rename — use cascade_move.
   - Don't use when: You want to unpublish without deleting — use cascade_publish_unpublish with unpublish: true.
 
@@ -525,11 +528,12 @@ Args:
     - id (string, optional): Asset ID (preferred)
     - path (object, optional): { path, siteId OR siteName }
     - type (string, required): Entity type of the asset
+    - requires type plus either id or path; prefer id when known
   - moveParameters (object, required):
     - destinationContainerIdentifier (object, optional): Where to move the asset. Omit to keep in current container.
     - doWorkflow (boolean, required): Whether to run workflow on the move
     - newName (string, optional): New asset name. Omit to keep current name.
-  - workflowConfiguration (object, optional, shape varies — see Cascade docs): Workflow step assignments
+  - workflowConfiguration (object, optional): Generated WorkflowConfiguration. If supplied, include workflowName, workflowComments, and workflowDefinitionId or workflowDefinitionPath; workflowStepConfigurations are optional.
 
 Returns:
   Cascade OperationResult:
@@ -570,11 +574,12 @@ Args:
     - id (string, optional): Asset ID (preferred)
     - path (object, optional): { path, siteId OR siteName }
     - type (string, required): Entity type of the source
+    - requires type plus either id or path; prefer id when known
   - copyParameters (object, required):
     - destinationContainerIdentifier (object, required): The container (folder/site) that will receive the copy
     - doWorkflow (boolean, required): Whether to run workflow on the copy
     - newName (string, required): Name for the new asset (must be unique within destination)
-  - workflowConfiguration (object, optional, shape varies — see Cascade docs): Workflow step assignments
+  - workflowConfiguration (object, optional): Generated WorkflowConfiguration. If supplied, include workflowName, workflowComments, and workflowDefinitionId or workflowDefinitionPath; workflowStepConfigurations are optional.
 
 Returns:
   Cascade OperationResult:

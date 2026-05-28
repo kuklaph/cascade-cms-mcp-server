@@ -34,7 +34,7 @@ export const FtpTransportAssetSchema = z
   .object({
     ...ContaineredAssetFields,
     hostName: z.string().describe("REQUIRED: FTP/SFTP host name."),
-    port: z.number().int().min(1).describe("REQUIRED: Port number."),
+    port: z.number().describe("REQUIRED: Port number."),
     doPASV: z
       .boolean()
       .optional()
@@ -79,11 +79,9 @@ export const DatabaseTransportAssetSchema = z
     ...ContaineredAssetFields,
     transportSiteId: z
       .number()
-      .int()
-      .min(0)
       .describe("REQUIRED: Cascade-side site id this transport is bound to."),
     serverName: z.string().describe("REQUIRED: Database server host name."),
-    serverPort: z.number().int().min(1).describe("REQUIRED: Database server port."),
+    serverPort: z.number().describe("REQUIRED: Database server port."),
     databaseName: z.string().describe("REQUIRED: Target database name."),
     username: z.string().describe("REQUIRED: Database login username."),
     password: z.string().optional().describe("Database login password."),

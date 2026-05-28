@@ -56,7 +56,7 @@ describe("cascade_read_audits tool", () => {
 
     const auditParameters = {
       username: "jdoe",
-      action: "login",
+      auditType: "login",
       startDate: "2025-01-01",
       endDate: "2025-01-31",
     };

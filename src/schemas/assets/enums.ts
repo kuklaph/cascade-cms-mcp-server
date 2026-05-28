@@ -1,10 +1,9 @@
 /**
  * Enums used across Cascade CMS asset schemas.
  *
- * Every enum below mirrors the OpenAPI spec verbatim
- * (`node_modules/cascade-cms-api/docs/swagger-ui/openapi.yaml`). Values and
- * order are preserved. These are the canonical literals the Cascade REST API
- * accepts in asset payloads.
+ * Every enum below mirrors the generated cascade-cms-api TypeScript types.
+ * Those types are the source of truth for MCP input validation; OpenAPI is
+ * supporting evidence only.
  */
 
 import { z } from "zod";
@@ -29,7 +28,7 @@ export const NamingRuleSpacingSchema = z
   .enum(["SPACE", "REMOVE", "HYPHEN", "UNDERSCORE"])
   .describe("Site naming-rule spacing policy.");
 
-export const NamingRuleAssetSchema = z
+export const NamingRuleAssetValueSchema = z
   .enum([
     "block",
     "file",
@@ -41,6 +40,10 @@ export const NamingRuleAssetSchema = z
     "format",
   ])
   .describe("Asset types to which site naming rules apply.");
+
+export const NamingRuleAssetSchema = NamingRuleAssetValueSchema.describe(
+  "Asset type to which site naming rules apply.",
+);
 
 // ─── Site lifecycle enums ───────────────────────────────────────────────────
 
@@ -65,6 +68,10 @@ export const DayOfWeekSchema = z
     "Sunday",
   ])
   .describe("Day of week for scheduled publishing.");
+
+export const DaysOfWeekSchema = DayOfWeekSchema.describe(
+  "Day of week for scheduled publishing.",
+);
 
 // ─── Asset factory / workflow enums ─────────────────────────────────────────
 
@@ -166,8 +173,8 @@ export const StructuredDataAssetTypeSchema = z
 // ─── Entity type (identifier-level) ─────────────────────────────────────────
 //
 // Re-exported for use inside asset payloads that reference other assets by
-// type (e.g. Reference.referencedAssetType). Based on Cascade's
-// `EntityTypeString` from openapi.yaml line 149.
+// type (e.g. Reference.referencedAssetType). Based on cascade-cms-api's
+// generated `EntityTypeString` TypeScript type.
 //
 // Cascade uses two parallel naming schemes: EntityType strings (this schema —
 // lowercase or snake_case, e.g. 'block_XHTML_DATADEFINITION', 'format_XSLT',
@@ -176,10 +183,7 @@ export const StructuredDataAssetTypeSchema = z
 // e.g. 'xhtmlDataDefinitionBlock', 'xsltFormat', 'ftpTransport',
 // 'wordPressConnector') are body-shape discriminators under `asset.<key>`.
 // A handful of types spell the same in both schemes ('page', 'file',
-// 'folder', 'symlink', 'template', ...); most do not. The upstream
-// `EntityTypeString` incorrectly includes the envelope key
-// `xhtmlDataDefinitionBlock`; it is excluded here because Cascade does not
-// accept it as an identifier-level type.
+// 'folder', 'symlink', 'template', ...); most do not.
 
 export const EntityTypeStringSchema = z
   .enum([
@@ -193,6 +197,8 @@ export const EntityTypeStringSchema = z
     "block_XML",
     "block_TWITTER_FEED",
     "connectorcontainer",
+    "twitterconnector",
+    "facebookconnector",
     "wordpressconnector",
     "googleanalyticsconnector",
     "contenttype",
@@ -224,7 +230,6 @@ export const EntityTypeStringSchema = z
     "site",
     "sitedestinationcontainer",
     "symlink",
-    "target",
     "template",
     "transport",
     "transport_fs",
@@ -238,11 +243,9 @@ export const EntityTypeStringSchema = z
     "workflowdefinitioncontainer",
     "workflowemail",
     "workflowemailcontainer",
-    "facebookconnector",
-    "twitterconnector",
   ])
   .describe(
-    "Cascade entity type string — used in Identifier.type and Reference.referencedAssetType. Values are lowercase or snake_case (e.g. 'page', 'block_XHTML_DATADEFINITION', 'format_XSLT', 'transport_ftp', 'wordpressconnector'). These are DISTINCT from the camelCase envelope keys on the Asset body ('xhtmlDataDefinitionBlock', 'xsltFormat', 'ftpTransport', 'wordPressConnector'). A few types ('page', 'file', 'folder', 'symlink', 'template', 'reference', 'role', 'site', 'user', 'group') spell the same in both; most do not. Never use an envelope key here.",
+    "Cascade entity type string from cascade-cms-api generated TypeScript types — used in Identifier.type and Reference.referencedAssetType. Most values are lowercase or snake_case (e.g. 'page', 'block_XHTML_DATADEFINITION', 'format_XSLT', 'transport_ftp', 'wordpressconnector').",
   );
 
 export type EntityTypeString = z.infer<typeof EntityTypeStringSchema>;
