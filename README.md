@@ -2,7 +2,7 @@
 
 An MCP (Model Context Protocol) server that exposes the Cascade CMS REST API to LLMs and agents. It wraps the [cascade-cms-api](https://github.com/kuklaph/cascade-cms-api) library with Zod validation, JSON response text, structuredContent, and actionable error messages.
 
-Built in TypeScript on [Bun](https://bun.sh). The published server provides 57 MCP tools and 5 resources/templates for Cascade CMS asset reads/writes, draft-based create/edit workflows, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish, blocked-call management, site-removal safeguarding, server version checks, and cached response retrieval.
+Built in TypeScript on [Bun](https://bun.sh). The published server provides 61 MCP tools and 5 resources/templates for Cascade CMS asset reads/writes, binary file-data handling, draft-based create/edit workflows, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish, blocked-call management, site-removal safeguarding, server version checks, and cached response retrieval.
 
 ## Requirements
 
@@ -181,6 +181,7 @@ Use this section to decide whether this MCP covers the job. Your MCP client or a
 | List messages, mark messages, delete messages, and inspect subscribers/relationships                    | Yes       |
 | Read audit logs and system preferences                                                                  | Yes       |
 | Inspect raw asset content, references, strings, links, paths, and structured-data nodelets after a read | Yes       |
+| Inspect binary `file.data`, read bounded byte ranges, return image content, and export files locally    | Yes       |
 | Build, inspect, patch, validate, and submit complete create/edit asset drafts                           | Yes       |
 | Fetch additional bytes from large/truncated responses                                                   | Yes       |
 | Persist blocked-call rules that prevent matching Cascade tool calls from running                        | Yes       |
@@ -208,6 +209,9 @@ Read-only tools:
 | `cascade_read_preferences`          | Read system preferences                            |
 | `cascade_server_version`            | Read this MCP server's name and version            |
 | `cascade_read_response`             | Fetch more text from a cached oversized response   |
+| `cascade_file_data_info`            | Inspect binary metadata for a Cascade file         |
+| `cascade_file_data_read`            | Read a bounded range from binary file data         |
+| `cascade_file_data_image`           | Return verified image data as MCP image content    |
 | `cascade_draft_get_value`           | Fetch one JSON value from a draft                  |
 | `cascade_draft_list_facts`          | List indexed JSON facts from a draft               |
 | `cascade_draft_search_values`       | Search scalar values in a draft                    |
@@ -239,6 +243,19 @@ These tools do not call Cascade directly. They inspect the in-memory `asset_hand
 
 Structured-data selectors support `expected_matches` as an exact count assertion. At the top level it asserts the number of resolved nodes; inside `where_child` it asserts the number of matching direct children on each candidate node. Single-target semantic patch and target-child selectors require `expected_matches: 1` when provided.
 
+File data tools:
+
+Use these for Cascade `file` assets whose binary content is stored in `file.data`. `cascade_read` preview summarizes binary data instead of indexing every byte. Each file-data tool accepts either the `asset_handle` returned by `cascade_read` or a direct file `identifier`; direct identifier mode reads Cascade once and returns a fresh `asset_handle` for follow-up calls.
+
+| Tool                         | Purpose                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| `cascade_file_data_info`     | Return byte count, SHA-256, detected MIME/kind, and a short hex preview |
+| `cascade_file_data_read`     | Return a bounded byte range as `hex` or `base64`                        |
+| `cascade_file_data_image`    | Return magic-byte verified image files as MCP image content             |
+| `cascade_file_data_export`   | Write exact bytes to an explicit local `output_path`                    |
+
+`cascade_file_data_image` only returns magic-byte verified images and caps inline MCP image content at 5 MiB; use `cascade_file_data_export` for larger images. `cascade_file_data_export` is an approval-gated local filesystem write: it is explicit-path only, does not create parent directories, refuses to overwrite existing files unless `overwrite: true`, and can verify `expected_sha256` before writing. File-data cache/export helpers reject a single `file.data` payload over 100 MiB, and the read cache evicts older binary entries once cached binary data exceeds 250 MiB. PDF files are supported as binary data for inspect/read/export; v1 does not extract PDF text.
+
 Draft workflow tools:
 
 Drafts are mutable, in-memory copies used to assemble complete `cascade_create` or `cascade_edit` payloads. Edit drafts start from a cloned and edit-normalized `asset_handle`; create drafts start from an optional asset envelope, from `cascade_draft_scaffold_create`, or from `cascade_draft_scaffold_from_asset`, which creates a create-safe scaffold from any cached asset envelope by stripping read-only fields/recycled flags, clearing credential fields present in the source, adding required hidden credential placeholders when absent, and optionally clearing structured-data text and asset-reference values. Patch tools mutate only the local draft addressed by `draft_handle`, never the original `asset_handle` read cache. Semantic patch tools resolve exactly one structured-data node and then apply the existing JSON Pointer draft patch path. `cascade_draft_mutation_plan_execute` runs local draft steps sequentially, checks rules targeting the plan tool against hydrated/resolved step payloads, and stops on the first error; it is not a Cascade batch request. `cascade_draft_submit` validates the final `{ asset: ... }` payload with the normal create/edit schema, checks blocked-call rules against the resolved payload as both `cascade_draft_submit` and the final `cascade_create` or `cascade_edit` operation, re-reads edit sources to reject stale drafts, and then calls Cascade.
@@ -256,6 +273,7 @@ Approval recommended:
 | `cascade_draft_apply_semantic_patch`  | Mutates a local draft after resolving structured-data nodes semantically                  |
 | `cascade_draft_mutation_plan_execute` | Runs local draft workflow steps sequentially and stops on first failure                   |
 | `cascade_draft_submit`                | Creates or edits an asset from the complete validated draft payload                       |
+| `cascade_file_data_export`            | Writes Cascade file bytes to an explicit local filesystem path                            |
 | `cascade_move`                        | Moves or renames an asset                                                                 |
 | `cascade_copy`                        | Copies an asset                                                                           |
 | `cascade_site_copy`                   | Copies a site                                                                             |

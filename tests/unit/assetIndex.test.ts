@@ -29,6 +29,8 @@ import {
   toAssetPreview,
 } from "../../src/assetIndex.js";
 
+const JPEG_SIGNED_BYTES = [-1, -40, -1, -31, 0, 16, 69, 120, 105, 102];
+
 describe("read-response fixtures", () => {
   test.each([
     ["tabs", tabsFixture, 11],
@@ -498,6 +500,147 @@ describe("asset nodelet index", () => {
       "data",
       "pageConfigurations",
     ]);
+  });
+
+  test("summarizes binary file data without indexing each byte", () => {
+    const data = [...JPEG_SIGNED_BYTES, ...Array.from({ length: 300_000 }, () => 0)];
+    const raw = {
+      success: true,
+      asset: {
+        file: {
+          id: "image-id",
+          name: "hero.jpg",
+          path: "/_files/hero.jpg",
+          type: "file",
+          data,
+        },
+      },
+    };
+
+    const index = buildAssetIndex(raw, "a_binary");
+    const preview = toAssetPreview(index);
+
+    expect(index.raw).toBe(raw);
+    expect((index.raw as any).asset.file.data).toBe(data);
+    expect(index.rawFacts.some((fact) => fact.pointer === "/asset/file/data")).toBe(true);
+    expect(index.rawFacts.some((fact) => fact.pointer === "/asset/file/data/0")).toBe(false);
+    expect(preview.omitted_fields).toContain("data");
+    expect(preview.binary_fields).toBeDefined();
+    expect(preview.binary_fields!).toEqual([
+      expect.objectContaining({
+        pointer: "/asset/file/data",
+        bytes_total: data.length,
+        detected_kind: "jpeg",
+        mime_type: "image/jpeg",
+        mime_source: "magic",
+        byte_preview_hex: "ff d8 ff e1 00 10 45 78 69 66 00 00 00 00 00 00",
+      }),
+    ]);
+    expect(preview.binary_fields![0]!.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(preview.next_actions.map((action) => action.tool)).toEqual(
+      expect.arrayContaining([
+        "cascade_file_data_info",
+        "cascade_file_data_read",
+        "cascade_file_data_image",
+        "cascade_file_data_export",
+      ]),
+    );
+  });
+
+  test("summarizes decoded inner file data at the root data pointer", () => {
+    const data = [...JPEG_SIGNED_BYTES, 1, 2, 3];
+    const index = buildAssetIndex(
+      {
+        id: "decoded-file",
+        name: "hero.jpg",
+        path: "/_files/hero.jpg",
+        type: "file",
+        data,
+      },
+      "a_inner_file",
+    );
+
+    expect(index.assetType).toBe("file");
+    expect(index.binaryFields[0]).toEqual(
+      expect.objectContaining({
+        pointer: "/data",
+        bytes_total: data.length,
+        detected_kind: "jpeg",
+        mime_source: "magic",
+      }),
+    );
+    expect(index.rawFacts.some((fact) => fact.pointer === "/data")).toBe(true);
+    expect(index.rawFacts.some((fact) => fact.pointer === "/data/0")).toBe(false);
+  });
+
+  test("large binary file data does not fail the raw index size guard", () => {
+    const data = Array.from({ length: 2_200_000 }, () => -128);
+    const index = buildAssetIndex(
+      {
+        asset: {
+          file: {
+            id: "large-image",
+            name: "large.jpg",
+            path: "/_files/large.jpg",
+            type: "file",
+            data,
+          },
+        },
+      },
+      "a_large_binary",
+    );
+
+    expect(index.binaryFields[0]).toEqual(
+      expect.objectContaining({
+        pointer: "/asset/file/data",
+        bytes_total: data.length,
+      }),
+    );
+    expect(index.rawFacts.some((fact) => fact.pointer === "/asset/file/data/0")).toBe(false);
+  });
+
+  test("asset cache evicts older binary file entries when the binary byte budget is exceeded", () => {
+    const cache = createAssetCache({ maxEntries: 50, maxBinaryBytes: 15 });
+    const first = cache.put({
+      asset: {
+        file: {
+          id: "one",
+          name: "one.jpg",
+          type: "file",
+          data: [...JPEG_SIGNED_BYTES],
+        },
+      },
+    });
+    const second = cache.put({
+      asset: {
+        file: {
+          id: "two",
+          name: "two.jpg",
+          type: "file",
+          data: [...JPEG_SIGNED_BYTES],
+        },
+      },
+    });
+
+    expect(cache.get(first.handle)).toBeUndefined();
+    expect(cache.get(second.handle)).toBe(second);
+  });
+
+  test("asset cache rejects one binary file entry that exceeds the binary byte budget", () => {
+    const cache = createAssetCache({ maxEntries: 50, maxBinaryBytes: 9 });
+
+    expect(() =>
+      cache.put({
+        asset: {
+          file: {
+            id: "too-large",
+            name: "too-large.jpg",
+            type: "file",
+            data: [...JPEG_SIGNED_BYTES],
+          },
+        },
+      }),
+    ).toThrow("configured binary cache budget");
   });
 
   test("asset cache validates handles and reports misses without calling Cascade", () => {

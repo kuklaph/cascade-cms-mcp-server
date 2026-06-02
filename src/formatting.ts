@@ -37,19 +37,24 @@ export function formatResponse(
 ): CallToolResult {
   const structured = stripFields(toStructured(result), options?.stripFromStructured);
   const resourceLinks = extractResourceLinks(result);
+  const contentBlocks = extractContentBlocks(result);
   const text = renderJson(structured);
 
   if (text.length > CHARACTER_LIMIT) {
     const handle = options?.cache?.put(toolName, text);
     const envelope = buildOversizeEnvelope(text, handle);
     return {
-      content: [{ type: "text", text: renderJson(envelope) }, ...resourceLinks],
+      content: [
+        { type: "text", text: renderJson(envelope) },
+        ...resourceLinks,
+        ...contentBlocks,
+      ],
       structuredContent: boundedStructuredEnvelope(structured, envelope),
     };
   }
 
   return {
-    content: [{ type: "text", text }, ...resourceLinks],
+    content: [{ type: "text", text }, ...resourceLinks, ...contentBlocks],
     structuredContent: structured,
   };
 }
@@ -108,6 +113,21 @@ function extractResourceLinks(result: unknown): ResourceLink[] {
       rec.type === "resource_link" &&
       typeof rec.uri === "string" &&
       typeof rec.name === "string"
+    );
+  });
+}
+
+function extractContentBlocks(result: unknown): CallToolResult["content"] {
+  if (typeof result !== "object" || result === null) return [];
+  const blocks = (result as { _content_blocks?: unknown })._content_blocks;
+  if (!Array.isArray(blocks)) return [];
+  return blocks.filter((block): block is CallToolResult["content"][number] => {
+    if (typeof block !== "object" || block === null) return false;
+    const rec = block as Record<string, unknown>;
+    return (
+      rec.type === "image" &&
+      typeof rec.data === "string" &&
+      typeof rec.mimeType === "string"
     );
   });
 }

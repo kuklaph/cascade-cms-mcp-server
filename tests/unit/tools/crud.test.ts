@@ -1,5 +1,12 @@
 import { describe, test, expect, mock } from "bun:test";
-import { readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ToolAnnotations, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { registerCrudTools } from "../../../src/tools/crud.js";
 import {
@@ -12,6 +19,10 @@ import {
   AssetListReferencesRequestSchema,
   AssetListNodeletsRequestSchema,
   AssetGetNodeletRequestSchema,
+  FileDataExportRequestSchema,
+  FileDataInfoRequestSchema,
+  FileDataImageRequestSchema,
+  FileDataReadRequestSchema,
   CreateRequestSchema,
   EditRequestSchema,
   RemoveRequestSchema,
@@ -37,6 +48,7 @@ import {
 // -----------------------------------------------------------------------------
 
 const ID_PAGE = { id: "abc123", type: "page" as const };
+const ID_FILE = { id: "file123", type: "file" as const };
 const VALID_ASSET = {
   page: {
     name: "index",
@@ -44,6 +56,30 @@ const VALID_ASSET = {
     siteName: "my-site",
     contentTypePath: "/content-types/default",
     xhtml: "<p>Home</p>",
+  },
+};
+const READ_IMAGE_FILE = {
+  success: true,
+  asset: {
+    file: {
+      id: "file123",
+      type: "file",
+      name: "hero.jpg",
+      path: "/_files/hero.jpg",
+      data: [-1, -40, -1, -31, 0, 16, 69, 120, 105, 102],
+    },
+  },
+};
+const READ_EXTENSION_IMAGE_FILE = {
+  success: true,
+  asset: {
+    file: {
+      id: "file456",
+      type: "file",
+      name: "not-really.png",
+      path: "/_files/not-really.png",
+      data: [1, 2, 3, 4],
+    },
   },
 };
 
@@ -300,6 +336,245 @@ describe("cascade_read tool", () => {
     expect(AssetListReferencesRequestSchema.safeParse({}).success).toBe(false);
     expect(AssetListNodeletsRequestSchema.safeParse({ pointer: "" }).success).toBe(false);
     expect(AssetGetNodeletRequestSchema.safeParse({ pointer: "" }).success).toBe(false);
+  });
+
+  test("file data helper schemas require exactly one source", () => {
+    expect(FileDataInfoRequestSchema.safeParse({ asset_handle: "a_123" }).success).toBe(true);
+    expect(FileDataInfoRequestSchema.safeParse({ identifier: ID_FILE }).success).toBe(true);
+    expect(FileDataInfoRequestSchema.safeParse({}).success).toBe(false);
+    expect(
+      FileDataInfoRequestSchema.safeParse({
+        asset_handle: "a_123",
+        identifier: ID_FILE,
+      }).success,
+    ).toBe(false);
+    expect(FileDataInfoRequestSchema.safeParse({ identifier: ID_PAGE }).success).toBe(false);
+    expect(FileDataImageRequestSchema.safeParse({ asset_handle: "a_123" }).success).toBe(true);
+    expect(
+      FileDataExportRequestSchema.safeParse({
+        asset_handle: "a_123",
+        output_path: "hero.jpg",
+      }).success,
+    ).toBe(true);
+    expect(
+      FileDataReadRequestSchema.safeParse({
+        asset_handle: "a_123",
+        offset: 0,
+        length: 8193,
+      }).success,
+    ).toBe(false);
+  });
+
+  test("file data helpers inspect cached file data without calling Cascade again", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient({
+      read: mock(() => Promise.resolve(READ_IMAGE_FILE)),
+    });
+
+    registerCrudTools(server as any, client);
+    const read = findTool(tools, "cascade_read");
+    const info = findTool(tools, "cascade_file_data_info");
+    const readData = findTool(tools, "cascade_file_data_read");
+
+    const readResult = await read.handler({ identifier: ID_FILE });
+    const handle = (readResult.structuredContent as Record<string, any>).asset_handle;
+    const infoResult = await info.handler({ asset_handle: handle });
+    const rangeResult = await readData.handler({
+      asset_handle: handle,
+      offset: 0,
+      length: 4,
+      encoding: "hex",
+    });
+
+    expect(client.read).toHaveBeenCalledTimes(1);
+    expect(infoResult.isError).not.toBe(true);
+    expect(rangeResult.isError).not.toBe(true);
+    expect(infoResult.structuredContent).toEqual(
+      expect.objectContaining({
+        success: true,
+        asset_handle: handle,
+        pointer: "/asset/file/data",
+        bytes_total: 10,
+        detected_kind: "jpeg",
+        mime_type: "image/jpeg",
+      }),
+    );
+    expect(rangeResult.structuredContent).toEqual(
+      expect.objectContaining({
+        success: true,
+        asset_handle: handle,
+        offset: 0,
+        length: 4,
+        bytes_total: 10,
+        encoding: "hex",
+        encoded_bytes: "ff d8 ff e1",
+      }),
+    );
+  });
+
+  test("file data helper direct identifier mode reads Cascade once and returns a follow-up handle", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient({
+      read: mock(() => Promise.resolve(READ_IMAGE_FILE)),
+    });
+
+    registerCrudTools(server as any, client);
+    const info = findTool(tools, "cascade_file_data_info");
+
+    const result = await info.handler({ identifier: ID_FILE });
+    const structured = result.structuredContent as Record<string, any>;
+
+    expect(result.isError).not.toBe(true);
+    expect(client.read).toHaveBeenCalledTimes(1);
+    expect(client.read.mock.calls[0][0]).toEqual({ identifier: ID_FILE });
+    expect(structured.asset_handle).toMatch(/^a_[0-9a-f-]+$/);
+    expect(structured.bytes_total).toBe(10);
+    expect(structured.next_actions.map((action: any) => action.tool)).toContain(
+      "cascade_file_data_read",
+    );
+  });
+
+  test("file data image helper returns MCP image content without dumping base64 into JSON text", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient({
+      read: mock(() => Promise.resolve(READ_IMAGE_FILE)),
+    });
+
+    registerCrudTools(server as any, client);
+    const read = findTool(tools, "cascade_read");
+    const image = findTool(tools, "cascade_file_data_image");
+
+    const readResult = await read.handler({ identifier: ID_FILE });
+    const handle = (readResult.structuredContent as Record<string, any>).asset_handle;
+    const result = await image.handler({ asset_handle: handle });
+    const text = firstText(result);
+    const imageBlock = result.content.find((block) => block.type === "image");
+
+    expect(result.isError).not.toBe(true);
+    expect(imageBlock).toEqual({
+      type: "image",
+      mimeType: "image/jpeg",
+      data: "/9j/4QAQRXhpZg==",
+    });
+    expect(text).toContain('"mime_type": "image/jpeg"');
+    expect(text).not.toContain("/9j/4QAQRXhpZg==");
+    expect((result.structuredContent as Record<string, any>)._content_blocks).toBeUndefined();
+  });
+
+  test("file data image helper rejects extension-only image guesses", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient({
+      read: mock(() => Promise.resolve(READ_EXTENSION_IMAGE_FILE)),
+    });
+
+    registerCrudTools(server as any, client);
+    const info = findTool(tools, "cascade_file_data_info");
+    const image = findTool(tools, "cascade_file_data_image");
+
+    const infoResult = await info.handler({ identifier: ID_FILE });
+    const handle = (infoResult.structuredContent as Record<string, any>).asset_handle;
+    const result = await image.handler({ asset_handle: handle });
+
+    expect(infoResult.isError).not.toBe(true);
+    expect((infoResult.structuredContent as Record<string, any>).mime_source).toBe("extension");
+    expect(
+      (infoResult.structuredContent as Record<string, any>).next_actions.map(
+        (action: any) => action.tool,
+      ),
+    ).not.toContain("cascade_file_data_image");
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toContain("not a magic-byte verified image");
+  });
+
+  test("file data export writes exact bytes and refuses overwrite by default", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cascade-file-data-"));
+    const outputPath = join(dir, "hero.jpg");
+    try {
+      const { server, tools } = makeMockServer();
+      const client = createMockClient({
+        read: mock(() => Promise.resolve(READ_IMAGE_FILE)),
+      });
+
+      registerCrudTools(server as any, client);
+      const read = findTool(tools, "cascade_read");
+      const exportFile = findTool(tools, "cascade_file_data_export");
+
+      expect(exportFile.config.annotations.destructiveHint).toBe(true);
+      const readResult = await read.handler({ identifier: ID_FILE });
+      const handle = (readResult.structuredContent as Record<string, any>).asset_handle;
+      const result = await exportFile.handler({
+        asset_handle: handle,
+        output_path: outputPath,
+      });
+      const second = await exportFile.handler({
+        asset_handle: handle,
+        output_path: outputPath,
+      });
+
+      expect(result.isError).not.toBe(true);
+      expect([...readFileSync(outputPath)]).toEqual([
+        255,
+        216,
+        255,
+        225,
+        0,
+        16,
+        69,
+        120,
+        105,
+        102,
+      ]);
+      expect(result.structuredContent).toEqual(
+        expect.objectContaining({
+          success: true,
+          asset_handle: handle,
+          output_path: outputPath,
+          bytes_written: 10,
+          detected_kind: "jpeg",
+          mime_type: "image/jpeg",
+        }),
+      );
+      expect(second.isError).toBe(true);
+      expect(firstText(second)).toContain("already exists");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("file data export validates expected hash and parent directory", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cascade-file-data-"));
+    const mismatchPath = join(dir, "mismatch.jpg");
+    const missingParentPath = join(dir, "missing", "hero.jpg");
+    try {
+      const { server, tools } = makeMockServer();
+      const client = createMockClient({
+        read: mock(() => Promise.resolve(READ_IMAGE_FILE)),
+      });
+
+      registerCrudTools(server as any, client);
+      const read = findTool(tools, "cascade_read");
+      const exportFile = findTool(tools, "cascade_file_data_export");
+
+      const readResult = await read.handler({ identifier: ID_FILE });
+      const handle = (readResult.structuredContent as Record<string, any>).asset_handle;
+      const mismatch = await exportFile.handler({
+        asset_handle: handle,
+        output_path: mismatchPath,
+        expected_sha256: "0".repeat(64),
+      });
+      const missingParent = await exportFile.handler({
+        asset_handle: handle,
+        output_path: missingParentPath,
+      });
+
+      expect(mismatch.isError).toBe(true);
+      expect(firstText(mismatch)).toContain("expected_sha256 mismatch");
+      expect(existsSync(mismatchPath)).toBe(false);
+      expect(missingParent.isError).toBe(true);
+      expect(firstText(missingParent)).toContain("Parent directory");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -668,6 +943,10 @@ describe("registerCrudTools coverage", () => {
       "cascade_copy",
       "cascade_create",
       "cascade_edit",
+      "cascade_file_data_export",
+      "cascade_file_data_image",
+      "cascade_file_data_info",
+      "cascade_file_data_read",
       "cascade_move",
       "cascade_read",
       "cascade_remove",

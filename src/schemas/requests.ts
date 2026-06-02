@@ -520,6 +520,74 @@ export const AssetGetValueRequestSchema = z
 
 export type AssetGetValueInput = z.infer<typeof AssetGetValueRequestSchema>;
 
+const Sha256Schema = z
+  .string()
+  .regex(/^[0-9a-f]{64}$/i, "value must be a SHA-256 hex hash");
+
+const FileIdentifierSchema = IdentifierSchema.refine(
+  (value) => value.type === "file",
+  "identifier.type must be 'file'",
+);
+
+const FileDataSourceFields = {
+  asset_handle: AssetHandleField.asset_handle.optional(),
+  identifier: FileIdentifierSchema.optional().describe(
+    "Cascade file identifier. Provide this only when no asset_handle is available.",
+  ),
+};
+
+function requireExactlyOneFileDataSource(
+  value: { asset_handle?: string; identifier?: unknown },
+  ctx: z.RefinementCtx,
+): void {
+  const sources = [value.asset_handle !== undefined, value.identifier !== undefined].filter(Boolean);
+  if (sources.length !== 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Provide exactly one of asset_handle or identifier.",
+      path: ["asset_handle"],
+    });
+  }
+}
+
+export const FileDataInfoRequestSchema = z
+  .object(FileDataSourceFields)
+  .strict()
+  .superRefine(requireExactlyOneFileDataSource);
+
+export type FileDataInfoInput = z.infer<typeof FileDataInfoRequestSchema>;
+
+export const FileDataReadRequestSchema = z
+  .object({
+    ...FileDataSourceFields,
+    offset: z.number().int().min(0).default(0),
+    length: z.number().int().min(1).max(8192).default(64),
+    encoding: z.enum(["hex", "base64"]).default("hex"),
+  })
+  .strict()
+  .superRefine(requireExactlyOneFileDataSource);
+
+export type FileDataReadInput = z.infer<typeof FileDataReadRequestSchema>;
+
+export const FileDataImageRequestSchema = z
+  .object(FileDataSourceFields)
+  .strict()
+  .superRefine(requireExactlyOneFileDataSource);
+
+export type FileDataImageInput = z.infer<typeof FileDataImageRequestSchema>;
+
+export const FileDataExportRequestSchema = z
+  .object({
+    ...FileDataSourceFields,
+    output_path: z.string().min(1, "output_path must not be empty"),
+    overwrite: z.boolean().default(false),
+    expected_sha256: Sha256Schema.optional(),
+  })
+  .strict()
+  .superRefine(requireExactlyOneFileDataSource);
+
+export type FileDataExportInput = z.infer<typeof FileDataExportRequestSchema>;
+
 export const AssetListReferencesRequestSchema = z
   .object({
     ...AssetHandleField,

@@ -13,9 +13,12 @@
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { open, stat } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import type { Types } from "cascade-cms-api";
 import type { CascadeClient } from "../client.js";
 import { createResponseCache } from "../cache.js";
+import { FILE_DATA_MAX_BYTES } from "../constants.js";
 import {
   createAssetCache,
   getRawValue,
@@ -28,7 +31,16 @@ import {
   searchRawValues,
   toAssetPreview,
   type AssetCache,
+  type AssetCacheEntry,
 } from "../assetIndex.js";
+import {
+  isNumberArray,
+  isVerifiedImageSummary,
+  readFileDataRange,
+  toUnsignedByteSlice,
+  toUnsignedBytes,
+  type BinaryFieldSummary,
+} from "../fileData.js";
 import {
   registerCascadeTool,
   buildCascadeToolDescription,
@@ -46,6 +58,10 @@ import {
   AssetGetNodeletRequestSchema,
   AssetResolveNodesRequestSchema,
   AssetAssertValuesRequestSchema,
+  FileDataExportRequestSchema,
+  FileDataInfoRequestSchema,
+  FileDataImageRequestSchema,
+  FileDataReadRequestSchema,
   CreateRequestSchema,
   EditRequestSchema,
   RemoveRequestSchema,
@@ -59,8 +75,12 @@ import {
   type StructuredDataSelector,
 } from "../structuredDataSelectors.js";
 
+const MAX_INLINE_IMAGE_BYTES = 5 * 1024 * 1024;
+const FILE_DATA_EXPORT_CHUNK_BYTES = 64 * 1024;
+
 function registerAssetFollowUpTools(
   server: McpServer,
+  client: CascadeClient,
   assetCache: AssetCache,
   deps: CascadeDeps,
 ): void {
@@ -337,6 +357,288 @@ function registerAssetFollowUpTools(
       };
     },
   }, deps);
+
+  registerCascadeTool(server, {
+    name: "cascade_file_data_info",
+    title: "Inspect Cascade file data",
+    description: buildCascadeToolDescription(
+      `Inspect binary data for a Cascade file asset without dumping the raw byte array. Use asset_handle after cascade_read preview, or identifier for a direct file read that creates a fresh asset_handle for follow-up calls.`,
+    ),
+    inputSchema: FileDataInfoRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    handler: async (input) => {
+      const entry = await resolveFileDataEntry(
+        client,
+        assetCache,
+        input as FileDataSourceInput,
+        "cascade_file_data_info",
+      );
+      const { summary } = fileDataFromEntry(entry, "cascade_file_data_info");
+      return fileDataInfoResult(entry, summary);
+    },
+  }, deps);
+
+  registerCascadeTool(server, {
+    name: "cascade_file_data_read",
+    title: "Read Cascade file data range",
+    description: buildCascadeToolDescription(
+      `Read a bounded byte range from binary data for a Cascade file asset. Use this instead of reading file.data directly when the file may be large. Accepts asset_handle after cascade_read preview, or identifier for a direct file read that creates a fresh asset_handle.`,
+    ),
+    inputSchema: FileDataReadRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    handler: async (input) => {
+      const args = input as FileDataSourceInput & {
+        offset?: number;
+        length?: number;
+        encoding?: "hex" | "base64";
+      };
+      const entry = await resolveFileDataEntry(
+        client,
+        assetCache,
+        args,
+        "cascade_file_data_read",
+      );
+      const { data, summary } = fileDataFromEntry(entry, "cascade_file_data_read");
+      return {
+        ...fileDataInfoResult(entry, summary),
+        ...readFileDataRange(data, args),
+      };
+    },
+  }, deps);
+
+  registerCascadeTool(server, {
+    name: "cascade_file_data_image",
+    title: "Return Cascade file data as image content",
+    description: buildCascadeToolDescription(
+      `Return binary data for a Cascade image file as MCP image content without dumping base64 into the JSON text response. Accepts asset_handle after cascade_read preview, or identifier for a direct file read that creates a fresh asset_handle.`,
+    ),
+    inputSchema: FileDataImageRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: true,
+    },
+    handler: async (input) => {
+      const entry = await resolveFileDataEntry(
+        client,
+        assetCache,
+        input as FileDataSourceInput,
+        "cascade_file_data_image",
+      );
+      const { data, summary } = fileDataFromEntry(entry, "cascade_file_data_image");
+      if (!isVerifiedImageSummary(summary)) {
+        throw new Error(
+          `cascade_file_data_image: cached file asset ${entry.handle} is ${summary.mime_type} from ${summary.mime_source}, not a magic-byte verified image.`,
+        );
+      }
+      if (summary.bytes_total > MAX_INLINE_IMAGE_BYTES) {
+        throw new Error(
+          `cascade_file_data_image: image is too large for inline MCP image content (${summary.bytes_total} bytes, max ${MAX_INLINE_IMAGE_BYTES}). Use cascade_file_data_export instead.`,
+        );
+      }
+      const bytes = toUnsignedBytes(data);
+      return {
+        ...fileDataInfoResult(entry, summary),
+        _content_blocks: [
+          {
+            type: "image" as const,
+            data: Buffer.from(bytes).toString("base64"),
+            mimeType: summary.mime_type,
+          },
+        ],
+      };
+    },
+    stripFromStructured: ["_content_blocks"],
+  }, deps);
+
+  registerCascadeTool(server, {
+    name: "cascade_file_data_export",
+    title: "Export Cascade file data",
+    description: buildCascadeToolDescription(
+      `Export binary data for a Cascade file asset to an explicit local output_path. This writes to the local filesystem but does not mutate Cascade. Parent directories must already exist; overwrite defaults to false.`,
+    ),
+    inputSchema: FileDataExportRequestSchema,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    handler: async (input) => {
+      const args = input as FileDataSourceInput & {
+        output_path: string;
+        overwrite?: boolean;
+        expected_sha256?: string;
+      };
+      const entry = await resolveFileDataEntry(
+        client,
+        assetCache,
+        args,
+        "cascade_file_data_export",
+      );
+      const { data, summary } = fileDataFromEntry(entry, "cascade_file_data_export");
+      if (
+        args.expected_sha256 &&
+        args.expected_sha256.toLowerCase() !== summary.sha256.toLowerCase()
+      ) {
+        throw new Error(
+          `cascade_file_data_export: expected_sha256 mismatch for ${entry.handle}. Expected ${args.expected_sha256}, actual ${summary.sha256}.`,
+        );
+      }
+      if (summary.bytes_total > FILE_DATA_MAX_BYTES) {
+        throw new Error(
+          `cascade_file_data_export: file.data is too large to export (${summary.bytes_total} bytes, max ${FILE_DATA_MAX_BYTES}).`,
+        );
+      }
+
+      const outputPath = resolve(args.output_path);
+      await assertExportParentDirectory(outputPath);
+      await writeFileData(outputPath, data, args.overwrite ?? false);
+
+      return {
+        ...fileDataInfoResult(entry, summary),
+        output_path: outputPath,
+        bytes_written: data.length,
+        overwrite: args.overwrite ?? false,
+      };
+    },
+  }, deps);
+}
+
+interface FileDataSourceInput {
+  asset_handle?: string;
+  identifier?: Types.Identifier;
+}
+
+async function resolveFileDataEntry(
+  client: CascadeClient,
+  assetCache: AssetCache,
+  input: FileDataSourceInput,
+  toolName: string,
+): Promise<AssetCacheEntry> {
+  if (input.asset_handle) {
+    return getAssetEntry(assetCache, input.asset_handle, toolName);
+  }
+  if (!input.identifier) {
+    throw new Error(`${toolName}: provide exactly one of asset_handle or identifier.`);
+  }
+  const result = await client.read({
+    identifier: input.identifier,
+  } as unknown as Types.ReadRequest);
+  return assetCache.put(result);
+}
+
+function fileDataFromEntry(
+  entry: AssetCacheEntry,
+  toolName: string,
+): { data: number[]; summary: BinaryFieldSummary } {
+  if (entry.assetType !== "file") {
+    throw new Error(`${toolName}: cached asset ${entry.handle} is not a file asset.`);
+  }
+  const data = entry.asset?.data;
+  if (!isNumberArray(data) || entry.binaryFields.length === 0) {
+    throw new Error(`${toolName}: cached file asset ${entry.handle} has no binary data.`);
+  }
+  return { data, summary: entry.binaryFields[0]! };
+}
+
+function fileDataInfoResult(
+  entry: AssetCacheEntry,
+  summary: BinaryFieldSummary,
+): Record<string, unknown> {
+  return {
+    success: true,
+    asset_handle: entry.handle,
+    asset_type: entry.assetType,
+    asset_identity: entry.assetIdentity,
+    raw_resource_uri: entry.rawResourceUri,
+    raw_hash: entry.rawHash,
+    index_version: entry.indexVersion,
+    ...summary,
+    next_actions: fileDataNextActions(entry.handle, summary),
+  };
+}
+
+function fileDataNextActions(
+  assetHandle: string,
+  summary: BinaryFieldSummary,
+): Array<Record<string, unknown>> {
+  const actions: Array<Record<string, unknown>> = [
+    {
+      tool: "cascade_file_data_read",
+      reason: "Read a bounded byte range from this cached file data.",
+      input: { asset_handle: assetHandle },
+    },
+    {
+      tool: "cascade_file_data_export",
+      reason: "Export this file data to an explicit local output_path.",
+      required_inputs: ["asset_handle", "output_path"],
+    },
+  ];
+  if (isVerifiedImageSummary(summary)) {
+    actions.splice(1, 0, {
+      tool: "cascade_file_data_image",
+      reason: "Return this cached file data as MCP image content.",
+      input: { asset_handle: assetHandle },
+    });
+  }
+  return actions;
+}
+
+async function assertExportParentDirectory(outputPath: string): Promise<void> {
+  const parent = dirname(outputPath);
+  let parentStat;
+  try {
+    parentStat = await stat(parent);
+  } catch {
+    throw new Error(`cascade_file_data_export: Parent directory does not exist: ${parent}`);
+  }
+  if (!parentStat.isDirectory()) {
+    throw new Error(`cascade_file_data_export: Parent path is not a directory: ${parent}`);
+  }
+}
+
+async function writeFileData(
+  outputPath: string,
+  data: readonly number[],
+  overwrite: boolean,
+): Promise<void> {
+  const file = await open(outputPath, overwrite ? "w" : "wx").catch((err: unknown) => {
+    if (isFileExistsError(err)) {
+      throw new Error(
+        `cascade_file_data_export: output_path already exists. Set overwrite: true to replace it.`,
+      );
+    }
+    throw err;
+  });
+  try {
+    for (let offset = 0; offset < data.length; offset += FILE_DATA_EXPORT_CHUNK_BYTES) {
+      const end = Math.min(data.length, offset + FILE_DATA_EXPORT_CHUNK_BYTES);
+      await file.write(toUnsignedByteSlice(data, offset, end));
+    }
+  } finally {
+    await file.close();
+  }
+}
+
+function isFileExistsError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code?: unknown }).code === "EEXIST"
+  );
 }
 
 function getAssetEntry(
@@ -431,7 +733,7 @@ Error Handling:
     stripFromStructured: ["_resource_links"],
   }, resolved);
 
-  registerAssetFollowUpTools(server, assetCache, resolved);
+  registerAssetFollowUpTools(server, client, assetCache, resolved);
 
   registerCascadeTool(server, {
     name: "cascade_create",

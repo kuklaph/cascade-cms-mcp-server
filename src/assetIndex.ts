@@ -19,7 +19,17 @@ import {
   type RawValueSearchFilters,
 } from "./assetFacts.js";
 import { ASSET_ENVELOPE_KEYS } from "./schemas/assets.js";
-import { ASSET_READ_CACHE_MAX_ENTRIES } from "./constants.js";
+import {
+  ASSET_READ_CACHE_MAX_BINARY_BYTES,
+  ASSET_READ_CACHE_MAX_ENTRIES,
+  FILE_DATA_MAX_BYTES,
+} from "./constants.js";
+import {
+  isVerifiedImageSummary,
+  isNumberArray,
+  summarizeFileData,
+  type BinaryFieldSummary,
+} from "./fileData.js";
 import type { NextAction } from "./guidance.js";
 
 export type NodeletType = "text" | "asset" | "group" | string;
@@ -49,6 +59,7 @@ export interface IndexedAsset {
   maxDepth: number;
   rootPointers: string[];
   nodes: Map<string, IndexedNode>;
+  binaryFields: BinaryFieldSummary[];
 }
 
 export interface IndexedNode {
@@ -73,6 +84,7 @@ export interface AssetCache {
 
 export interface AssetCacheOptions {
   maxEntries?: number;
+  maxBinaryBytes?: number;
 }
 
 export interface AssetPreview {
@@ -89,6 +101,7 @@ export interface AssetPreview {
   max_depth: number;
   root_outline: NodeStub[];
   omitted_fields: string[];
+  binary_fields?: BinaryFieldSummary[];
   warnings: string[];
   next_actions: NextAction[];
 }
@@ -100,7 +113,9 @@ const ROOT_OUTLINE_LIMIT = 20;
 
 export function createAssetCache(opts?: AssetCacheOptions): AssetCache {
   const maxEntries = opts?.maxEntries ?? ASSET_READ_CACHE_MAX_ENTRIES;
+  const maxBinaryBytes = opts?.maxBinaryBytes ?? ASSET_READ_CACHE_MAX_BINARY_BYTES;
   const store = new Map<string, AssetCacheEntry>();
+  let cachedBinaryBytes = 0;
 
   function put(raw: unknown): AssetCacheEntry {
     const handle = `a_${globalThis.crypto.randomUUID()}`;
@@ -108,12 +123,24 @@ export function createAssetCache(opts?: AssetCacheOptions): AssetCache {
       ...buildAssetIndex(raw, handle),
       createdAt: Date.now(),
     };
+    const binaryBytes = binaryByteCount(entry);
+    if (binaryBytes > FILE_DATA_MAX_BYTES) {
+      throw new Error(
+        `Cached file.data is too large (${binaryBytes} bytes, max ${FILE_DATA_MAX_BYTES}).`,
+      );
+    }
+    if (binaryBytes > maxBinaryBytes) {
+      throw new Error(
+        `Cached file.data exceeds the configured binary cache budget (${binaryBytes} bytes, max ${maxBinaryBytes}).`,
+      );
+    }
     store.set(handle, entry);
+    cachedBinaryBytes += binaryBytes;
 
-    while (store.size > maxEntries) {
+    while (store.size > maxEntries || cachedBinaryBytes > maxBinaryBytes) {
       const oldest = store.keys().next().value;
       if (oldest === undefined) break;
-      store.delete(oldest);
+      deleteEntry(oldest);
     }
 
     return entry;
@@ -126,6 +153,13 @@ export function createAssetCache(opts?: AssetCacheOptions): AssetCache {
     store.delete(handle);
     store.set(handle, entry);
     return entry;
+  }
+
+  function deleteEntry(handle: string): void {
+    const entry = store.get(handle);
+    if (!entry) return;
+    cachedBinaryBytes -= binaryByteCount(entry);
+    store.delete(handle);
   }
 
   return {
@@ -141,7 +175,8 @@ export function isAssetHandle(handle: string): boolean {
 
 export function buildAssetIndex(raw: unknown, handle: string): IndexedAsset {
   const canonical = canonicalizeAsset(raw);
-  const rawIndex = buildRawFactIndex(raw);
+  const binaryFields = binaryFieldsFor(canonical);
+  const rawIndex = buildRawFactIndex(raw, { binaryFields });
   const nodes = new Map<string, IndexedNode>();
   const rootPointers: string[] = [];
 
@@ -172,6 +207,7 @@ export function buildAssetIndex(raw: unknown, handle: string): IndexedAsset {
     maxDepth: maxDepth(nodes),
     rootPointers,
     nodes,
+    binaryFields,
   };
 }
 
@@ -217,6 +253,7 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
       .slice(0, ROOT_OUTLINE_LIMIT)
       .map((p) => toStub(index.nodes.get(p)!)),
     omitted_fields: omitted,
+    ...(index.binaryFields.length > 0 ? { binary_fields: index.binaryFields } : {}),
     warnings,
     next_actions: [
       {
@@ -274,6 +311,7 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
         reason: "Clone this read snapshot into a mutable edit draft without changing the cached read.",
         required_inputs: ["asset_handle", "expected_raw_hash"],
       },
+      ...binaryNextActions(index),
     ],
   };
 }
@@ -406,6 +444,7 @@ function canonicalizeAsset(raw: unknown): {
   asset: Record<string, unknown> | undefined;
   assetType: string;
   assetIdentity: Record<string, unknown>;
+  assetPointer: string;
   structuredDataNodes: unknown;
   structuredDataNodesPointer: string;
 } {
@@ -427,9 +466,56 @@ function canonicalizeAsset(raw: unknown): {
     asset,
     assetType: asset ? assetType(typeKey, asset) : "unknown",
     assetIdentity: assetIdentity(asset),
+    assetPointer,
     structuredDataNodes: structuredData?.structuredDataNodes,
     structuredDataNodesPointer: `${assetPointer}/structuredData/structuredDataNodes`,
   };
+}
+
+function binaryFieldsFor(canonical: ReturnType<typeof canonicalizeAsset>): BinaryFieldSummary[] {
+  const asset = canonical.asset;
+  const data = asset?.data;
+  if (!asset || canonical.assetType !== "file" || !isNumberArray(data)) return [];
+  const name =
+    typeof asset.name === "string"
+      ? asset.name
+      : typeof asset.path === "string"
+        ? asset.path
+        : undefined;
+  return [summarizeFileData(data, `${canonical.assetPointer}/data`, name)];
+}
+
+function binaryByteCount(index: IndexedAsset): number {
+  return index.binaryFields.reduce((total, field) => total + field.bytes_total, 0);
+}
+
+function binaryNextActions(index: IndexedAsset): NextAction[] {
+  if (index.binaryFields.length === 0) return [];
+  const actions: NextAction[] = [
+    {
+      tool: "cascade_file_data_info",
+      reason: "Inspect summarized binary file data from this cached file asset.",
+      input: { asset_handle: index.handle },
+    },
+    {
+      tool: "cascade_file_data_read",
+      reason: "Read a bounded byte range from this cached file data without dumping the full array.",
+      input: { asset_handle: index.handle },
+    },
+    {
+      tool: "cascade_file_data_export",
+      reason: "Export this cached file data to an explicit local output_path.",
+      required_inputs: ["asset_handle", "output_path"],
+    },
+  ];
+  if (isVerifiedImageSummary(index.binaryFields[0]!)) {
+    actions.splice(2, 0, {
+      tool: "cascade_file_data_image",
+      reason: "Return image file data as MCP image content when the cached file has a verified image signature.",
+      input: { asset_handle: index.handle },
+    });
+  }
+  return actions;
 }
 
 function findKnownAssetKey(wrapper: Record<string, unknown> | undefined): string | undefined {

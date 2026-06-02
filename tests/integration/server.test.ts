@@ -2,8 +2,8 @@
  * Integration test for the server factory (`createServer`).
  *
  * Verifies that all tool cohorts wire up correctly and produce
- * the expected 57 tools with well-formed names (25 direct Cascade API tools,
- * 10 cached asset follow-up tools, 18 draft workflow tools, and 4 local utilities). Also exercises one
+ * the expected 61 tools with well-formed names (25 direct Cascade API tools,
+ * 14 cached asset follow-up tools, 18 draft workflow tools, and 4 local utilities). Also exercises one
  * end-to-end handler invocation (`cascade_read`) through the real
  * pipeline that `registerCascadeTool` installs on the server, plus
  * the oversize-response round-trip through `cascade_read_response`.
@@ -197,9 +197,9 @@ function assetPropertyKeysFromTypes(): string[] {
   return assetPropertyEntriesFromTypes().map((entry) => entry.key).sort();
 }
 
-/** All 57 expected tool names: 25 direct Cascade API tools, 10 cached asset follow-up tools, 18 draft workflow tools, and 4 local utilities. */
+/** All 61 expected tool names: 25 direct Cascade API tools, 14 cached asset follow-up tools, 18 draft workflow tools, and 4 local utilities. */
 const EXPECTED_TOOL_NAMES = [
-  // crud and asset follow-ups (16)
+  // crud and asset follow-ups (20)
   "cascade_read",
   "cascade_asset_list_facts",
   "cascade_asset_search_values",
@@ -211,6 +211,10 @@ const EXPECTED_TOOL_NAMES = [
   "cascade_asset_get_nodelet",
   "cascade_asset_resolve_nodes",
   "cascade_asset_assert_values",
+  "cascade_file_data_info",
+  "cascade_file_data_read",
+  "cascade_file_data_image",
+  "cascade_file_data_export",
   "cascade_create",
   "cascade_edit",
   "cascade_remove",
@@ -270,12 +274,12 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 describe("createServer (server factory)", () => {
-  test("registers exactly 57 tools", () => {
+  test("registers exactly 61 tools", () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
 
-    expect(Object.keys(tools)).toHaveLength(57);
+    expect(Object.keys(tools)).toHaveLength(61);
   });
 
   test("all tool names use snake_case with cascade_ prefix", () => {
@@ -297,7 +301,7 @@ describe("createServer (server factory)", () => {
     const names = Object.keys(tools);
     const unique = new Set(names);
     expect(unique.size).toBe(names.length);
-    expect(unique.size).toBe(57);
+    expect(unique.size).toBe(61);
   });
 
   test("every expected tool from each cohort is present", () => {
@@ -517,6 +521,10 @@ describe("createServer (server factory)", () => {
     const searchSchema = tools["cascade_search"].inputSchema;
     const siteCopySchema = tools["cascade_site_copy"].inputSchema;
     const nodeletSchema = tools["cascade_asset_get_nodelet"].inputSchema;
+    const fileDataInfoSchema = tools["cascade_file_data_info"].inputSchema;
+    const fileDataReadSchema = tools["cascade_file_data_read"].inputSchema;
+    const fileDataImageSchema = tools["cascade_file_data_image"].inputSchema;
+    const fileDataExportSchema = tools["cascade_file_data_export"].inputSchema;
     const draftOpenSchema = tools["cascade_draft_open"].inputSchema;
     const draftPatchSchema = tools["cascade_draft_apply_patch"].inputSchema;
     const draftScaffoldCreateSchema =
@@ -623,6 +631,20 @@ describe("createServer (server factory)", () => {
     expect(nodeletSchema.properties.depth.default).toBe(0);
     expect(nodeletSchema.properties.include_text.type).toBe("boolean");
     expect(nodeletSchema.properties.include_text.default).toBe(true);
+    expect(schemaHasProperty(fileDataInfoSchema, "asset_handle")).toBe(true);
+    expect(schemaTypes(fileDataInfoSchema.properties.identifier)).toContain("object");
+    expect(schemaTypes(fileDataReadSchema.properties.identifier)).toContain("object");
+    expect(fileDataReadSchema.properties.offset.type).toBe("number");
+    expect(fileDataReadSchema.properties.offset.default).toBe(0);
+    expect(fileDataReadSchema.properties.length.type).toBe("number");
+    expect(fileDataReadSchema.properties.length.default).toBe(64);
+    expect(JSON.stringify(fileDataReadSchema.properties.encoding)).toContain("base64");
+    expect(schemaTypes(fileDataImageSchema.properties.identifier)).toContain("object");
+    expect(schemaHasProperty(fileDataExportSchema, "output_path")).toBe(true);
+    expect(fileDataExportSchema.required).toContain("output_path");
+    expect(fileDataExportSchema.properties.overwrite.type).toBe("boolean");
+    expect(fileDataExportSchema.properties.overwrite.default).toBe(false);
+    expect(fileDataExportSchema.properties.expected_sha256.type).toBe("string");
     expect(JSON.stringify(draftOpenSchema)).toContain("edit");
     expect(JSON.stringify(draftOpenSchema)).toContain("create");
     expect(draftOpenSchema.required).toContain("operation");

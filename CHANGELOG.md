@@ -12,10 +12,13 @@ All notable changes to `cascade-cms-mcp-server` will be documented here.
 - Added `cascade_draft_scaffold_from_asset` to create create-safe drafts from an existing cached asset shape by stripping read-only fields/recycled flags and clearing structured-data text and asset-reference values.
 - Added `cascade_draft_mutation_plan_execute` for local sequential draft orchestration with stop-on-first-failure behavior and plan-level resolved-payload tool-block checks.
 - Added `cascade://draft/{handle}/raw` for exact draft JSON retrieval guarded by draft read tool-block rules.
+- Added `cascade_file_data_*` helpers for Cascade file binary data: inspect metadata, read bounded byte ranges, return magic-byte verified images as MCP image content, and export exact bytes to an explicit local path.
 
 ### Changed
 
 - Tightened draft patch/submit revision checks and `editorConfiguration` site validation to match Cascade API type requirements.
+- `cascade_read` preview now summarizes Cascade `file.data` byte arrays instead of indexing every byte, preserving exact raw JSON while keeping binary file previews bounded.
+- File-data export is marked as a destructive local filesystem write, rejects single binary payloads over 100 MiB, and the read cache evicts older binary entries after 250 MiB of cached binary data.
 
 ### Fixed
 

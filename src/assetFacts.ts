@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 import { CHARACTER_LIMIT } from "./constants.js";
+import {
+  isFileDataPointer,
+  isNumberArray,
+  summarizeFileData,
+  type BinaryFieldSummary,
+} from "./fileData.js";
 import type { NextAction } from "./guidance.js";
 
 export const RAW_FACT_INDEX_VERSION = 1;
@@ -58,6 +64,10 @@ export interface RawFactIndex {
   indexVersion: number;
   rawFacts: RawFact[];
   rawReferences: RawReference[];
+}
+
+export interface RawFactIndexOptions {
+  binaryFields?: readonly BinaryFieldSummary[];
 }
 
 export interface IndexedForAudit {
@@ -182,8 +192,11 @@ const REFERENCE_PATH_KINDS = new Set([
   "workflowDefinition",
 ]);
 
-export function buildRawFactIndex(raw: unknown): RawFactIndex {
-  const serialized = JSON.stringify(raw) ?? "undefined";
+export function buildRawFactIndex(raw: unknown, options: RawFactIndexOptions = {}): RawFactIndex {
+  const binarySummaries = new Map(
+    (options.binaryFields ?? []).map((summary) => [summary.pointer, summary]),
+  );
+  const serialized = JSON.stringify(rawForIndexSize(raw, "", binarySummaries)) ?? "undefined";
   if (serialized.length > MAX_RAW_BYTES) {
     throw new Error(
       `Raw asset response is too large to index safely (${serialized.length} bytes, max ${MAX_RAW_BYTES}). Use read_mode: "raw" or narrow the source asset before audit indexing.`,
@@ -191,9 +204,9 @@ export function buildRawFactIndex(raw: unknown): RawFactIndex {
   }
 
   const rawFacts: RawFact[] = [];
-  indexRawValue(raw, "", undefined, undefined, 0, rawFacts);
+  indexRawValue(raw, "", undefined, undefined, 0, rawFacts, new Set(binarySummaries.keys()));
 
-  const rawReferences = indexReferences(raw);
+  const rawReferences = indexReferences(raw, new Set(binarySummaries.keys()));
   annotateReferenceFacts(rawFacts, rawReferences);
 
   return {
@@ -384,6 +397,59 @@ export function resolveRawPointer(raw: unknown, pointer: string): unknown {
   return current;
 }
 
+function rawForIndexSize(
+  value: unknown,
+  pointer: string,
+  binarySummaries: ReadonlyMap<string, BinaryFieldSummary>,
+): unknown {
+  if (Array.isArray(value)) {
+    const summary = binarySummaries.get(pointer);
+    if (summary) return binarySummaryForIndex(summary);
+    if (isFileDataPointer(pointer)) {
+      return binarySummaryForIndex(summarizeFileData(value as readonly number[], pointer));
+    }
+    return value.map((child, index) =>
+      rawForIndexSize(child, `${pointer}/${index}`, binarySummaries),
+    );
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const out: Record<string, unknown> = {};
+    for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+      out[childKey] = rawForIndexSize(
+        childValue,
+        `${pointer}/${escapePointerSegment(childKey)}`,
+        binarySummaries,
+      );
+    }
+    return out;
+  }
+
+  return value;
+}
+
+function binarySummaryForIndex(summary: BinaryFieldSummary): Record<string, unknown> {
+  return {
+    __cascade_file_data_summary: true,
+    pointer: summary.pointer,
+    bytes_total: summary.bytes_total,
+    sha256: summary.sha256,
+    detected_kind: summary.detected_kind,
+    mime_type: summary.mime_type,
+    mime_source: summary.mime_source,
+    byte_preview_hex: summary.byte_preview_hex,
+  };
+}
+
+function isBinaryFileDataArray(
+  pointer: string,
+  value: readonly unknown[],
+  binaryPointers: ReadonlySet<string>,
+): boolean {
+  if (binaryPointers.has(pointer)) return true;
+  return isFileDataPointer(pointer) && isNumberArray(value);
+}
+
 function indexRawValue(
   value: unknown,
   pointer: string,
@@ -391,6 +457,7 @@ function indexRawValue(
   key: string | undefined,
   depth: number,
   facts: RawFact[],
+  binaryPointers: ReadonlySet<string>,
 ): void {
   if (depth > MAX_DEPTH) {
     throw new Error(`Raw asset response is too deep to index safely (max depth ${MAX_DEPTH}).`);
@@ -407,8 +474,19 @@ function indexRawValue(
       ...(key !== undefined ? { key } : {}),
       child_count: value.length,
     });
+    if (isBinaryFileDataArray(pointer, value, binaryPointers)) {
+      return;
+    }
     value.forEach((child, index) => {
-      indexRawValue(child, `${pointer}/${index}`, pointer, String(index), depth + 1, facts);
+      indexRawValue(
+        child,
+        `${pointer}/${index}`,
+        pointer,
+        String(index),
+        depth + 1,
+        facts,
+        binaryPointers,
+      );
     });
     return;
   }
@@ -430,7 +508,15 @@ function indexRawValue(
         parent_pointer: pointer,
         key: childKey,
       });
-      indexRawValue(childValue, childPointer, pointer, childKey, depth + 1, facts);
+      indexRawValue(
+        childValue,
+        childPointer,
+        pointer,
+        childKey,
+        depth + 1,
+        facts,
+        binaryPointers,
+      );
     }
     return;
   }
@@ -448,7 +534,7 @@ function indexRawValue(
   });
 }
 
-function indexReferences(raw: unknown): RawReference[] {
+function indexReferences(raw: unknown, binaryPointers: ReadonlySet<string>): RawReference[] {
   const refs: RawReference[] = [];
   const seen = new Set<string>();
 
@@ -461,6 +547,7 @@ function indexReferences(raw: unknown): RawReference[] {
 
   function walk(value: unknown, pointer: string): void {
     if (Array.isArray(value)) {
+      if (isBinaryFileDataArray(pointer, value, binaryPointers)) return;
       value.forEach((child, index) => walk(child, `${pointer}/${index}`));
       return;
     }
