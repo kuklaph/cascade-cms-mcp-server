@@ -60,6 +60,8 @@ export type ToolBlockStore = {
   write: (rules: ToolBlockRule[]) => Promise<void>;
 };
 
+const toolBlockUpdateQueues = new WeakMap<ToolBlockStore, Promise<void>>();
+
 export function defaultToolBlockFile(): string {
   return join(homedir(), ".cascade-cms-mcp-server", "tool-blocks.json");
 }
@@ -84,6 +86,29 @@ export function parseToolBlockRules(value: unknown): ToolBlockRule[] {
   }
 
   return parsed.data;
+}
+
+export async function updateToolBlockRules(
+  store: ToolBlockStore,
+  updater: (
+    current: readonly ToolBlockRule[],
+  ) => ToolBlockRule[] | Promise<ToolBlockRule[]>,
+): Promise<ToolBlockRule[]> {
+  const previous = toolBlockUpdateQueues.get(store) ?? Promise.resolve();
+  const nextUpdate = previous.catch(() => undefined).then(async () => {
+    const current = parseToolBlockRules(await store.read());
+    const next = parseToolBlockRules(await updater(current));
+    await store.write(next);
+    return next;
+  });
+  toolBlockUpdateQueues.set(
+    store,
+    nextUpdate.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return nextUpdate;
 }
 
 export function findDeniedToolCall(

@@ -259,6 +259,21 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
         reason: "Fetch an exact structuredData nodelet by pointer.",
         required_inputs: ["asset_handle", "pointer"],
       },
+      {
+        tool: "cascade_asset_resolve_nodes",
+        reason: "Find structuredData nodes by identifier, text, child criteria, or asset reference fields.",
+        required_inputs: ["asset_handle", "selector"],
+      },
+      {
+        tool: "cascade_asset_assert_values",
+        reason: "Verify structuredData values from this cached read before editing.",
+        required_inputs: ["asset_handle", "assertions"],
+      },
+      {
+        tool: "cascade_draft_open",
+        reason: "Clone this read snapshot into a mutable edit draft without changing the cached read.",
+        required_inputs: ["asset_handle", "expected_raw_hash"],
+      },
     ],
   };
 }

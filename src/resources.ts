@@ -2,7 +2,7 @@
  * MCP resource registrations for the Cascade CMS server.
  *
  * Resources complement the tools by exposing URI-addressable reference data
- * that agents can fetch without invoking a tool. Four resources/templates are
+ * that agents can fetch without invoking a tool. Five resources/templates are
  * registered:
  *
  *   cascade://entity-types   (static,  JSON)     — Cascade entity type strings.
@@ -11,9 +11,15 @@
  *                                                  field category (rich-text/XML,
  *                                                  format source, plain text).
  *   cascade://asset/{handle}/raw (dynamic, JSON) — exact cached raw asset JSON.
+ *   cascade://draft/{handle}/raw (dynamic, JSON) — exact cached draft JSON
+ *                                                  unless blocked by draft read
+ *                                                  tool-block rules or the
+ *                                                  tool-block repository cannot
+ *                                                  be read, or the handle is
+ *                                                  invalid/missing.
  *
- * Dynamic failures are translated via `translateError` so a flaky Cascade
- * instance yields an actionable error body instead of crashing the transport.
+ * Live Cascade site failures use `translateError`; local cache and guardrail
+ * failures return JSON error bodies.
  */
 
 import {
@@ -31,8 +37,32 @@ import {
   isAssetHandle,
   type AssetCache,
 } from "./assetIndex.js";
+import {
+  createDraftCache,
+  isDraftHandle,
+  type DraftCache,
+} from "./assetDrafts.js";
 import { EntityTypeSchema } from "./schemas/common.js";
-import { translateError } from "./errors.js";
+import { redactSecrets, translateError } from "./errors.js";
+import {
+  describeToolBlockRule,
+  findDeniedToolCall,
+  type ToolBlockStore,
+} from "./toolBlocks.js";
+
+const DRAFT_RAW_RESOURCE_BLOCK_TOOLS = [
+  "cascade_draft_get_value",
+  "cascade_draft_list_facts",
+  "cascade_draft_search_values",
+  "cascade_draft_search_keys",
+  "cascade_draft_list_references",
+  "cascade_draft_list_scalar_artifacts",
+  "cascade_draft_list_nodelets",
+  "cascade_draft_get_nodelet",
+  "cascade_draft_resolve_nodes",
+  "cascade_draft_assert_values",
+  "cascade_draft_validate",
+];
 
 /** Short human-readable descriptions for each Cascade entity type. */
 const ENTITY_TYPE_DESCRIPTIONS: Record<string, string> = {
@@ -190,9 +220,14 @@ time.
 export function registerCascadeResources(
   server: McpServer,
   client: CascadeClient,
-  deps?: { assetCache?: AssetCache },
+  deps?: {
+    assetCache?: AssetCache;
+    draftCache?: DraftCache;
+    toolBlockStore?: ToolBlockStore;
+  },
 ): void {
   const assetCache = deps?.assetCache ?? createAssetCache();
+  const draftCache = deps?.draftCache ?? createDraftCache();
   // Static: all Cascade entity types with short descriptions. The count is
   // derived from the Zod enum so it stays in sync automatically.
   const entityTypeCount = EntityTypeSchema.options.length;
@@ -289,4 +324,84 @@ export function registerCascadeResources(
       return textResource(uri, JSON.stringify(entry.raw, null, 2));
     },
   );
+
+  server.registerResource(
+    "Cascade Draft JSON",
+    new ResourceTemplate("cascade://draft/{handle}/raw", { list: undefined }),
+    {
+      description:
+        "Exact JSON for a mutable draft created by draft workflow tools unless blocked by draft read tool-block rules, the tool-block repository cannot be read, or the handle is invalid/missing. Replace {handle} with structuredContent.draft_handle.",
+      mimeType: "application/json",
+    },
+    async (uri: URL, variables) => {
+      const rawHandle = variables.handle;
+      const handle = Array.isArray(rawHandle) ? rawHandle[0] : rawHandle;
+      if (!handle || !isDraftHandle(handle)) {
+        return textResource(
+          uri,
+          JSON.stringify({ error: "Invalid draft handle" }, null, 2),
+        );
+      }
+      const entry = draftCache.get(handle);
+      if (!entry) {
+        return textResource(
+          uri,
+          JSON.stringify(
+            {
+              error:
+                "Draft handle not found. Re-open the draft to create a fresh draft_handle.",
+            },
+            null,
+            2,
+          ),
+        );
+      }
+      let denied: Awaited<ReturnType<typeof deniedDraftResourceRule>>;
+      try {
+        denied = await deniedDraftResourceRule(entry.root, deps?.toolBlockStore);
+      } catch (error) {
+        return textResource(
+          uri,
+          JSON.stringify(
+            {
+              error: redactSecrets(
+                "Failed to read draft tool-block rules. Fix or remove the local tool-block repository before reading this draft resource.",
+              ),
+            },
+            null,
+            2,
+          ),
+        );
+      }
+      if (denied) {
+        const reason = denied.reason ? ` ${denied.reason}` : "";
+        return textResource(
+          uri,
+          JSON.stringify(
+            {
+              error: redactSecrets(
+                `Resource read denied by tool block repository for cascade://draft/{handle}/raw ${describeToolBlockRule(denied)}.${reason}`,
+              ),
+            },
+            null,
+            2,
+          ),
+        );
+      }
+      return textResource(uri, JSON.stringify(entry.root, null, 2));
+    },
+  );
+}
+
+async function deniedDraftResourceRule(
+  draftRoot: unknown,
+  store: ToolBlockStore | undefined,
+) {
+  if (!store) return undefined;
+  const rules = await store.read();
+  for (const tool of DRAFT_RAW_RESOURCE_BLOCK_TOOLS) {
+    const denied = findDeniedToolCall(tool, draftRoot, rules);
+    if (denied) return denied;
+  }
+  return undefined;
 }

@@ -2,7 +2,8 @@
  * Server factory for the Cascade CMS MCP server.
  *
  * Instantiates a single `McpServer` and registers Cascade tools, handle-based
- * asset inspection tools, local MCP utility tools, and MCP resources/templates.
+ * asset inspection tools, draft workflow tools, local MCP utility tools, and
+ * MCP resources/templates.
  *
  * Pure and side-effect-free: callers own transport/lifecycle.
  */
@@ -12,12 +13,14 @@ import type { CascadeClient } from "./client.js";
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { createResponseCache } from "./cache.js";
 import { createAssetCache } from "./assetIndex.js";
+import { createDraftCache } from "./assetDrafts.js";
 import { createToolBlockStore } from "./toolBlocks.js";
 import {
   registerExactToolSchemaListHandler,
   type CascadeDeps,
 } from "./tools/helper.js";
 import { registerCrudTools } from "./tools/crud.js";
+import { registerDraftTools } from "./tools/drafts.js";
 import { registerSearchTools } from "./tools/search.js";
 import { registerSiteTools } from "./tools/sites.js";
 import { registerAccessTools } from "./tools/access.js";
@@ -57,10 +60,12 @@ export function createServer(
   const resolved: CascadeDeps = {
     cache: deps?.cache ?? createResponseCache(),
     assetCache: deps?.assetCache ?? createAssetCache(),
+    draftCache: deps?.draftCache ?? createDraftCache(),
     toolBlockStore: deps?.toolBlockStore ?? createToolBlockStore(),
   };
 
   registerCrudTools(server, client, resolved);
+  registerDraftTools(server, client, resolved);
   registerSearchTools(server, client, resolved);
   registerSiteTools(server, client, resolved);
   registerAccessTools(server, client, resolved);
@@ -72,8 +77,8 @@ export function createServer(
 
   registerCascadeResources(server, client, resolved);
 
-  // Local MCP tools: manage guardrails and read slices from the response
-  // cache populated by the other tool cohorts above.
+  // Local MCP tools: manage guardrails, report server metadata, and read
+  // slices from the response cache populated by the other tool cohorts above.
   registerToolBlockTool(server, resolved);
   registerSiteRemovalProtectionTool(server, client, resolved);
   registerServerVersionTool(server);

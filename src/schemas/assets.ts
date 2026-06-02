@@ -182,7 +182,7 @@ const singleEnvelopeEntry = (
   return entries[0] as [string, z.ZodTypeAny];
 };
 
-const createRequiredAlternativeGroups = (shape: z.ZodRawShape): string[][] => [
+const createRequiredAlternativeGroups = (): string[][] => [
   ["parentFolderId", "parentFolderPath"],
   ["parentContainerId", "parentContainerPath"],
   ["siteId", "siteName"],
@@ -191,7 +191,7 @@ const createRequiredAlternativeGroups = (shape: z.ZodRawShape): string[][] => [
   ["text", "data"],
 ];
 
-const editRequiredAlternativeGroups = (shape: z.ZodRawShape): string[][] => [
+const editRequiredAlternativeGroups = (): string[][] => [
   ["siteId", "siteName"],
   ["contentTypeId", "contentTypePath", "configurationSetId", "configurationSetPath"],
   ["xhtml", "structuredData"],
@@ -234,9 +234,15 @@ const createEnvelopeSchema = (schema: z.ZodObject<z.ZodRawShape>) => {
       [key]: unionOptions(
         options.map((option) => {
           const { id: _id, ...createShape } = option.shape;
+          if (key === "editorConfiguration") {
+            return editorConfigurationWithConditionalSite(
+              createShape,
+              option.description,
+            );
+          }
           return objectWithRequiredAlternatives(
             createShape,
-            createRequiredAlternativeGroups(createShape),
+            createRequiredAlternativeGroups(),
             option.description,
           );
         }),
@@ -253,15 +259,49 @@ const editEnvelopeSchema = (schema: z.ZodObject<z.ZodRawShape>) => {
     .object({
       [key]: unionOptions(
         options.map((option) =>
-          objectWithRequiredAlternatives(
-            option.shape,
-            editRequiredAlternativeGroups(option.shape),
-            option.description,
-          ),
+          key === "editorConfiguration"
+            ? editorConfigurationWithConditionalSite(
+                option.shape,
+                option.description,
+              )
+            : objectWithRequiredAlternatives(
+                option.shape,
+                editRequiredAlternativeGroups(),
+                option.description,
+              ),
         ),
       ),
     })
     .strict();
+};
+
+const editorConfigurationWithConditionalSite = (
+  shape: z.ZodRawShape,
+  description: string | undefined,
+): z.ZodTypeAny =>
+  z.union([
+    objectWithRequiredAlternatives(
+      shape,
+      [["siteId", "siteName"]],
+      description,
+    ),
+    strictObjectFromShape(shape, description).superRefine((value, ctx) => {
+      if (value.id === "DEFAULT" || value.name === "Default") return;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "siteId or siteName is required unless this is the system default editor configuration (id=DEFAULT or name=Default).",
+        path: ["siteName"],
+      });
+    }),
+  ]);
+
+const strictObjectFromShape = (
+  shape: z.ZodRawShape,
+  description: string | undefined,
+) => {
+  const schema = z.object(shape).strict();
+  return description ? schema.describe(description) : schema;
 };
 
 /**

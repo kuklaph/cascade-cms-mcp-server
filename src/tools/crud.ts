@@ -1,5 +1,5 @@
 /**
- * CRUD tools: 6 basic asset operations exposed to MCP clients.
+ * CRUD and cached asset follow-up tools exposed to MCP clients.
  *
  *   cascade_read   — fetch an asset by identifier
  *   cascade_create — create a new asset
@@ -8,9 +8,8 @@
  *   cascade_move   — move and/or rename an asset
  *   cascade_copy   — copy an asset to a new location
  *
- * Each tool is a thin `registerCascadeTool` call delegating to the
- * matching `CascadeClient` method. The helper handles the
- * validate → call → format → error-translate pipeline.
+ * CRUD tools delegate to the matching `CascadeClient` method. Cached follow-up
+ * tools inspect local read-cache entries without calling Cascade.
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -45,12 +44,20 @@ import {
   AssetListReferencesRequestSchema,
   AssetListNodeletsRequestSchema,
   AssetGetNodeletRequestSchema,
+  AssetResolveNodesRequestSchema,
+  AssetAssertValuesRequestSchema,
   CreateRequestSchema,
   EditRequestSchema,
   RemoveRequestSchema,
   MoveRequestSchema,
   CopyRequestSchema,
 } from "../schemas/requests.js";
+import {
+  evaluateStructuredDataAssertions,
+  resolveStructuredDataNodes,
+  type StructuredDataAssertion,
+  type StructuredDataSelector,
+} from "../structuredDataSelectors.js";
 
 function registerAssetFollowUpTools(
   server: McpServer,
@@ -276,6 +283,60 @@ function registerAssetFollowUpTools(
       };
     },
   }, deps);
+
+  registerCascadeTool(server, {
+    name: "cascade_asset_resolve_nodes",
+    title: "Resolve cached structured data nodes",
+    description: buildCascadeToolDescription(
+      `Use after cascade_read. Resolve structuredData nodes from the cached asset_handle by node type, identifier, text, direct child criteria, or field values. This tool never reads Cascade directly.`,
+    ),
+    inputSchema: AssetResolveNodesRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: async (input) => {
+      const args = input as unknown as {
+        asset_handle: string;
+        selector: StructuredDataSelector;
+      };
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_resolve_nodes");
+      return {
+        success: true,
+        asset_handle: args.asset_handle,
+        ...resolveStructuredDataNodes(entry, args.selector),
+      };
+    },
+  }, deps);
+
+  registerCascadeTool(server, {
+    name: "cascade_asset_assert_values",
+    title: "Assert cached structured data values",
+    description: buildCascadeToolDescription(
+      `Use after cascade_read. Assert structuredData values from the cached asset_handle by semantic node selector and target field. This tool never reads Cascade directly.`,
+    ),
+    inputSchema: AssetAssertValuesRequestSchema,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    handler: async (input) => {
+      const args = input as unknown as {
+        asset_handle: string;
+        assertions: StructuredDataAssertion[];
+      };
+      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_assert_values");
+      return {
+        success: true,
+        asset_handle: args.asset_handle,
+        ...evaluateStructuredDataAssertions(entry, args.assertions),
+      };
+    },
+  }, deps);
 }
 
 function getAssetEntry(
@@ -306,7 +367,7 @@ export function registerCrudTools(
     description: buildCascadeToolDescription(
       `Read an asset from Cascade CMS by identifier.
 
-Default preview mode returns a compact browse-oriented asset_handle, asset identity, raw_hash, index_version, fact/reference counts, node counts, root nodelet outline, and raw_resource_uri. Preview is not audit-complete; use cascade_asset_list_facts, cascade_asset_search_values, cascade_asset_search_keys, cascade_asset_get_value, cascade_asset_list_scalar_artifacts, cascade_asset_list_references, cascade_asset_list_nodelets, and cascade_asset_get_nodelet with the returned asset_handle for follow-up inspection. Use read_mode: "raw" only when the full REST payload is required.
+Default preview mode returns a compact browse-oriented asset_handle, asset identity, raw_hash, index_version, fact/reference counts, node counts, root nodelet outline, and raw_resource_uri. Preview is not audit-complete; use cascade_asset_list_facts, cascade_asset_search_values, cascade_asset_search_keys, cascade_asset_get_value, cascade_asset_list_scalar_artifacts, cascade_asset_list_references, cascade_asset_list_nodelets, cascade_asset_get_nodelet, cascade_asset_resolve_nodes, and cascade_asset_assert_values with the returned asset_handle for follow-up inspection. Use read_mode: "raw" only when the full REST payload is required.
 
 Args:
   - identifier (object, required): The asset to read
@@ -329,7 +390,8 @@ Examples:
   - Use when: "Read the homepage" -> { identifier: { type: "page", path: { path: "/", siteName: "www" } } }
   - Use when: "Get file by ID" -> { identifier: { type: "file", id: "abc123..." } }
   - Use when: "Load folder config" -> { identifier: { type: "folder", path: { path: "/about", siteName: "www" } } }
-  - Don't use when: You want to modify — use cascade_edit instead.
+  - Don't use when: You already have a complete edit payload — use cascade_edit instead.
+  - Use when: You need a cached starting point for draft editing — read preview, then use cascade_draft_open.
   - Don't use when: You want to check access rights — use cascade_read_access_rights.
 
 Error Handling:

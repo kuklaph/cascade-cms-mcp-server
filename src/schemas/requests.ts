@@ -12,8 +12,16 @@ import {
   IdentifierSchema,
   ReadModeSchema,
 } from "./common.js";
-import { CreateAssetInputSchema, EditAssetInputSchema } from "./assets.js";
-import { CHARACTER_LIMIT } from "../constants.js";
+import {
+  ASSET_ENVELOPE_KEYS,
+  CreateAssetInputSchema,
+  EditAssetInputSchema,
+} from "./assets.js";
+import { StructuredDataNodeSchema } from "./assets/nested.js";
+import {
+  ASSET_DRAFT_PATCH_MAX_OPERATIONS,
+  CHARACTER_LIMIT,
+} from "../constants.js";
 
 
 /** Reusable pagination fields merged into list/search request schemas. */
@@ -305,6 +313,143 @@ const AssetHandleField = {
     ),
 };
 
+const DraftHandleField = {
+  draft_handle: z
+    .string()
+    .min(1, "draft_handle must not be empty")
+    .max(64, "draft_handle must be at most 64 characters")
+    .regex(
+      /^d_[0-9a-f-]{1,62}$/i,
+      "draft_handle must look like 'd_<hex-uuid>'",
+    )
+    .describe(
+      "REQUIRED: Draft handle returned by a draft workflow tool structuredContent.draft_handle.",
+    ),
+};
+
+const RawHashSchema = z
+  .string()
+  .regex(/^[0-9a-f]{64}$/i, "expected_raw_hash must be a SHA-256 hex hash");
+
+const DraftRevisionSchema = z.number().int().min(1);
+
+const JsonPointerSchema = z
+  .string()
+  .refine(
+    (value) => value === "" || value.startsWith("/"),
+    "JSON Pointer must be empty or start with '/'",
+  );
+
+const NonRootJsonPointerSchema = z
+  .string()
+  .min(1, "JSON Pointer must not be empty")
+  .refine(
+    (value) => value.startsWith("/"),
+    "JSON Pointer must start with '/'",
+  )
+  .refine(
+    (value) => jsonPointerSegmentsAreSafe(value),
+    "JSON Pointer must not contain __proto__, prototype, or constructor segments",
+  );
+
+function jsonPointerSegmentsAreSafe(pointer: string): boolean {
+  if (!pointer.startsWith("/")) return false;
+  return pointer
+    .slice(1)
+    .split("/")
+    .map(unescapeJsonPointerSegment)
+    .every((segment) => !isUnsafeObjectKey(segment));
+}
+
+function unescapeJsonPointerSegment(value: string): string {
+  return value.replace(/~1/g, "/").replace(/~0/g, "~");
+}
+
+function isUnsafeObjectKey(value: string): boolean {
+  return value === "__proto__" || value === "prototype" || value === "constructor";
+}
+
+const SafeJsonPointerSchema = JsonPointerSchema.refine(
+  (value) => value === "" || jsonPointerSegmentsAreSafe(value),
+  "JSON Pointer must not contain __proto__, prototype, or constructor segments",
+);
+
+const SafeObjectFieldSchema = z
+  .string()
+  .min(1, "field must not be empty")
+  .refine(
+    (value) => !isUnsafeObjectKey(value),
+    "field must not be __proto__, prototype, or constructor",
+  );
+
+function safeFieldRecordSchema<T extends z.ZodTypeAny>(valueSchema: T) {
+  return z
+    .unknown()
+    .superRefine((value, ctx) => {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return;
+      }
+      for (const field of Object.getOwnPropertyNames(value)) {
+        if (field.length === 0 || isUnsafeObjectKey(field)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "field must not be empty, __proto__, prototype, or constructor",
+            path: [field],
+          });
+        }
+      }
+    })
+    .pipe(z.record(z.string().min(1), valueSchema));
+}
+
+const SafeUnknownFieldRecordSchema = safeFieldRecordSchema(z.unknown());
+const SafeStringFieldRecordSchema = safeFieldRecordSchema(z.string());
+
+const StructuredDataSelectorSchema: z.ZodTypeAny = z.lazy(() =>
+  z
+    .object({
+      scope_pointer: SafeJsonPointerSchema.optional(),
+      recursive: z.boolean().default(true),
+      node_type: z.enum(["text", "asset", "group"]).optional(),
+      identifier: z.string().min(1).optional(),
+      text_equals: z.string().optional(),
+      text_contains: z.string().min(1).optional(),
+      field_equals: SafeUnknownFieldRecordSchema.optional(),
+      field_contains: SafeStringFieldRecordSchema.optional(),
+      where_child: StructuredDataSelectorSchema.optional(),
+      expected_matches: z.number().int().min(0).max(500).optional(),
+    })
+    .strict(),
+);
+
+const StructuredDataTargetSchema = z
+  .object({
+    child: StructuredDataSelectorSchema.optional(),
+    field: SafeObjectFieldSchema,
+  })
+  .strict();
+
+const StructuredDataAssertionSchema = z
+  .object({
+    match: StructuredDataSelectorSchema,
+    target: StructuredDataTargetSchema,
+    comparison: z.enum(["equals", "contains", "exists", "not_exists"]),
+    expected: z.unknown().optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      (value.comparison === "equals" || value.comparison === "contains") &&
+      value.expected === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "expected is required for equals and contains comparisons",
+        path: ["expected"],
+      });
+    }
+  });
+
 const AuditCursorSchema = z
   .string()
   .min(1)
@@ -453,6 +598,494 @@ export const AssetGetNodeletRequestSchema = z
   .strict();
 
 export type AssetGetNodeletInput = z.infer<typeof AssetGetNodeletRequestSchema>;
+
+export const AssetResolveNodesRequestSchema = z
+  .object({
+    ...AssetHandleField,
+    selector: StructuredDataSelectorSchema,
+  })
+  .strict();
+
+export type AssetResolveNodesInput = z.infer<typeof AssetResolveNodesRequestSchema>;
+
+export const AssetAssertValuesRequestSchema = z
+  .object({
+    ...AssetHandleField,
+    assertions: z.array(StructuredDataAssertionSchema).min(1).max(100),
+  })
+  .strict();
+
+export type AssetAssertValuesInput = z.infer<typeof AssetAssertValuesRequestSchema>;
+
+export const DraftOpenRequestSchema = z
+  .object({
+    operation: z
+      .enum(["edit", "create"])
+      .describe("REQUIRED: Use edit to clone an asset_handle, or create to start a create draft."),
+    asset_handle: AssetHandleField.asset_handle
+      .optional()
+      .describe("REQUIRED when operation is edit. Asset handle returned by cascade_read preview."),
+    expected_raw_hash: RawHashSchema.optional().describe(
+      "REQUIRED when operation is edit. raw_hash returned by the cascade_read preview that produced asset_handle.",
+    ),
+    asset: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe(
+        "Optional initial create asset envelope. Only valid when operation is create. Drafts may be incomplete until cascade_draft_validate or cascade_draft_submit.",
+      ),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.operation === "edit") {
+      if (!value.asset_handle) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "asset_handle is required when operation is edit",
+          path: ["asset_handle"],
+        });
+      }
+      if (!value.expected_raw_hash) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "expected_raw_hash is required when operation is edit",
+          path: ["expected_raw_hash"],
+        });
+      }
+      if (value.asset !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "asset is only valid when operation is create",
+          path: ["asset"],
+        });
+      }
+      return;
+    }
+
+    if (value.asset_handle !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "asset_handle is only valid when operation is edit",
+        path: ["asset_handle"],
+      });
+    }
+    if (value.expected_raw_hash !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "expected_raw_hash is only valid when operation is edit",
+        path: ["expected_raw_hash"],
+      });
+    }
+  });
+
+export type DraftOpenInput = z.infer<typeof DraftOpenRequestSchema>;
+
+export const DraftScaffoldCreateRequestSchema = z
+  .object({
+    asset_type: z
+      .enum(ASSET_ENVELOPE_KEYS)
+      .describe("REQUIRED: Asset envelope key to scaffold for a create draft."),
+    relationship_style: z
+      .enum(["path", "id"])
+      .default("path")
+      .describe(
+        "Whether required relationship placeholders use *Path/*Name fields or *Id fields. Default path.",
+      ),
+    role_type: z
+      .enum(["global", "site"])
+      .default("global")
+      .describe(
+        "Only used when asset_type is role. Selects whether the scaffold includes globalAbilities or siteAbilities.",
+      ),
+  })
+  .strict();
+
+export type DraftScaffoldCreateInput = z.infer<typeof DraftScaffoldCreateRequestSchema>;
+
+export const DraftScaffoldFromAssetRequestSchema = z
+  .object({
+    ...AssetHandleField,
+    expected_raw_hash: RawHashSchema.describe(
+      "REQUIRED: raw_hash returned by the cascade_read preview that produced asset_handle.",
+    ),
+    clear_values: z
+      .boolean()
+      .default(true)
+      .describe(
+        "When true, clear structuredData text and asset-reference values. Credential fields present in the source are cleared; required hidden credential fields are added as null placeholders when absent.",
+      ),
+    preserve_definition: z
+      .boolean()
+      .default(true)
+      .describe("When true, preserve structuredData definitionId/definitionPath fields."),
+  })
+  .strict();
+
+export type DraftScaffoldFromAssetInput = z.infer<
+  typeof DraftScaffoldFromAssetRequestSchema
+>;
+
+export const DraftListFactsRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    pointer_prefix: z.string().optional(),
+    fact_kind: z.enum(["object", "array", "key", "scalar"]).optional(),
+    key: z.string().optional(),
+    key_contains: z.string().optional(),
+    value_contains: z.string().optional(),
+    scalar_type: z.enum(["string", "number", "boolean", "null"]).optional(),
+    non_empty: z.boolean().optional(),
+    reference_kind: z.string().optional(),
+    ...AuditPaginationFields,
+  })
+  .strict();
+
+export type DraftListFactsInput = z.infer<typeof DraftListFactsRequestSchema>;
+
+export const DraftSearchValuesRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    value_contains: z.string().min(1, "value_contains must not be empty"),
+    pointer_prefix: z.string().optional(),
+    key: z.string().optional(),
+    key_contains: z.string().optional(),
+    scalar_type: z.enum(["string", "number", "boolean", "null"]).optional(),
+    non_empty: z.boolean().optional(),
+    ...AuditPaginationFields,
+  })
+  .strict();
+
+export type DraftSearchValuesInput = z.infer<typeof DraftSearchValuesRequestSchema>;
+
+export const DraftSearchKeysRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    key: z.string().optional(),
+    key_contains: z.string().optional(),
+    pointer_prefix: z.string().optional(),
+    ...AuditPaginationFields,
+  })
+  .strict();
+
+export type DraftSearchKeysInput = z.infer<typeof DraftSearchKeysRequestSchema>;
+
+export const DraftGetValueRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    pointer: JsonPointerSchema.describe("JSON Pointer into the exact draft JSON."),
+    offset: z.number().int().min(0).optional(),
+    length: z.number().int().min(1).max(CHARACTER_LIMIT).optional(),
+  })
+  .strict();
+
+export type DraftGetValueInput = z.infer<typeof DraftGetValueRequestSchema>;
+
+export const DraftListReferencesRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    pointer_prefix: z.string().optional(),
+    reference_kind: z.string().optional(),
+    value_contains: z.string().optional(),
+    ...AuditPaginationFields,
+  })
+  .strict();
+
+export type DraftListReferencesInput = z.infer<typeof DraftListReferencesRequestSchema>;
+
+export const DraftListScalarArtifactsRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    artifact_kind: z
+      .enum([
+        "http_url",
+        "site_link",
+        "href",
+        "src",
+        "anchor",
+        "mailto",
+        "tel",
+        "root_path",
+      ])
+      .optional(),
+    pointer_prefix: z.string().optional(),
+    key: z.string().optional(),
+    key_contains: z.string().optional(),
+    value_contains: z.string().optional(),
+    ...AuditPaginationFields,
+  })
+  .strict();
+
+export type DraftListScalarArtifactsInput = z.infer<
+  typeof DraftListScalarArtifactsRequestSchema
+>;
+
+export const DraftListNodeletsRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    pointer: z
+      .string()
+      .describe(
+        "JSON Pointer of the parent nodelet. Use an empty string to list root nodelets.",
+      ),
+    cursor: z
+      .string()
+      .regex(/^c_[0-9]+$/, "cursor must be a next_cursor returned by this tool")
+      .optional(),
+    limit: z.number().int().min(1).max(100).default(25),
+  })
+  .strict();
+
+export type DraftListNodeletsInput = z.infer<typeof DraftListNodeletsRequestSchema>;
+
+export const DraftGetNodeletRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    pointer: z.string().describe(
+      "JSON Pointer returned by cascade_draft_list_nodelets.",
+    ),
+    depth: z
+      .number()
+      .int()
+      .min(0)
+      .max(10)
+      .default(0)
+      .describe("Child depth to include. Default 0 returns only the exact nodelet."),
+    include_text: z
+      .boolean()
+      .default(true)
+      .describe("Whether to include text fields in returned nodelets."),
+  })
+  .strict();
+
+export type DraftGetNodeletInput = z.infer<typeof DraftGetNodeletRequestSchema>;
+
+export const DraftResolveNodesRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    selector: StructuredDataSelectorSchema,
+  })
+  .strict();
+
+export type DraftResolveNodesInput = z.infer<typeof DraftResolveNodesRequestSchema>;
+
+export const DraftAssertValuesRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    assertions: z.array(StructuredDataAssertionSchema).min(1).max(100),
+  })
+  .strict();
+
+export type DraftAssertValuesInput = z.infer<typeof DraftAssertValuesRequestSchema>;
+
+const SemanticPatchDestinationSchema = z
+  .object({
+    match: StructuredDataSelectorSchema,
+    position: z.enum(["before", "after"]),
+  })
+  .strict();
+
+export const DraftApplySemanticPatchRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    expected_revision: DraftRevisionSchema,
+    match: StructuredDataSelectorSchema,
+    op: z.enum([
+      "add",
+      "replace",
+      "remove",
+      "insert_node",
+      "remove_node",
+      "move_node",
+    ]),
+    target: StructuredDataTargetSchema.optional(),
+    value: z.unknown().optional(),
+    position: z.enum(["before", "after"]).optional(),
+    node: StructuredDataNodeSchema.optional(),
+    destination: SemanticPatchDestinationSchema.optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const rejectExtra = (field: "target" | "value" | "position" | "node" | "destination") => {
+      if (value[field] === undefined) return;
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${field} is not valid for ${value.op} semantic patches`,
+        path: [field],
+      });
+    };
+
+    if (value.op === "add" || value.op === "replace") {
+      if (!value.target) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "target is required for add and replace semantic patches",
+          path: ["target"],
+        });
+      }
+      if (value.value === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "value is required for add and replace semantic patches",
+          path: ["value"],
+        });
+      }
+      rejectExtra("position");
+      rejectExtra("node");
+      rejectExtra("destination");
+    }
+    if (value.op === "remove") {
+      if (!value.target) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "target is required for remove semantic patches",
+          path: ["target"],
+        });
+      }
+      rejectExtra("value");
+      rejectExtra("position");
+      rejectExtra("node");
+      rejectExtra("destination");
+    }
+    if (value.op === "insert_node") {
+      if (!value.position) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "position is required for insert_node semantic patches",
+          path: ["position"],
+        });
+      }
+      if (!value.node) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "node is required for insert_node semantic patches",
+          path: ["node"],
+        });
+      }
+      rejectExtra("target");
+      rejectExtra("value");
+      rejectExtra("destination");
+    }
+    if (value.op === "remove_node") {
+      rejectExtra("target");
+      rejectExtra("value");
+      rejectExtra("position");
+      rejectExtra("node");
+      rejectExtra("destination");
+    }
+    if (value.op === "move_node") {
+      if (!value.destination) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "destination is required for move_node semantic patches",
+          path: ["destination"],
+        });
+      }
+      rejectExtra("target");
+      rejectExtra("value");
+      rejectExtra("position");
+      rejectExtra("node");
+    }
+  });
+
+export type DraftApplySemanticPatchInput = z.infer<
+  typeof DraftApplySemanticPatchRequestSchema
+>;
+
+const DraftPatchValueSchema = z
+  .unknown()
+  .refine((value) => value !== undefined, "value is required");
+
+const DraftPatchOperationSchema = z.union([
+  z
+    .object({
+      op: z.literal("add"),
+      path: NonRootJsonPointerSchema,
+      value: DraftPatchValueSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("replace"),
+      path: NonRootJsonPointerSchema,
+      value: DraftPatchValueSchema,
+    })
+    .strict(),
+  z
+    .object({
+      op: z.literal("remove"),
+      path: NonRootJsonPointerSchema,
+    })
+    .strict(),
+]);
+
+export const DraftApplyPatchRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    expected_revision: DraftRevisionSchema,
+    operations: z
+      .array(DraftPatchOperationSchema)
+      .min(1)
+      .max(ASSET_DRAFT_PATCH_MAX_OPERATIONS),
+  })
+  .strict();
+
+export type DraftApplyPatchInput = z.infer<typeof DraftApplyPatchRequestSchema>;
+
+export const DraftValidateRequestSchema = z
+  .object({
+    ...DraftHandleField,
+  })
+  .strict();
+
+export type DraftValidateInput = z.infer<typeof DraftValidateRequestSchema>;
+
+export const DraftSubmitRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    expected_revision: DraftRevisionSchema,
+    discard_on_success: z
+      .boolean()
+      .default(false)
+      .describe(
+        "When true, delete the local draft only after Cascade returns success: true and the submitted revision/hash is still current; if Cascade succeeds but the draft changed while submit was in flight, keep the current draft and return discard_skipped_reason.",
+      ),
+  })
+  .strict();
+
+export type DraftSubmitInput = z.infer<typeof DraftSubmitRequestSchema>;
+
+const MutationPlanStepSchema = z
+  .object({
+    name: z.string().min(1).max(120).optional(),
+    tool: z.enum([
+      "cascade_draft_open",
+      "cascade_draft_scaffold_create",
+      "cascade_draft_scaffold_from_asset",
+      "cascade_draft_resolve_nodes",
+      "cascade_draft_apply_patch",
+      "cascade_draft_apply_semantic_patch",
+      "cascade_draft_assert_values",
+      "cascade_draft_validate",
+      "cascade_draft_submit",
+    ]),
+    input: z.record(z.string(), z.unknown()).default({}),
+    save_as: z.string().min(1).max(64).optional(),
+  })
+  .strict();
+
+export const DraftMutationPlanExecuteRequestSchema = z
+  .object({
+    steps: z.array(MutationPlanStepSchema).min(1).max(25),
+  })
+  .strict();
+
+export const MutationPlanExecuteRequestSchema = DraftMutationPlanExecuteRequestSchema;
+
+export type DraftMutationPlanExecuteInput = z.infer<
+  typeof DraftMutationPlanExecuteRequestSchema
+>;
+
+export type MutationPlanExecuteInput = DraftMutationPlanExecuteInput;
 
 /** -------------------------------------------------------------------------
  * 2. CreateRequest — wraps asset
@@ -669,40 +1302,31 @@ const SiteCopyFields = {
     ),
 };
 
-export const SiteCopyRequestSchema = z.union([
-  z
-    .object({
-      ...SiteCopyFields,
-      originalSiteId: z
-        .string()
-        .describe(
-          "ID of the site to copy. Takes precedence over originalSiteName when both are provided. One of originalSiteId/originalSiteName is required.",
-        ),
-      originalSiteName: z
-        .string()
-        .optional()
-        .describe(
-          "Name of the site to copy. Alternative to originalSiteId. One of originalSiteId/originalSiteName is required.",
-        ),
-    })
-    .strict(),
-  z
-    .object({
-      ...SiteCopyFields,
-      originalSiteId: z
-        .string()
-        .optional()
-        .describe(
-          "ID of the site to copy. Takes precedence over originalSiteName when both are provided. One of originalSiteId/originalSiteName is required.",
-        ),
-      originalSiteName: z
-        .string()
-        .describe(
-          "Name of the site to copy. Alternative to originalSiteId. One of originalSiteId/originalSiteName is required.",
-        ),
-    })
-    .strict(),
-]);
+export const SiteCopyRequestSchema = z
+  .object({
+    ...SiteCopyFields,
+    originalSiteId: z
+      .string()
+      .optional()
+      .describe(
+        "ID of the site to copy. Takes precedence over originalSiteName when both are provided. One of originalSiteId/originalSiteName is required.",
+      ),
+    originalSiteName: z
+      .string()
+      .optional()
+      .describe(
+        "Name of the site to copy. Alternative to originalSiteId. One of originalSiteId/originalSiteName is required.",
+      ),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.originalSiteId || value.originalSiteName) return;
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "one of originalSiteId or originalSiteName is required",
+      path: ["originalSiteId"],
+    });
+  });
 
 export type SiteCopyInput = z.infer<typeof SiteCopyRequestSchema>;
 

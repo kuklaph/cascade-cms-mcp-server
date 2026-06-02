@@ -188,6 +188,8 @@ describe("cascade_read tool", () => {
     const listReferences = findTool(tools, "cascade_asset_list_references");
     const listNodelets = findTool(tools, "cascade_asset_list_nodelets");
     const getNodelet = findTool(tools, "cascade_asset_get_nodelet");
+    const resolveNodes = findTool(tools, "cascade_asset_resolve_nodes");
+    const assertValues = findTool(tools, "cascade_asset_assert_values");
 
     const result = await read.handler({
       identifier: { id: "huge-page-id", type: "page" },
@@ -232,6 +234,25 @@ describe("cascade_read tool", () => {
       pointer: firstPointer,
       depth: 0,
     });
+    const resolveResult = await resolveNodes.handler({
+      asset_handle: handle,
+      selector: {
+        node_type: "text",
+        identifier: "node-1",
+        text_contains: "yyy",
+      },
+    });
+    const assertResult = await assertValues.handler({
+      asset_handle: handle,
+      assertions: [
+        {
+          match: { node_type: "text", identifier: "node-1" },
+          target: { field: "text" },
+          comparison: "contains",
+          expected: "yyy",
+        },
+      ],
+    });
 
     expect(factsResult.isError).not.toBe(true);
     expect(valuesResult.isError).not.toBe(true);
@@ -248,6 +269,8 @@ describe("cascade_read tool", () => {
     expect((getResult.structuredContent as Record<string, any>).pointer).toBe(
       firstPointer,
     );
+    expect((resolveResult.structuredContent as Record<string, any>).matched_count).toBe(1);
+    expect((assertResult.structuredContent as Record<string, any>).passed).toBe(true);
     expect(client.read).toHaveBeenCalledTimes(1);
   });
 
@@ -632,12 +655,14 @@ describe("registerCrudTools coverage", () => {
 
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
+      "cascade_asset_assert_values",
       "cascade_asset_get_nodelet",
       "cascade_asset_get_value",
       "cascade_asset_list_facts",
       "cascade_asset_list_nodelets",
       "cascade_asset_list_references",
       "cascade_asset_list_scalar_artifacts",
+      "cascade_asset_resolve_nodes",
       "cascade_asset_search_keys",
       "cascade_asset_search_values",
       "cascade_copy",

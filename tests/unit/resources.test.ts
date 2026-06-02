@@ -1,15 +1,17 @@
 /**
  * Unit tests for `registerCascadeResources`.
  *
- * The server exposes three MCP resources:
+ * The server exposes five MCP resources/templates:
  *   - cascade://entity-types  : static JSON listing the Cascade entity types
  *   - cascade://sites         : dynamic; fetches via `client.listSites()` at read time
  *   - cascade://text-encoding : static Markdown documenting field-category
  *                               text encoding rules for content writes
+ *   - cascade://asset/{handle}/raw : exact cached read JSON
+ *   - cascade://draft/{handle}/raw : exact cached draft JSON unless blocked
+ *                                    or local rule reads fail
  *
- * We verify registration metadata and both read-callback branches
- * (success + upstream error) using a lightweight mock server that
- * captures each `registerResource` call.
+ * We verify registration metadata, live site read errors, cached asset/draft
+ * success paths, missing handles, and draft resource tool-block denials.
  */
 
 import { describe, test, expect, mock } from "bun:test";
@@ -17,6 +19,7 @@ import type { ResourceMetadata } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
 import { registerCascadeResources } from "../../src/resources.js";
 import { createAssetCache } from "../../src/assetIndex.js";
+import { createDraftCache } from "../../src/assetDrafts.js";
 import { EntityTypeSchema } from "../../src/schemas/common.js";
 import { createMockClient } from "../fixtures/mock-client.js";
 import { tabsFixture } from "../fixtures/read-response-fixtures.js";
@@ -72,16 +75,16 @@ function firstContentText(result: ReadResourceResult): string {
 // =============================================================================
 
 describe("registerCascadeResources", () => {
-  test("registers exactly 4 resources", () => {
+  test("registers exactly 5 resources", () => {
     const { server, resources } = makeMockServer();
     const client = createMockClient();
 
     registerCascadeResources(server as any, client);
 
-    expect(resources).toHaveLength(4);
+    expect(resources).toHaveLength(5);
   });
 
-  test("resource URIs include entity-types, sites, text-encoding, and raw asset template", () => {
+  test("resource URIs include entity-types, sites, text-encoding, raw asset, and draft templates", () => {
     const { server, resources } = makeMockServer();
     const client = createMockClient();
 
@@ -90,6 +93,7 @@ describe("registerCascadeResources", () => {
     const uris = resources.map((r) => r.uri).sort();
     expect(uris).toEqual([
       "cascade://asset/{handle}/raw",
+      "cascade://draft/{handle}/raw",
       "cascade://entity-types",
       "cascade://sites",
       "cascade://text-encoding",
@@ -128,6 +132,9 @@ describe("registerCascadeResources", () => {
       "text/markdown",
     );
     expect(byUri.get("cascade://asset/{handle}/raw")!.config.mimeType).toBe(
+      "application/json",
+    );
+    expect(byUri.get("cascade://draft/{handle}/raw")!.config.mimeType).toBe(
       "application/json",
     );
   });
@@ -358,5 +365,112 @@ describe("cascade://asset/{handle}/raw resource", () => {
 
     const parsed = JSON.parse(firstContentText(result)) as { error: string };
     expect(parsed.error).toContain("Invalid asset handle");
+  });
+});
+
+describe("cascade://draft/{handle}/raw resource", () => {
+  test("fetch returns exact cached draft JSON for a valid handle", async () => {
+    const { server, resources } = makeMockServer();
+    const client = createMockClient();
+    const draftCache = createDraftCache();
+    const draft = draftCache.createFromAsset("create", {
+      page: { name: "draft" },
+    });
+
+    registerCascadeResources(server as any, client, { draftCache });
+
+    const raw = resources.find((r) => r.uri === "cascade://draft/{handle}/raw");
+    expect(raw).toBeDefined();
+
+    const result = await raw!.readCallback(
+      new URL(`cascade://draft/${draft.handle}/raw`),
+      { handle: draft.handle },
+    );
+
+    expect(JSON.parse(firstContentText(result))).toEqual(draft.root);
+  });
+
+  test("fetch respects draft read tool-block rules", async () => {
+    const { server, resources } = makeMockServer();
+    const client = createMockClient();
+    const draftCache = createDraftCache();
+    const draft = draftCache.createFromAsset("edit", {
+      page: { id: "blocked-page", name: "draft" },
+    });
+
+    registerCascadeResources(server as any, client, {
+      draftCache,
+      toolBlockStore: {
+        path: "test-tool-blocks.json",
+        read: async () => [
+          {
+            type: "page",
+            id: "blocked-page",
+            tools: ["cascade_draft_get_value"],
+            reason: "Sensitive draft token=super-secret",
+          },
+        ],
+        write: async () => {},
+      },
+    });
+
+    const raw = resources.find((r) => r.uri === "cascade://draft/{handle}/raw")!;
+    const result = await raw.readCallback(
+      new URL(`cascade://draft/${draft.handle}/raw`),
+      { handle: draft.handle },
+    );
+
+    const parsed = JSON.parse(firstContentText(result)) as { error: string };
+    expect(parsed.error).toContain("Resource read denied");
+    expect(parsed.error).toContain("Sensitive draft");
+    expect(parsed.error).not.toContain("super-secret");
+  });
+
+  test("fetch returns JSON error body when draft tool-block repository read fails", async () => {
+    const { server, resources } = makeMockServer();
+    const client = createMockClient();
+    const draftCache = createDraftCache();
+    const draft = draftCache.createFromAsset("create", {
+      page: { name: "draft" },
+    });
+
+    registerCascadeResources(server as any, client, {
+      draftCache,
+      toolBlockStore: {
+        path: "C:\\secret\\broken-tool-blocks.json",
+        read: async () => {
+          throw new Error("tool block repo unreadable token=super-secret");
+        },
+        write: async () => {},
+      },
+    });
+
+    const raw = resources.find((r) => r.uri === "cascade://draft/{handle}/raw")!;
+    const result = await raw.readCallback(
+      new URL(`cascade://draft/${draft.handle}/raw`),
+      { handle: draft.handle },
+    );
+
+    const parsed = JSON.parse(firstContentText(result)) as { error: string };
+    expect(parsed.error).toContain("Failed to read draft tool-block rules");
+    expect(parsed.error).not.toContain("super-secret");
+    expect(parsed.error).not.toContain("C:\\secret");
+  });
+
+  test("fetch returns JSON error body for missing or invalid draft handles", async () => {
+    const { server, resources } = makeMockServer();
+    const client = createMockClient();
+    registerCascadeResources(server as any, client, {
+      draftCache: createDraftCache(),
+    });
+
+    const raw = resources.find((r) => r.uri === "cascade://draft/{handle}/raw")!;
+    const result = await raw.readCallback(
+      new URL("cascade://draft/not-a-handle/raw"),
+      { handle: "not-a-handle" },
+    );
+
+    const parsed = JSON.parse(firstContentText(result)) as { error: string };
+    expect(parsed.error).toContain("Invalid draft handle");
   });
 });

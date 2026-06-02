@@ -34,7 +34,20 @@ import {
   AssetListReferencesRequestSchema,
   AssetListNodeletsRequestSchema,
   AssetGetNodeletRequestSchema,
+  AssetResolveNodesRequestSchema,
+  AssetAssertValuesRequestSchema,
+  DraftOpenRequestSchema,
+  DraftScaffoldCreateRequestSchema,
+  DraftScaffoldFromAssetRequestSchema,
+  DraftGetValueRequestSchema,
+  DraftApplyPatchRequestSchema,
+  DraftApplySemanticPatchRequestSchema,
+  DraftAssertValuesRequestSchema,
+  DraftResolveNodesRequestSchema,
+  DraftSubmitRequestSchema,
+  DraftMutationPlanExecuteRequestSchema,
 } from "../../../src/schemas/requests.js";
+import { ASSET_DRAFT_PATCH_MAX_OPERATIONS } from "../../../src/constants.js";
 
 function stringUnionFromTypes(typeName: string): string[] {
   const source = readFileSync(
@@ -72,6 +85,40 @@ describe("CreateRequestSchema", () => {
     const res = CreateRequestSchema.safeParse({ asset: VALID_ASSET });
     expect(res.success).toBe(true);
   });
+
+  test("editorConfiguration create requires site unless it is the system default", () => {
+    expect(
+      CreateRequestSchema.safeParse({
+        asset: {
+          editorConfiguration: {
+            name: "Default",
+            configuration: "{}",
+          },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      CreateRequestSchema.safeParse({
+        asset: {
+          editorConfiguration: {
+            name: "Site editor",
+            configuration: "{}",
+          },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      CreateRequestSchema.safeParse({
+        asset: {
+          editorConfiguration: {
+            name: "Site editor",
+            siteName: "www",
+            configuration: "{}",
+          },
+        },
+      }).success,
+    ).toBe(true);
+  });
 });
 
 describe("EditRequestSchema", () => {
@@ -80,6 +127,43 @@ describe("EditRequestSchema", () => {
       asset: { page: { ...VALID_ASSET.page, id: "existing-id" } },
     });
     expect(res.success).toBe(true);
+  });
+
+  test("editorConfiguration edit requires site unless it is the system default", () => {
+    expect(
+      EditRequestSchema.safeParse({
+        asset: {
+          editorConfiguration: {
+            id: "DEFAULT",
+            name: "Default",
+            configuration: "{}",
+          },
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      EditRequestSchema.safeParse({
+        asset: {
+          editorConfiguration: {
+            id: "editor-1",
+            name: "Site editor",
+            configuration: "{}",
+          },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      EditRequestSchema.safeParse({
+        asset: {
+          editorConfiguration: {
+            id: "editor-1",
+            name: "Site editor",
+            siteId: "site-1",
+            configuration: "{}",
+          },
+        },
+      }).success,
+    ).toBe(true);
   });
 });
 
@@ -1063,6 +1147,37 @@ describe("asset follow-up request schemas", () => {
     expect(res.success).toBe(true);
   });
 
+  test("semantic asset schemas accept selectors and assertions", () => {
+    expect(
+      AssetResolveNodesRequestSchema.safeParse({
+        asset_handle: HANDLE,
+        selector: {
+          node_type: "group",
+          identifier: "card",
+          where_child: {
+            node_type: "text",
+            identifier: "title",
+            text_equals: "Beta",
+          },
+        },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      AssetAssertValuesRequestSchema.safeParse({
+        asset_handle: HANDLE,
+        assertions: [
+          {
+            match: { node_type: "asset", identifier: "profile", field_equals: { pagePath: "people/jane" } },
+            target: { field: "pagePath" },
+            comparison: "equals",
+            expected: "people/jane",
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
   test("should reject malformed publish information fields", () => {
     const res = PublishUnpublishRequestSchema.safeParse({
       identifier: ID_PAGE,
@@ -1073,5 +1188,338 @@ describe("asset follow-up request schemas", () => {
       },
     });
     expect(res.success).toBe(false);
+  });
+});
+
+describe("draft workflow request schemas", () => {
+  const ASSET_HANDLE = "a_00000000-0000-0000-0000-000000000000";
+  const DRAFT_HANDLE = "d_00000000-0000-0000-0000-000000000000";
+  const RAW_HASH = "0".repeat(64);
+
+  test("open accepts edit from asset_handle with raw hash", () => {
+    const res = DraftOpenRequestSchema.safeParse({
+      operation: "edit",
+      asset_handle: ASSET_HANDLE,
+      expected_raw_hash: RAW_HASH,
+    });
+
+    expect(res.success).toBe(true);
+  });
+
+  test("open accepts create from an asset envelope", () => {
+    const res = DraftOpenRequestSchema.safeParse({
+      operation: "create",
+      asset: VALID_ASSET,
+    });
+
+    expect(res.success).toBe(true);
+  });
+
+  test("open accepts create without an initial asset envelope", () => {
+    const res = DraftOpenRequestSchema.safeParse({
+      operation: "create",
+    });
+
+    expect(res.success).toBe(true);
+  });
+
+  test("open rejects edit without expected_raw_hash", () => {
+    const res = DraftOpenRequestSchema.safeParse({
+      operation: "edit",
+      asset_handle: ASSET_HANDLE,
+    });
+
+    expect(res.success).toBe(false);
+  });
+
+  test("open rejects edit when create asset is also provided", () => {
+    const res = DraftOpenRequestSchema.safeParse({
+      operation: "edit",
+      asset_handle: ASSET_HANDLE,
+      expected_raw_hash: RAW_HASH,
+      asset: VALID_ASSET,
+    });
+
+    expect(res.success).toBe(false);
+  });
+
+  test("open rejects create with edit-only fields", () => {
+    const res = DraftOpenRequestSchema.safeParse({
+      operation: "create",
+      asset_handle: ASSET_HANDLE,
+      expected_raw_hash: RAW_HASH,
+    });
+
+    expect(res.success).toBe(false);
+  });
+
+  test("scaffold create accepts asset type options", () => {
+    const res = DraftScaffoldCreateRequestSchema.safeParse({
+      asset_type: "page",
+      relationship_style: "id",
+      role_type: "site",
+    });
+
+    expect(res.success).toBe(true);
+  });
+
+  test("scaffold from asset requires a source handle and raw hash", () => {
+    expect(
+      DraftScaffoldFromAssetRequestSchema.safeParse({
+        asset_handle: ASSET_HANDLE,
+        expected_raw_hash: RAW_HASH,
+        clear_values: true,
+        preserve_definition: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      DraftScaffoldFromAssetRequestSchema.safeParse({
+        asset_handle: ASSET_HANDLE,
+      }).success,
+    ).toBe(false);
+  });
+
+  test("draft value and submit schemas use draft_handle and snake_case revision fields", () => {
+    expect(
+      DraftGetValueRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        pointer: "/asset/page/name",
+        offset: 0,
+        length: 10,
+      }).success,
+    ).toBe(true);
+    expect(
+      DraftSubmitRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 2,
+        discard_on_success: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      DraftSubmitRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+      }).success,
+    ).toBe(false);
+  });
+
+  test("apply patch accepts JSON Pointer add, replace, and remove operations", () => {
+    const res = DraftApplyPatchRequestSchema.safeParse({
+      draft_handle: DRAFT_HANDLE,
+      expected_revision: 1,
+      operations: [
+        { op: "add", path: "/asset/page/metadata", value: {} },
+        { op: "replace", path: "/asset/page/name", value: "next" },
+        { op: "remove", path: "/asset/page/metadata/title" },
+      ],
+    });
+
+    expect(res.success).toBe(true);
+  });
+
+  test("apply patch rejects root JSON Pointer operations", () => {
+    const res = DraftApplyPatchRequestSchema.safeParse({
+      draft_handle: DRAFT_HANDLE,
+      expected_revision: 1,
+      operations: [{ op: "replace", path: "", value: { asset: {} } }],
+    });
+
+    expect(res.success).toBe(false);
+  });
+
+  test("apply patch rejects missing values, unsafe JSON Pointer segments, and excessive operations", () => {
+    expect(
+      DraftApplyPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        operations: [
+          { op: "add", path: "/asset/page/title" },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      DraftApplyPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        operations: [
+          { op: "replace", path: "/asset/page/title", value: null },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      DraftApplyPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        operations: [
+          { op: "add", path: "/asset/page/__proto__/polluted", value: true },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      DraftApplyPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        operations: Array.from({ length: ASSET_DRAFT_PATCH_MAX_OPERATIONS + 1 }, () => ({
+          op: "replace",
+          path: "/asset/page/name",
+          value: "next",
+        })),
+      }).success,
+    ).toBe(false);
+  });
+
+  test("semantic draft schemas accept resolve, replace, insert, remove, move, and assertions", () => {
+    const match = {
+      node_type: "group",
+      identifier: "card",
+      where_child: { node_type: "text", identifier: "title", text_equals: "Beta" },
+    };
+
+    expect(
+      DraftResolveNodesRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        selector: match,
+      }).success,
+    ).toBe(true);
+
+    expect(
+      DraftApplySemanticPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        match,
+        target: { child: { node_type: "text", identifier: "description" }, field: "text" },
+        op: "replace",
+        value: "Updated",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      DraftApplySemanticPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        match,
+        op: "insert_node",
+        position: "after",
+        node: { type: "text", identifier: "caption", text: "Inserted" },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      DraftApplySemanticPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        match,
+        op: "remove_node",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      DraftApplySemanticPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        match,
+        op: "move_node",
+        destination: {
+          match: { node_type: "group", identifier: "card", where_child: { node_type: "text", identifier: "title", text_equals: "Alpha" } },
+          position: "before",
+        },
+      }).success,
+    ).toBe(true);
+
+    expect(
+      DraftAssertValuesRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        assertions: [{ match, target: { child: { node_type: "text", identifier: "description" }, field: "text" }, comparison: "contains", expected: "Updated" }],
+      }).success,
+    ).toBe(true);
+  });
+
+  test("semantic schemas reject unsafe pointers and incomplete operation-specific inputs", () => {
+    expect(
+      DraftResolveNodesRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        selector: { scope_pointer: "/asset/__proto__", node_type: "group" },
+      }).success,
+    ).toBe(false);
+    expect(
+      DraftResolveNodesRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        selector: { node_type: "group", field_equals: { constructor: "x" } },
+      }).success,
+    ).toBe(false);
+    expect(
+      DraftResolveNodesRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        selector: {
+          node_type: "group",
+          field_contains: JSON.parse('{ "__proto__": "x" }'),
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      DraftApplySemanticPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        match: { node_type: "group", identifier: "card" },
+        op: "replace",
+        value: "missing target",
+      }).success,
+    ).toBe(false);
+    expect(
+      DraftApplySemanticPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        match: { node_type: "group", identifier: "card" },
+        op: "insert_node",
+        position: "after",
+      }).success,
+    ).toBe(false);
+    expect(
+      DraftApplySemanticPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        match: { node_type: "group", identifier: "card" },
+        op: "remove_node",
+        target: { field: "text" },
+      }).success,
+    ).toBe(false);
+    expect(
+      DraftApplySemanticPatchRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        match: { node_type: "group", identifier: "card" },
+        target: { field: "text" },
+        op: "remove",
+        value: "ignored",
+      }).success,
+    ).toBe(false);
+  });
+
+  test("mutation plan schema accepts whitelisted sequential steps", () => {
+    expect(
+      DraftMutationPlanExecuteRequestSchema.safeParse({
+        steps: [
+          {
+            name: "open",
+            tool: "cascade_draft_open",
+            input: {
+              operation: "edit",
+              asset_handle: ASSET_HANDLE,
+              expected_raw_hash: RAW_HASH,
+            },
+            save_as: "draft",
+          },
+          {
+            name: "validate",
+            tool: "cascade_draft_validate",
+            input: { draft_ref: "draft" },
+          },
+        ],
+      }).success,
+    ).toBe(true);
+    expect(
+      DraftMutationPlanExecuteRequestSchema.safeParse({
+        steps: [{ tool: "cascade_remove", input: {} }],
+      }).success,
+    ).toBe(false);
   });
 });

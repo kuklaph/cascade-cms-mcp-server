@@ -2,7 +2,8 @@
  * Shared registration helper for all Cascade MCP tools.
  *
  * Every tool in this server goes through `registerCascadeTool` so the
- * validate → handle → format → error-translate pipeline lives in ONE place.
+ * validate → checked-tool gate → handle → format → error-translate pipeline lives
+ * in ONE place.
  * When the MCP SDK or Cascade library contracts change, only this file
  * needs editing — not every individual tool registration.
  */
@@ -21,6 +22,7 @@ import { redactSecrets, translateError } from "../errors.js";
 import { logToolInvocation } from "../audit.js";
 import type { ResponseCache } from "../cache.js";
 import type { AssetCache } from "../assetIndex.js";
+import type { DraftCache } from "../assetDrafts.js";
 import {
   describeToolBlockRule,
   findDeniedToolCall,
@@ -37,6 +39,7 @@ import {
 export interface CascadeDeps {
   cache: ResponseCache;
   assetCache?: AssetCache;
+  draftCache?: DraftCache;
   toolBlockStore?: ToolBlockStore;
 }
 
@@ -87,9 +90,10 @@ const exactInputSchemas = new WeakMap<McpServer, Map<string, z.ZodTypeAny>>();
  *
  * Wraps the tool handler in a pipeline that:
  *   1. Runs the full Zod schema against raw input.
- *   2. Passes parsed input to the handler.
- *   3. Formats the result as JSON via `formatResponse`.
- *   4. Translates any thrown error via `translateError`.
+ *   2. Checks tool-block rules for checked tools.
+ *   3. Passes parsed input to the handler.
+ *   4. Formats the result as JSON via `formatResponse`.
+ *   5. Translates any thrown error via `translateError`.
  */
 export function registerCascadeTool<TSchema extends z.ZodTypeAny>(
   server: McpServer,

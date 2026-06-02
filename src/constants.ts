@@ -18,3 +18,12 @@ export const CACHE_MAX_BYTES_PER_ENTRY = 2_000_000;
 
 /** Max cached asset indexes retained for cascade_read follow-up tools. */
 export const ASSET_READ_CACHE_MAX_ENTRIES = 50;
+
+/** Max cached mutable asset drafts retained for draft create/edit workflows. */
+export const ASSET_DRAFT_CACHE_MAX_ENTRIES = 50;
+
+/** Max serialized JSON chars retained per mutable asset draft. */
+export const ASSET_DRAFT_MAX_BYTES = CACHE_MAX_BYTES_PER_ENTRY;
+
+/** Max JSON Pointer patch operations allowed in one draft patch request. */
+export const ASSET_DRAFT_PATCH_MAX_OPERATIONS = 100;

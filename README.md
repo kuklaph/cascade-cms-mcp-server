@@ -2,7 +2,7 @@
 
 An MCP (Model Context Protocol) server that exposes the Cascade CMS REST API to LLMs and agents. It wraps the [cascade-cms-api](https://github.com/kuklaph/cascade-cms-api) library with Zod validation, JSON response text, structuredContent, and actionable error messages.
 
-Built in TypeScript on [Bun](https://bun.sh). The published server provides 37 MCP tools and 4 resources/templates for Cascade CMS asset reads/writes, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish, blocked-call management, site-removal safeguarding, server version checks, and cached response retrieval.
+Built in TypeScript on [Bun](https://bun.sh). The published server provides 57 MCP tools and 5 resources/templates for Cascade CMS asset reads/writes, draft-based create/edit workflows, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish, blocked-call management, site-removal safeguarding, server version checks, and cached response retrieval.
 
 ## Requirements
 
@@ -161,7 +161,7 @@ Tool responses are JSON text. When the response fits, `structuredContent` is the
 
 Oversized responses return bounded `_cache` metadata. Use `cascade_read_response` with that handle to page through the full serialized response. Handles are process-scoped and may be evicted after later calls.
 
-`cascade_read` returns a compact preview by default plus an `asset_handle` for follow-up inspection. Use `read_mode: "raw"` only when you need the full Cascade payload in the initial response. Follow-up tools inspect the cached asset and do not call Cascade again.
+`cascade_read` returns a compact preview by default plus an `asset_handle` for follow-up inspection. Use `read_mode: "raw"` only when you need the full Cascade payload in the initial response. Follow-up tools inspect the cached asset and do not call Cascade again. To edit a cached read safely, open a separate draft with `cascade_draft_open`; draft mutations never change the original read cache.
 
 The beta `response_format` option was removed. Callers should parse `content[0].text` as JSON or prefer `structuredContent` when their client exposes it.
 
@@ -181,6 +181,7 @@ Use this section to decide whether this MCP covers the job. Your MCP client or a
 | List messages, mark messages, delete messages, and inspect subscribers/relationships                    | Yes       |
 | Read audit logs and system preferences                                                                  | Yes       |
 | Inspect raw asset content, references, strings, links, paths, and structured-data nodelets after a read | Yes       |
+| Build, inspect, patch, validate, and submit complete create/edit asset drafts                           | Yes       |
 | Fetch additional bytes from large/truncated responses                                                   | Yes       |
 | Persist blocked-call rules that prevent matching Cascade tool calls from running                        | Yes       |
 | Generate site and root-folder removal safeguards                                                        | Yes       |
@@ -189,7 +190,7 @@ Use your MCP client's tool list or inspector for exact request schemas.
 
 ## Tool Permissions
 
-Use these groups when configuring MCP client approvals. Client config syntax varies, but a common policy is to allow read-only tools by default and require approval for tools that create, update, delete, publish, check in/out, or otherwise change Cascade state.
+Use these groups when configuring MCP client approvals. Client config syntax varies, but a common policy is to allow read-only tools by default and require approval for tools that create, update, delete, publish, check in/out, change Cascade state, or mutate local MCP state such as drafts and guardrails.
 
 Read-only tools:
 
@@ -207,6 +208,17 @@ Read-only tools:
 | `cascade_read_preferences`          | Read system preferences                            |
 | `cascade_server_version`            | Read this MCP server's name and version            |
 | `cascade_read_response`             | Fetch more text from a cached oversized response   |
+| `cascade_draft_get_value`           | Fetch one JSON value from a draft                  |
+| `cascade_draft_list_facts`          | List indexed JSON facts from a draft               |
+| `cascade_draft_search_values`       | Search scalar values in a draft                    |
+| `cascade_draft_search_keys`         | Search object keys in a draft                      |
+| `cascade_draft_list_references`     | List references in a draft                         |
+| `cascade_draft_list_scalar_artifacts` | List links, paths, and similar artifacts in a draft |
+| `cascade_draft_list_nodelets`       | List structured-data nodelets in a draft           |
+| `cascade_draft_get_nodelet`         | Fetch one structured-data nodelet from a draft     |
+| `cascade_draft_resolve_nodes`       | Resolve structured-data nodes by semantic criteria |
+| `cascade_draft_assert_values`       | Assert structured-data field values in a draft     |
+| `cascade_draft_validate`            | Validate a draft without calling Cascade           |
 
 `cascade_read` helper tools:
 
@@ -222,6 +234,14 @@ These tools do not call Cascade directly. They inspect the in-memory `asset_hand
 | `cascade_asset_list_references`       | List Cascade references found in a cached read                     |
 | `cascade_asset_list_nodelets`         | List structured-data nodelets from a cached read                   |
 | `cascade_asset_get_nodelet`           | Fetch one structured-data nodelet from a cached read               |
+| `cascade_asset_resolve_nodes`         | Resolve structured-data nodes by semantic criteria                 |
+| `cascade_asset_assert_values`         | Assert structured-data field values from a cached read             |
+
+Structured-data selectors support `expected_matches` as an exact count assertion. At the top level it asserts the number of resolved nodes; inside `where_child` it asserts the number of matching direct children on each candidate node. Single-target semantic patch and target-child selectors require `expected_matches: 1` when provided.
+
+Draft workflow tools:
+
+Drafts are mutable, in-memory copies used to assemble complete `cascade_create` or `cascade_edit` payloads. Edit drafts start from a cloned and edit-normalized `asset_handle`; create drafts start from an optional asset envelope, from `cascade_draft_scaffold_create`, or from `cascade_draft_scaffold_from_asset`, which creates a create-safe scaffold from any cached asset envelope by stripping read-only fields/recycled flags, clearing credential fields present in the source, adding required hidden credential placeholders when absent, and optionally clearing structured-data text and asset-reference values. Patch tools mutate only the local draft addressed by `draft_handle`, never the original `asset_handle` read cache. Semantic patch tools resolve exactly one structured-data node and then apply the existing JSON Pointer draft patch path. `cascade_draft_mutation_plan_execute` runs local draft steps sequentially, checks rules targeting the plan tool against hydrated/resolved step payloads, and stops on the first error; it is not a Cascade batch request. `cascade_draft_submit` validates the final `{ asset: ... }` payload with the normal create/edit schema, checks blocked-call rules against the resolved payload as both `cascade_draft_submit` and the final `cascade_create` or `cascade_edit` operation, re-reads edit sources to reject stale drafts, and then calls Cascade.
 
 Approval recommended:
 
@@ -229,6 +249,13 @@ Approval recommended:
 | ------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `cascade_create`                      | Creates an asset                                                                          |
 | `cascade_edit`                        | Edits an asset                                                                            |
+| `cascade_draft_open`                  | Creates a mutable local draft from a read snapshot or initial asset payload               |
+| `cascade_draft_scaffold_create`       | Creates a mutable local create draft with required placeholders for one asset type        |
+| `cascade_draft_scaffold_from_asset`   | Creates a mutable local create draft from a cached asset shape                            |
+| `cascade_draft_apply_patch`           | Mutates a local draft with JSON Pointer patch operations                                  |
+| `cascade_draft_apply_semantic_patch`  | Mutates a local draft after resolving structured-data nodes semantically                  |
+| `cascade_draft_mutation_plan_execute` | Runs local draft workflow steps sequentially and stops on first failure                   |
+| `cascade_draft_submit`                | Creates or edits an asset from the complete validated draft payload                       |
 | `cascade_move`                        | Moves or renames an asset                                                                 |
 | `cascade_copy`                        | Copies an asset                                                                           |
 | `cascade_site_copy`                   | Copies a site                                                                             |
@@ -294,6 +321,65 @@ Inspect cached read data after a preview:
 
 Use the `asset_handle` returned by `cascade_read`; `cascade_asset_*` tools are follow-ups, not first-step Cascade reads.
 
+Edit from a cached read without reconstructing the full payload in chat:
+
+```json
+{
+  "tool": "cascade_draft_open",
+  "arguments": {
+    "operation": "edit",
+    "asset_handle": "a_550e8400-e29b-41d4-a716-446655440000",
+    "expected_raw_hash": "ce4136fed2dd50c2a7eaf8f6802a5f7820515dda57f0a7f91a47861db6c8fff4"
+  }
+}
+```
+
+```json
+{
+  "tool": "cascade_draft_apply_patch",
+  "arguments": {
+    "draft_handle": "d_550e8400-e29b-41d4-a716-446655440001",
+    "expected_revision": 1,
+    "operations": [
+      {
+        "op": "replace",
+        "path": "/asset/page/structuredData/structuredDataNodes/4/structuredDataNodes/9/text",
+        "value": "<p>Updated HTML</p>"
+      }
+    ]
+  }
+}
+```
+
+```json
+{
+  "tool": "cascade_draft_submit",
+  "arguments": {
+    "draft_handle": "d_550e8400-e29b-41d4-a716-446655440001",
+    "expected_revision": 2,
+    "discard_on_success": true
+  }
+}
+```
+
+Rules meant to block submitted drafts may target `cascade_draft_submit`. Use `cascade_create` and/or `cascade_edit` when the same rule should also block direct create/edit calls.
+
+Scaffold a create draft when starting from an asset type instead of a read:
+
+```json
+{
+  "tool": "cascade_draft_scaffold_create",
+  "arguments": {
+    "asset_type": "page",
+    "relationship_style": "path"
+  }
+}
+```
+
+The response includes the draft handle, the scaffolded asset envelope, and `required_value_pointers` for every `null` placeholder that must be patched before validation or submit.
+
+When starting from an existing cached asset, use `cascade_draft_scaffold_from_asset` with the `asset_handle` and `expected_raw_hash` set to the `raw_hash` returned by `cascade_read`. The response includes a create draft, a create-safe scaffold, `cleared_value_pointers`, and op-aware `replace_value_pointers`/`add_value_pointers` for values that need new content. Credential fields present in the source are cleared; required hidden credential fields are added as `null` placeholders when absent. `clear_values` controls only structured-data text and asset-reference clearing.
+
 Search for pages:
 
 ```json
@@ -349,7 +435,7 @@ Use `cascade_tool_blocks` to list or add blocked Cascade tool-call rules. The ru
 
 Each rule requires a non-empty `tools` array plus `url`, `id`, or `path`. `url` means an HTTPS Cascade CMS asset URL on a `.cascadecms.com` host at `/entity/open.act` with `id` and `type` query parameters; it does not match published site URLs or symlink/feed/destination target URLs. Explicit `id` or `path` selectors require `type`. URL selectors and explicit selectors can be combined in the same rule; URL selectors use the URL's own `type`, while explicit `id` and `path` selectors use the rule's top-level `type`. Each selector may be a string or an array of strings. `reason` is optional and appears in the blocked-call error.
 
-Before a checked Cascade tool runs, the server reads this JSON repository and blocks the call if the tool name and payload match a rule. If the JSON file is malformed or cannot be read, checked Cascade tools fail closed before calling Cascade. Local helper tools (`cascade_asset_*`), `cascade_read_response`, and `cascade_server_version` do not consult the repository because they only inspect cached local data or server metadata.
+Before a checked tool runs, the server reads this JSON repository and blocks the call if the tool name and payload match a rule. If the JSON file is malformed or cannot be read, checked tools fail closed before calling Cascade or mutating local draft state. Draft tools go through this checked-tool gate; tools that inspect or mutate an existing draft/source also check resolved payloads. `cascade_draft_mutation_plan_execute` checks hydrated/resolved step payloads under the plan tool name before delegating to each step. Local helper tools (`cascade_asset_*`), `cascade_read_response`, and `cascade_server_version` do not because they only inspect cached local data or server metadata.
 
 Because `cascade_tool_blocks` can add guardrails, MCP clients should require user approval before calling it. It cannot remove or replace existing guardrails; delete or edit the local JSON file directly when intentional cleanup is required.
 
@@ -407,18 +493,22 @@ Example management calls:
 | `cascade://sites`              | Dynamic  | Live `listSites()` result                                 |
 | `cascade://text-encoding`      |  Static  | Text, rich text, XML, format, and template encoding rules |
 | `cascade://asset/{handle}/raw` | Template | Exact raw JSON cached from a prior `cascade_read` preview |
+| `cascade://draft/{handle}/raw` | Template | Exact draft JSON unless blocked by draft read tool-block rules, the tool-block repository cannot be read, or the handle is invalid/missing |
 
 ## Troubleshooting
 
 - If tools appear unavailable, verify the MCP client can start the server and that `CASCADE_API_KEY` and `CASCADE_URL` are set in the environment used by that client.
 - If a cached handle is missing, rerun the originating tool. Handles are in-memory and process-scoped.
+- If `cascade_draft_open` reports an `expected_raw_hash` mismatch, rerun `cascade_read` and use the current `raw_hash`.
+- If `cascade_draft_submit` reports that the source asset changed, rerun `cascade_read` and open a fresh draft.
+- If a draft patch or submit reports an `expected_revision` mismatch, inspect the draft and retry with the current revision.
 - If a rendered response is truncated, call `cascade_read_response` with the returned handle, offset, and length.
 - Most MCP clients write server stderr to client logs. This server keeps stdout reserved for MCP JSON-RPC.
 
 ## Security Notes
 
 - API keys are loaded from environment variables only. Do not commit MCP config files that contain real credentials.
-- `cascade_read` preview mode caches exact raw asset JSON in memory for follow-up inspection. Restart the MCP server to clear cached asset data.
+- `cascade_read` preview mode caches exact raw asset JSON in memory for follow-up inspection. Draft workflows clone and edit-normalize that read cache before mutation, with the same per-entry size cap as oversized response caching. Draft open and patch tools check blocked-call rules against resolved draft payloads before mutating local draft state. Raw draft resources also honor draft read tool-block rules and return an error body if the local tool-block repository cannot be read. `cascade_draft_submit` checks blocked-call rules against the final payload as both `cascade_draft_submit` and `cascade_create` or `cascade_edit`, and edit submits re-read the source asset before calling Cascade. Use `discard_on_success: true` to clear a submitted draft only when Cascade returns `success: true` and the submitted revision/hash is still current; if the draft changed while submit was in flight, the current draft is retained and `discard_skipped_reason` explains why. Restart the MCP server to clear cached asset and draft data.
 - Error messages are redacted before being logged or returned.
 - Input validation rejects unknown fields at the MCP boundary using Zod schemas that mirror the generated Cascade API request shapes.
 

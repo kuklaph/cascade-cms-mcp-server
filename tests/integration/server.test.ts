@@ -2,8 +2,8 @@
  * Integration test for the server factory (`createServer`).
  *
  * Verifies that all tool cohorts wire up correctly and produce
- * the expected 37 tools with well-formed names (33 Cascade-backed +
- * 4 MCP-native local tools). Also exercises one
+ * the expected 57 tools with well-formed names (25 direct Cascade API tools,
+ * 10 cached asset follow-up tools, 18 draft workflow tools, and 4 local utilities). Also exercises one
  * end-to-end handler invocation (`cascade_read`) through the real
  * pipeline that `registerCascadeTool` installs on the server, plus
  * the oversize-response round-trip through `cascade_read_response`.
@@ -197,9 +197,9 @@ function assetPropertyKeysFromTypes(): string[] {
   return assetPropertyEntriesFromTypes().map((entry) => entry.key).sort();
 }
 
-/** All 37 expected tool names: 33 Cascade-backed tools + 4 local tools. */
+/** All 57 expected tool names: 25 direct Cascade API tools, 10 cached asset follow-up tools, 18 draft workflow tools, and 4 local utilities. */
 const EXPECTED_TOOL_NAMES = [
-  // crud and asset follow-ups (14)
+  // crud and asset follow-ups (16)
   "cascade_read",
   "cascade_asset_list_facts",
   "cascade_asset_search_values",
@@ -209,11 +209,32 @@ const EXPECTED_TOOL_NAMES = [
   "cascade_asset_list_references",
   "cascade_asset_list_nodelets",
   "cascade_asset_get_nodelet",
+  "cascade_asset_resolve_nodes",
+  "cascade_asset_assert_values",
   "cascade_create",
   "cascade_edit",
   "cascade_remove",
   "cascade_move",
   "cascade_copy",
+  // draft workflow (18)
+  "cascade_draft_open",
+  "cascade_draft_list_facts",
+  "cascade_draft_search_values",
+  "cascade_draft_search_keys",
+  "cascade_draft_get_value",
+  "cascade_draft_list_scalar_artifacts",
+  "cascade_draft_list_references",
+  "cascade_draft_list_nodelets",
+  "cascade_draft_get_nodelet",
+  "cascade_draft_apply_patch",
+  "cascade_draft_apply_semantic_patch",
+  "cascade_draft_assert_values",
+  "cascade_draft_mutation_plan_execute",
+  "cascade_draft_resolve_nodes",
+  "cascade_draft_scaffold_create",
+  "cascade_draft_scaffold_from_asset",
+  "cascade_draft_validate",
+  "cascade_draft_submit",
   // search (1)
   "cascade_search",
   // sites (2)
@@ -249,12 +270,12 @@ const EXPECTED_TOOL_NAMES = [
 ];
 
 describe("createServer (server factory)", () => {
-  test("registers exactly 37 tools", () => {
+  test("registers exactly 57 tools", () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
 
-    expect(Object.keys(tools)).toHaveLength(37);
+    expect(Object.keys(tools)).toHaveLength(57);
   });
 
   test("all tool names use snake_case with cascade_ prefix", () => {
@@ -276,7 +297,7 @@ describe("createServer (server factory)", () => {
     const names = Object.keys(tools);
     const unique = new Set(names);
     expect(unique.size).toBe(names.length);
-    expect(unique.size).toBe(37);
+    expect(unique.size).toBe(57);
   });
 
   test("every expected tool from each cohort is present", () => {
@@ -474,6 +495,9 @@ describe("createServer (server factory)", () => {
     expect(parsedListResult.success).toBe(true);
     for (const tool of listResult.tools) {
       expect(tool.inputSchema.type).toBe("object");
+      for (const keyword of ["anyOf", "oneOf", "allOf", "enum", "not"]) {
+        expect(Object.hasOwn(tool.inputSchema, keyword)).toBe(false);
+      }
       assertStrictObjectBranches(tool.inputSchema);
     }
 
@@ -493,6 +517,11 @@ describe("createServer (server factory)", () => {
     const searchSchema = tools["cascade_search"].inputSchema;
     const siteCopySchema = tools["cascade_site_copy"].inputSchema;
     const nodeletSchema = tools["cascade_asset_get_nodelet"].inputSchema;
+    const draftOpenSchema = tools["cascade_draft_open"].inputSchema;
+    const draftPatchSchema = tools["cascade_draft_apply_patch"].inputSchema;
+    const draftScaffoldCreateSchema =
+      tools["cascade_draft_scaffold_create"].inputSchema;
+    const draftSubmitSchema = tools["cascade_draft_submit"].inputSchema;
     const transitionSchema = tools["cascade_perform_workflow_transition"].inputSchema;
     const auditSchema = tools["cascade_read_audits"].inputSchema;
     const preferenceSchema = tools["cascade_edit_preference"].inputSchema;
@@ -587,13 +616,31 @@ describe("createServer (server factory)", () => {
     expect(searchSchema.properties.limit.default).toBe(50);
     expect(searchSchema.properties.offset.type).toBe("number");
     expect(searchSchema.properties.offset.default).toBe(0);
-    expect(schemaHasRequiredBranch(siteCopySchema, "originalSiteId")).toBe(true);
-    expect(schemaHasRequiredBranch(siteCopySchema, "originalSiteName")).toBe(true);
-    expect(schemaHasRequiredBranch(siteCopySchema, "newSiteName")).toBe(true);
+    expect(schemaHasProperty(siteCopySchema, "originalSiteId")).toBe(true);
+    expect(schemaHasProperty(siteCopySchema, "originalSiteName")).toBe(true);
+    expect(siteCopySchema.required).toContain("newSiteName");
     expect(nodeletSchema.properties.depth.type).toBe("number");
     expect(nodeletSchema.properties.depth.default).toBe(0);
     expect(nodeletSchema.properties.include_text.type).toBe("boolean");
     expect(nodeletSchema.properties.include_text.default).toBe(true);
+    expect(JSON.stringify(draftOpenSchema)).toContain("edit");
+    expect(JSON.stringify(draftOpenSchema)).toContain("create");
+    expect(draftOpenSchema.required).toContain("operation");
+    expect(schemaHasProperty(draftOpenSchema, "asset_handle")).toBe(true);
+    expect(schemaHasProperty(draftOpenSchema, "expected_raw_hash")).toBe(true);
+    expect(schemaHasProperty(draftOpenSchema, "asset")).toBe(true);
+    expect(draftScaffoldCreateSchema.required).toContain("asset_type");
+    expect(JSON.stringify(draftScaffoldCreateSchema.properties.asset_type)).toContain("page");
+    expect(draftScaffoldCreateSchema.properties.relationship_style.default).toBe("path");
+    expect(draftScaffoldCreateSchema.properties.role_type.default).toBe("global");
+    expect(draftPatchSchema.required).toEqual(
+      expect.arrayContaining(["draft_handle", "expected_revision", "operations"]),
+    );
+    expect(JSON.stringify(draftPatchSchema.properties.operations)).toContain("replace");
+    expect(JSON.stringify(draftPatchSchema.properties.operations)).toContain("remove");
+    expect(draftSubmitSchema.required).toContain("expected_revision");
+    expect(draftSubmitSchema.properties.expected_revision.type).toBe("number");
+    expect(draftSubmitSchema.properties.discard_on_success.type).toBe("boolean");
 
     expect(
       transitionSchema.properties.workflowTransitionInformation.type,
@@ -720,6 +767,24 @@ describe("createServer (server factory)", () => {
           }),
         },
       },
+      {
+        tool: "cascade_draft_open",
+        args: {
+          operation: "create",
+          asset: JSON.stringify({ page: { name: "index" } }),
+        },
+      },
+      {
+        tool: "cascade_draft_apply_patch",
+        args: {
+          draft_handle: "d_00000000-0000-0000-0000-000000000000",
+          expected_revision: 1,
+          operations: JSON.stringify([
+            { op: "replace", path: "/asset/page/name", value: "next" },
+          ]),
+        },
+        expectedIssuePath: "operations",
+      },
     ];
 
     for (const testCase of cases) {
@@ -728,6 +793,14 @@ describe("createServer (server factory)", () => {
 
       expect(result.isError).toBe(true);
       expect(body.error.type).toBe("validation_error");
+      if (typeof testCase.expectedIssuePath === "string") {
+        const expectedIssuePath = testCase.expectedIssuePath;
+        expect(
+          body.error.issues.some((issue: Record<string, unknown>) =>
+            String(issue.path).startsWith(expectedIssuePath),
+          ),
+        ).toBe(true);
+      }
       if ("method" in testCase) {
         expect(testCase.method).not.toHaveBeenCalled();
       }
@@ -873,5 +946,55 @@ describe("createServer (server factory)", () => {
     expect(structured.asset).toBeUndefined();
     expect(structured.root_outline.length).toBeLessThanOrEqual(20);
     expect(structured.warnings[0]).toContain("root nodelets omitted");
+  });
+
+  test("draft edit flow reads, clones, patches, and submits the full envelope", async () => {
+    const client = createMockClient({
+      read: mock(() =>
+        Promise.resolve({
+          ...READ_PAGE_OK,
+          asset: {
+            page: {
+              ...READ_PAGE_OK.asset.page,
+              xhtml: "<p>Home</p>",
+            },
+          },
+        }),
+      ),
+      edit: mock(() => Promise.resolve({ success: true })),
+    });
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+
+    const readResult = await callToolViaSdkPath(server, "cascade_read", {
+      identifier: { id: "page-001", type: "page" },
+    });
+    const readBody = readResult.structuredContent as Record<string, any>;
+
+    const openResult = await callToolViaSdkPath(server, "cascade_draft_open", {
+      operation: "edit",
+      asset_handle: readBody.asset_handle,
+      expected_raw_hash: readBody.raw_hash,
+    });
+    const draftHandle = (openResult.structuredContent as Record<string, any>).draft_handle;
+
+    await callToolViaSdkPath(server, "cascade_draft_apply_patch", {
+      draft_handle: draftHandle,
+      expected_revision: 1,
+      operations: [
+        { op: "replace", path: "/asset/page/name", value: "updated-index" },
+      ],
+    });
+
+    const submitResult = await callToolViaSdkPath(server, "cascade_draft_submit", {
+      draft_handle: draftHandle,
+      expected_revision: 2,
+    });
+
+    expect(submitResult.isError).not.toBe(true);
+    expect(client.edit).toHaveBeenCalledTimes(1);
+    expect(client.edit.mock.calls[0][0]).toMatchObject({
+      asset: { page: { id: "page-001", name: "updated-index" } },
+    });
+    expect(client.edit.mock.calls[0][0].asset.page.type).toBeUndefined();
   });
 });
