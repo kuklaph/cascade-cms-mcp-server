@@ -299,11 +299,12 @@ describe("registerCascadeTool", () => {
 });
 
 describe("buildCascadeToolDescription", () => {
-  test("describes JSON text and structuredContent without response_format", () => {
+  test("describes response content and structuredContent without response_format", () => {
     const desc = buildCascadeToolDescription("Do the thing.");
 
-    expect(desc).toContain("Responses are JSON text");
+    expect(desc).toContain("Most responses include JSON text");
     expect(desc).toContain("structuredContent is authoritative");
+    expect(desc).toContain("Multimodal helpers may return only image content");
     expect(desc).not.toContain("response_format");
   });
 });

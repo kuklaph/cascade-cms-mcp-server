@@ -2,8 +2,8 @@
  * Response formatting for the Cascade CMS MCP server.
  *
  * Produces MCP-compliant `CallToolResult` objects with both:
- *   - `content`: JSON text. When over CHARACTER_LIMIT, returns a bounded
- *     JSON preview envelope plus a handle when a response cache is supplied.
+ *   - `content`: JSON text plus extracted MCP content blocks. Multimodal
+ *     tools may opt in to return only extracted content blocks.
  *   - `structuredContent`: the raw result object when it fits. Oversize
  *     results return bounded `_cache` metadata and must be read by handle.
  *
@@ -21,6 +21,7 @@ import type { ResponseCache } from "./cache.js";
 /** Options for `formatResponse` — optional cache + private-field stripping. */
 export interface FormatResponseOptions {
   cache?: ResponseCache;
+  contentBlocksOnly?: boolean;
   stripFromStructured?: readonly string[];
 }
 
@@ -38,23 +39,32 @@ export function formatResponse(
   const structured = stripFields(toStructured(result), options?.stripFromStructured);
   const resourceLinks = extractResourceLinks(result);
   const contentBlocks = extractContentBlocks(result);
+  if (options?.contentBlocksOnly && contentBlocks.length > 0) {
+    return { content: contentBlocks };
+  }
+
   const text = renderJson(structured);
+  const content = buildContent(
+    { type: "text", text },
+    resourceLinks,
+    contentBlocks,
+  );
 
   if (text.length > CHARACTER_LIMIT) {
     const handle = options?.cache?.put(toolName, text);
     const envelope = buildOversizeEnvelope(text, handle);
     return {
-      content: [
+      content: buildContent(
         { type: "text", text: renderJson(envelope) },
-        ...resourceLinks,
-        ...contentBlocks,
-      ],
+        resourceLinks,
+        contentBlocks,
+      ),
       structuredContent: boundedStructuredEnvelope(structured, envelope),
     };
   }
 
   return {
-    content: [{ type: "text", text }, ...resourceLinks, ...contentBlocks],
+    content,
     structuredContent: structured,
   };
 }
@@ -130,6 +140,14 @@ function extractContentBlocks(result: unknown): CallToolResult["content"] {
       typeof rec.mimeType === "string"
     );
   });
+}
+
+function buildContent(
+  textBlock: CallToolResult["content"][number],
+  resourceLinks: ResourceLink[],
+  contentBlocks: CallToolResult["content"],
+): CallToolResult["content"] {
+  return [textBlock, ...resourceLinks, ...contentBlocks];
 }
 
 function buildOversizeEnvelope(fullText: string, handle?: string) {

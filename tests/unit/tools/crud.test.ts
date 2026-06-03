@@ -434,7 +434,7 @@ describe("cascade_read tool", () => {
     );
   });
 
-  test("file data image helper returns MCP image content without dumping base64 into JSON text", async () => {
+  test("file data image helper returns only MCP image content", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_IMAGE_FILE)),
@@ -447,18 +447,16 @@ describe("cascade_read tool", () => {
     const readResult = await read.handler({ identifier: ID_FILE });
     const handle = (readResult.structuredContent as Record<string, any>).asset_handle;
     const result = await image.handler({ asset_handle: handle });
-    const text = firstText(result);
-    const imageBlock = result.content.find((block) => block.type === "image");
 
     expect(result.isError).not.toBe(true);
-    expect(imageBlock).toEqual({
-      type: "image",
-      mimeType: "image/jpeg",
-      data: "/9j/4QAQRXhpZg==",
-    });
-    expect(text).toContain('"mime_type": "image/jpeg"');
-    expect(text).not.toContain("/9j/4QAQRXhpZg==");
-    expect((result.structuredContent as Record<string, any>)._content_blocks).toBeUndefined();
+    expect(result.content).toEqual([
+      {
+        type: "image",
+        mimeType: "image/jpeg",
+        data: "/9j/4QAQRXhpZg==",
+      },
+    ]);
+    expect(result.structuredContent).toBeUndefined();
   });
 
   test("file data image helper rejects extension-only image guesses", async () => {

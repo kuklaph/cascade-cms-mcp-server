@@ -12,6 +12,7 @@
 import { describe, test, expect, mock } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
+  CallToolResultSchema,
   ListToolsResultSchema,
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
@@ -273,6 +274,19 @@ const EXPECTED_TOOL_NAMES = [
   "cascade_read_response",
 ];
 
+const READ_IMAGE_FILE = {
+  success: true,
+  asset: {
+    file: {
+      id: "file123",
+      type: "file",
+      name: "hero.jpg",
+      path: "/_files/hero.jpg",
+      data: [-1, -40, -1, -31, 0, 16, 69, 120, 105, 102],
+    },
+  },
+} as const;
+
 describe("createServer (server factory)", () => {
   test("registers exactly 61 tools", () => {
     const client = createMockClient();
@@ -367,6 +381,31 @@ describe("createServer (server factory)", () => {
     expect(structured.asset_handle).toMatch(/^a_[0-9a-f-]+$/);
     expect(structured.asset_type).toBe("page");
     expect(structured.asset).toBeUndefined();
+  });
+
+  test("cascade_file_data_image returns only image content through sdk tools call", async () => {
+    const client = createMockClient({
+      read: mock(() => Promise.resolve(READ_IMAGE_FILE)),
+    });
+    const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+
+    const readResult = await callToolViaSdkPath(server, "cascade_read", {
+      identifier: { id: "file123", type: "file" },
+    });
+    const handle = (readResult.structuredContent as Record<string, any>).asset_handle;
+    const imageResult = await callToolViaSdkPath(server, "cascade_file_data_image", {
+      asset_handle: handle,
+    });
+
+    expect(CallToolResultSchema.safeParse(imageResult).success).toBe(true);
+    expect(imageResult.content).toEqual([
+      {
+        type: "image",
+        mimeType: "image/jpeg",
+        data: "/9j/4QAQRXhpZg==",
+      },
+    ]);
+    expect(imageResult.structuredContent).toBeUndefined();
   });
 
   test("cascade_read with oversize response mints handle, cascade_read_response retrieves slices", async () => {

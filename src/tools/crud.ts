@@ -418,9 +418,9 @@ function registerAssetFollowUpTools(
 
   registerCascadeTool(server, {
     name: "cascade_file_data_image",
-    title: "Return Cascade file data as image content",
+    title: "Return Cascade file data as image-only content",
     description: buildCascadeToolDescription(
-      `Return binary data for a Cascade image file as MCP image content without dumping base64 into the JSON text response. Accepts asset_handle after cascade_read preview, or identifier for a direct file read that creates a fresh asset_handle.`,
+      `Return binary data for a Cascade image file as MCP image content only, with no JSON text metadata. Use cascade_file_data_info separately when metadata is needed. Accepts asset_handle after cascade_read preview, or identifier for a direct file read that creates a fresh asset_handle.`,
     ),
     inputSchema: FileDataImageRequestSchema,
     annotations: {
@@ -449,7 +449,6 @@ function registerAssetFollowUpTools(
       }
       const bytes = toUnsignedBytes(data);
       return {
-        ...fileDataInfoResult(entry, summary),
         _content_blocks: [
           {
             type: "image" as const,
@@ -459,7 +458,7 @@ function registerAssetFollowUpTools(
         ],
       };
     },
-    stripFromStructured: ["_content_blocks"],
+    contentBlocksOnly: true,
   }, deps);
 
   registerCascadeTool(server, {
@@ -589,7 +588,7 @@ function fileDataNextActions(
   if (isVerifiedImageSummary(summary)) {
     actions.splice(1, 0, {
       tool: "cascade_file_data_image",
-      reason: "Return this cached file data as MCP image content.",
+      reason: "Return this cached file data as image-only MCP content.",
       input: { asset_handle: assetHandle },
     });
   }

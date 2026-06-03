@@ -157,13 +157,13 @@ Example MCP config with an encrypted API key:
 
 ## Response Model
 
-Tool responses are JSON text. When the response fits, `structuredContent` is the authoritative machine-readable result.
+Most tool responses put JSON text in `content[0]`. When the response fits, `structuredContent` is the authoritative machine-readable result.
 
 Oversized responses return bounded `_cache` metadata. Use `cascade_read_response` with that handle to page through the full serialized response. Handles are process-scoped and may be evicted after later calls.
 
 `cascade_read` returns a compact preview by default plus an `asset_handle` for follow-up inspection. Use `read_mode: "raw"` only when you need the full Cascade payload in the initial response. Follow-up tools inspect the cached asset and do not call Cascade again. To edit a cached read safely, open a separate draft with `cascade_draft_open`; draft mutations never change the original read cache.
 
-The beta `response_format` option was removed. Callers should parse `content[0].text` as JSON or prefer `structuredContent` when their client exposes it.
+The beta `response_format` option was removed. Callers should parse the JSON text content block or prefer `structuredContent` when their client exposes it. `cascade_file_data_image` is the exception: it returns only MCP image content; call `cascade_file_data_info` separately for JSON metadata.
 
 ## Capabilities
 
@@ -211,7 +211,7 @@ Read-only tools:
 | `cascade_read_response`             | Fetch more text from a cached oversized response   |
 | `cascade_file_data_info`            | Inspect binary metadata for a Cascade file         |
 | `cascade_file_data_read`            | Read a bounded range from binary file data         |
-| `cascade_file_data_image`           | Return verified image data as MCP image content    |
+| `cascade_file_data_image`           | Return verified image data as image-only MCP content |
 | `cascade_draft_get_value`           | Fetch one JSON value from a draft                  |
 | `cascade_draft_list_facts`          | List indexed JSON facts from a draft               |
 | `cascade_draft_search_values`       | Search scalar values in a draft                    |
@@ -251,10 +251,10 @@ Use these for Cascade `file` assets whose binary content is stored in `file.data
 | ---------------------------- | ----------------------------------------------------------------------- |
 | `cascade_file_data_info`     | Return byte count, SHA-256, detected MIME/kind, and a short hex preview |
 | `cascade_file_data_read`     | Return a bounded byte range as `hex` or `base64`                        |
-| `cascade_file_data_image`    | Return magic-byte verified image files as MCP image content             |
+| `cascade_file_data_image`    | Return magic-byte verified image files as image-only MCP content        |
 | `cascade_file_data_export`   | Write exact bytes to an explicit local `output_path`                    |
 
-`cascade_file_data_image` only returns magic-byte verified images and caps inline MCP image content at 5 MiB; use `cascade_file_data_export` for larger images. `cascade_file_data_export` is an approval-gated local filesystem write: it is explicit-path only, does not create parent directories, refuses to overwrite existing files unless `overwrite: true`, and can verify `expected_sha256` before writing. File-data cache/export helpers reject a single `file.data` payload over 100 MiB, and the read cache evicts older binary entries once cached binary data exceeds 250 MiB. PDF files are supported as binary data for inspect/read/export; v1 does not extract PDF text.
+`cascade_file_data_image` only returns magic-byte verified images, emits no JSON text/structured metadata, and caps inline MCP image content at 5 MiB; use `cascade_file_data_info` for metadata or `cascade_file_data_export` for larger images. `cascade_file_data_export` is an approval-gated local filesystem write: it is explicit-path only, does not create parent directories, refuses to overwrite existing files unless `overwrite: true`, and can verify `expected_sha256` before writing. File-data cache/export helpers reject a single `file.data` payload over 100 MiB, and the read cache evicts older binary entries once cached binary data exceeds 250 MiB. PDF files are supported as binary data for inspect/read/export; v1 does not extract PDF text.
 
 Draft workflow tools:
 

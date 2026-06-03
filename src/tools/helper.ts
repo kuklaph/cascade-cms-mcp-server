@@ -70,6 +70,8 @@ export interface CascadeToolConfig<TSchema extends z.ZodTypeAny> {
    * sending.
    */
   stripFromStructured?: readonly string[];
+  /** Return only extracted MCP content blocks for multimodal tools. */
+  contentBlocksOnly?: boolean;
 }
 
 type RegisteredToolLike = {
@@ -107,6 +109,7 @@ export function registerCascadeTool<TSchema extends z.ZodTypeAny>(
     inputSchema,
     annotations,
     handler,
+    contentBlocksOnly,
     stripFromStructured,
   } = config;
   const sdkInputSchema = looseSchemaForSdk(inputSchema);
@@ -149,6 +152,7 @@ export function registerCascadeTool<TSchema extends z.ZodTypeAny>(
 
         const formatted = formatResponse(result, name, {
           cache: deps?.cache,
+          contentBlocksOnly,
           stripFromStructured,
         });
         logToolInvocation(name, "ok", Date.now() - start);
@@ -205,7 +209,7 @@ export function registerExactToolSchemaListHandler(server: McpServer): void {
  */
 export function buildCascadeToolDescription(base: string): string {
   const footer =
-    "Responses are JSON text; structuredContent is authoritative when the response fits. Oversized responses return bounded _cache metadata for cascade_read_response. For cascade_read, read_mode controls preview versus raw Cascade payload shape.";
+    "Most responses include JSON text; structuredContent is authoritative when the response fits. Multimodal helpers may return only image content; call cascade_file_data_info separately for file metadata. Oversized responses return bounded _cache metadata for cascade_read_response. For cascade_read, read_mode controls preview versus raw Cascade payload shape.";
   const trimmed = base.trim();
   const separator = trimmed.endsWith(".") ? " " : ". ";
   return `${trimmed}${separator}${footer}`;

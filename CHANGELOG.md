@@ -4,6 +4,8 @@ All notable changes to `cascade-cms-mcp-server` will be documented here.
 
 ## Unreleased
 
+## 1.1.3 - 2026-06-03
+
 ### Added
 
 - Added `cascade_draft_*` tools for draft-based create/edit workflows: open, inspect, patch, validate, and submit complete asset payloads without mutating the original read cache.
@@ -16,6 +18,7 @@ All notable changes to `cascade-cms-mcp-server` will be documented here.
 
 ### Changed
 
+- `cascade_file_data_image` now returns image-only MCP content with no JSON text or structured metadata; use `cascade_file_data_info` separately for file metadata.
 - Tightened draft patch/submit revision checks and `editorConfiguration` site validation to match Cascade API type requirements.
 - `cascade_read` preview now summarizes Cascade `file.data` byte arrays instead of indexing every byte, preserving exact raw JSON while keeping binary file previews bounded.
 - File-data export is marked as a destructive local filesystem write, rejects single binary payloads over 100 MiB, and the read cache evicts older binary entries after 250 MiB of cached binary data.

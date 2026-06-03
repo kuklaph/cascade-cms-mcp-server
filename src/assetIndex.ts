@@ -511,7 +511,7 @@ function binaryNextActions(index: IndexedAsset): NextAction[] {
   if (isVerifiedImageSummary(index.binaryFields[0]!)) {
     actions.splice(2, 0, {
       tool: "cascade_file_data_image",
-      reason: "Return image file data as MCP image content when the cached file has a verified image signature.",
+      reason: "Return image file data as image-only MCP content when the cached file has a verified image signature.",
       input: { asset_handle: index.handle },
     });
   }
