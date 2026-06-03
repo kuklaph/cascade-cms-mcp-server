@@ -569,7 +569,7 @@ export function registerDraftTools(
   registerDraftReadTool(server, resolved, draftCache, {
     name: "cascade_draft_list_facts",
     title: "List draft raw facts",
-    description: "List object, array, key, and scalar facts indexed from the current draft payload.",
+    description: "Browse object, array, key, and scalar facts indexed from the current draft payload. Use this for audit/debug enumeration; when the task is to find text or content by snippet, prefer cascade_draft_search_values because list_facts can return both key facts and scalar facts for the same value.",
     inputSchema: DraftListFactsRequestSchema,
     handler: (entry, args) => draftPage(entry, listFacts(entry.index, args as any)),
   });
@@ -577,7 +577,7 @@ export function registerDraftTools(
   registerDraftReadTool(server, resolved, draftCache, {
     name: "cascade_draft_search_values",
     title: "Search draft scalar values",
-    description: "Search scalar values inside the current draft payload.",
+    description: "Search scalar string/number/boolean/null values inside the current draft payload. Best first choice for finding text/content by known snippet.",
     inputSchema: DraftSearchValuesRequestSchema,
     handler: (entry, args) => draftPage(entry, searchValues(entry.index, args as any)),
   });
@@ -593,7 +593,7 @@ export function registerDraftTools(
   registerDraftReadTool(server, resolved, draftCache, {
     name: "cascade_draft_list_scalar_artifacts",
     title: "List draft scalar artifacts",
-    description: "List URL, href, src, mailto, tel, anchor, and path-like scalar artifacts in the current draft.",
+    description: "List derived link/path-like scalar artifacts in the current draft. Use href for any value found in an HTML/XHTML href attribute, whether absolute, root-relative, relative, or site://; use site_link for non-root, non-URL Cascade *Path fields such as pagePath, filePath, blockPath, and parentFolderPath. Other artifact kinds include http_url, src, anchor, mailto, tel, and root_path.",
     inputSchema: DraftListScalarArtifactsRequestSchema,
     handler: (entry, args) =>
       draftPage(entry, listScalarArtifacts(entry.index, args as any)),

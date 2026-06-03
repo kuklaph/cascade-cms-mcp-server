@@ -465,6 +465,9 @@ const AuditPaginationFields = {
   limit: z.number().int().min(1).max(500).default(50),
 };
 
+const ScalarArtifactKindDescription =
+  "Artifact filter. Use href for any value found in an HTML/XHTML href attribute, whether absolute, root-relative, relative, or site://. Use site_link for non-root, non-URL Cascade *Path fields such as pagePath, filePath, blockPath, and parentFolderPath. Other values: http_url, src, anchor, mailto, tel, root_path.";
+
 export const AssetListFactsRequestSchema = z
   .object({
     ...AssetHandleField,
@@ -614,7 +617,8 @@ export const AssetListScalarArtifactsRequestSchema = z
         "tel",
         "root_path",
       ])
-      .optional(),
+      .optional()
+      .describe(ScalarArtifactKindDescription),
     pointer_prefix: z.string().optional(),
     key: z.string().optional(),
     key_contains: z.string().optional(),
@@ -874,7 +878,8 @@ export const DraftListScalarArtifactsRequestSchema = z
         "tel",
         "root_path",
       ])
-      .optional(),
+      .optional()
+      .describe(ScalarArtifactKindDescription),
     pointer_prefix: z.string().optional(),
     key: z.string().optional(),
     key_contains: z.string().optional(),

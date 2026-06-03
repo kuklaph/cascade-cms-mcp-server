@@ -258,12 +258,12 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
     next_actions: [
       {
         tool: "cascade_asset_list_facts",
-        reason: "Browse indexed raw JSON facts from this cached asset.",
+        reason: "Browse indexed raw JSON facts for audit/debug enumeration; use cascade_asset_search_values for text/content snippets.",
         input: { asset_handle: index.handle },
       },
       {
         tool: "cascade_asset_search_values",
-        reason: "Search scalar values inside this cached asset.",
+        reason: "Search scalar values inside this cached asset by known text/content snippet.",
         required_inputs: ["asset_handle", "value_contains"],
       },
       {
@@ -278,7 +278,7 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
       },
       {
         tool: "cascade_asset_list_scalar_artifacts",
-        reason: "List URL, href, src, mailto, tel, anchor, and path-like scalar artifacts.",
+        reason: "List link/path-like artifacts. Use href for HTML/XHTML href values of any path style; use site_link for non-root, non-URL Cascade *Path fields.",
         input: { asset_handle: index.handle },
       },
       {

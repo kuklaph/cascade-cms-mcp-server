@@ -40,6 +40,7 @@ import {
   DraftScaffoldCreateRequestSchema,
   DraftScaffoldFromAssetRequestSchema,
   DraftGetValueRequestSchema,
+  DraftListScalarArtifactsRequestSchema,
   DraftApplyPatchRequestSchema,
   DraftApplySemanticPatchRequestSchema,
   DraftAssertValuesRequestSchema,
@@ -1111,6 +1112,21 @@ describe("asset follow-up request schemas", () => {
         artifact_kind: "onclick",
       }).success,
     ).toBe(false);
+  });
+
+  test("scalar artifact schemas describe href versus site_link selection", () => {
+    expect((AssetListScalarArtifactsRequestSchema.shape as any).artifact_kind.description).toContain(
+      "Use href for any value found in an HTML/XHTML href attribute",
+    );
+    expect((AssetListScalarArtifactsRequestSchema.shape as any).artifact_kind.description).toContain(
+      "Use site_link for non-root, non-URL Cascade *Path fields",
+    );
+    expect((DraftListScalarArtifactsRequestSchema.shape as any).artifact_kind.description).toContain(
+      "Use href for any value found in an HTML/XHTML href attribute",
+    );
+    expect((DraftListScalarArtifactsRequestSchema.shape as any).artifact_kind.description).toContain(
+      "Use site_link for non-root, non-URL Cascade *Path fields",
+    );
   });
 
   test("audit cursors reject oversized or malformed values", () => {

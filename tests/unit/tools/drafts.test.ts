@@ -162,6 +162,30 @@ describe("draft tools", () => {
     expect(findTool(tools, "cascade_draft_submit").config.annotations.openWorldHint).toBe(true);
   });
 
+  test("draft read helper descriptions guide scalar search and artifact selection", () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient();
+
+    registerDraftTools(server as any, client, {
+      cache: createResponseCache(),
+      assetCache: createAssetCache(),
+      draftCache: createDraftCache(),
+    });
+
+    expect(findTool(tools, "cascade_draft_list_facts").config.description).toContain(
+      "prefer cascade_draft_search_values",
+    );
+    expect(findTool(tools, "cascade_draft_search_values").config.description).toContain(
+      "Best first choice for finding text/content by known snippet",
+    );
+    const artifacts = findTool(tools, "cascade_draft_list_scalar_artifacts");
+    expect(artifacts.config.description).toContain("Use href for any value found in an HTML/XHTML href attribute");
+    expect(artifacts.config.description).toContain("use site_link for non-root, non-URL Cascade *Path fields");
+    expect((artifacts.config.inputSchema as any).shape.artifact_kind.description).toContain(
+      "Use href for any value found in an HTML/XHTML href attribute",
+    );
+  });
+
   test("resolves, semantically patches, and asserts repeated structuredData nodes", async () => {
     const { server, tools } = makeMockServer();
     const assetCache = createAssetCache();

@@ -952,4 +952,24 @@ describe("registerCrudTools coverage", () => {
       "cascade_remove",
     ]);
   });
+
+  test("asset follow-up tool descriptions guide scalar search and artifact selection", () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient();
+
+    registerCrudTools(server as any, client);
+
+    expect(findTool(tools, "cascade_asset_list_facts").config.description).toContain(
+      "prefer cascade_asset_search_values",
+    );
+    expect(findTool(tools, "cascade_asset_search_values").config.description).toContain(
+      "Best first choice for finding text/content by known snippet",
+    );
+    const artifacts = findTool(tools, "cascade_asset_list_scalar_artifacts");
+    expect(artifacts.config.description).toContain("Use href for any value found in an HTML/XHTML href attribute");
+    expect(artifacts.config.description).toContain("use site_link for non-root, non-URL Cascade *Path fields");
+    expect((artifacts.config.inputSchema as any).shape.artifact_kind.description).toContain(
+      "Use href for any value found in an HTML/XHTML href attribute",
+    );
+  });
 });

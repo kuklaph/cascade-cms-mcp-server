@@ -88,7 +88,7 @@ function registerAssetFollowUpTools(
     name: "cascade_asset_list_facts",
     title: "List cached raw asset facts",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. List object, array, key, and scalar facts indexed from the full cached raw Cascade response. Supports pointer, key, value, scalar, and reference filters with cursor pagination. This tool never reads Cascade directly and reports complete: true only when the current filter has no remaining matches.`,
+      `Use after cascade_read. Browse object, array, key, and scalar facts indexed from the full cached raw Cascade response. Use this for audit/debug enumeration; when the task is to find text or content by snippet, prefer cascade_asset_search_values because list_facts can return both key facts and scalar facts for the same value. Supports pointer, key, value, scalar, and reference filters with cursor pagination. This tool never reads Cascade directly and reports complete: true only when the current filter has no remaining matches.`,
     ),
     inputSchema: AssetListFactsRequestSchema,
     annotations: {
@@ -110,7 +110,7 @@ function registerAssetFollowUpTools(
     name: "cascade_asset_search_values",
     title: "Search cached raw asset scalar values",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Search full scalar values across the cached raw Cascade response, not shortened previews. Returns JSON Pointer provenance, scalar type, value length, preview, and match offsets where practical. This tool never reads Cascade directly.`,
+      `Use after cascade_read. Search full scalar string/number/boolean/null values across the cached raw Cascade response, not shortened previews. Best first choice for finding text/content by known snippet. Returns JSON Pointer provenance, scalar type, value length, preview, and match offsets where practical. This tool never reads Cascade directly.`,
     ),
     inputSchema: AssetSearchValuesRequestSchema,
     annotations: {
@@ -201,7 +201,7 @@ function registerAssetFollowUpTools(
     name: "cascade_asset_list_scalar_artifacts",
     title: "List cached raw scalar artifacts",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Enumerate derived link/path-like artifacts from cached raw string scalar facts, including http_url, site_link, href, src, anchor, mailto, tel, and root_path. Returns JSON Pointer and offset provenance. This tool never reads Cascade directly.`,
+      `Use after cascade_read. Enumerate derived link/path-like artifacts from cached raw string scalar facts. Use href for any value found in an HTML/XHTML href attribute, whether absolute, root-relative, relative, or site://; use site_link for non-root, non-URL Cascade *Path fields such as pagePath, filePath, blockPath, and parentFolderPath. Other artifact kinds include http_url, src, anchor, mailto, tel, and root_path. Returns JSON Pointer and offset provenance. This tool never reads Cascade directly.`,
     ),
     inputSchema: AssetListScalarArtifactsRequestSchema,
     annotations: {
