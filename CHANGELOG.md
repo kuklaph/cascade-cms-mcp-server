@@ -4,6 +4,15 @@ All notable changes to `cascade-cms-mcp-server` will be documented here.
 
 ## Unreleased
 
+### Added
+
+- Added `cascade_draft_set_file_data` to set draft `file.data` from exactly one local path or base64 payload, preserving real `text` values and removing only null scaffold placeholders.
+
+### Changed
+
+- `cascade_create`, `cascade_edit`, and `cascade_draft_submit` now normalize `file.data` byte arrays to Cascade signed Java bytes.
+- Draft file-data bytes are kept outside the draft JSON cache until submit so large uploads do not trip the draft JSON size guard.
+
 ## 1.1.3 - 2026-06-03
 
 ### Added

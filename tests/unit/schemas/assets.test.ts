@@ -26,6 +26,8 @@ import {
   FtpTransportAssetSchema,
   DatabaseTransportAssetSchema,
   AssetInputSchema,
+  CreateAssetInputSchema,
+  EditAssetInputSchema,
   ASSET_ENVELOPE_KEYS,
 } from "../../../src/schemas/assets.js";
 import * as AssetEnums from "../../../src/schemas/assets/enums.js";
@@ -915,15 +917,59 @@ describe("Generated asset drift corrections", () => {
     }
   });
 
-  test("plain number fields follow generated number shape", () => {
-    expect(
-      FileAssetSchema.safeParse({
+  test("file data normalizes unsigned bytes to signed Cascade bytes", () => {
+    const parsed = FileAssetSchema.safeParse({
+      name: "data.bin",
+      parentFolderPath: "/",
+      siteName: "my-site",
+      data: [255, 216, 128, 127, -1, -128],
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) throw new Error("expected valid file data");
+    expect(parsed.data.data).toEqual([-1, -40, -128, 127, -1, -128]);
+  });
+
+  test("file data rejects non-byte values", () => {
+    for (const data of [[1.5], [256], [-129], [Number.POSITIVE_INFINITY]]) {
+      expect(
+        FileAssetSchema.safeParse({
+          name: "data.bin",
+          parentFolderPath: "/",
+          siteName: "my-site",
+          data,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  test("file data normalizes through asset create and edit schemas", () => {
+    const create = CreateAssetInputSchema.safeParse({
+      file: {
         name: "data.bin",
         parentFolderPath: "/",
         siteName: "my-site",
-        data: [0, 1.5, 300],
-      }).success,
-    ).toBe(true);
+        data: [255, 216],
+      },
+    });
+    const edit = EditAssetInputSchema.safeParse({
+      file: {
+        id: "file-001",
+        name: "data.bin",
+        parentFolderPath: "/",
+        siteName: "my-site",
+        data: [128, 127],
+      },
+    });
+
+    expect(create.success).toBe(true);
+    expect(edit.success).toBe(true);
+    if (!create.success || !edit.success) throw new Error("expected valid file data");
+    expect((create.data.file as { data?: number[] }).data).toEqual([-1, -40]);
+    expect((edit.data.file as { data?: number[] }).data).toEqual([-128, 127]);
+  });
+
+  test("plain number fields follow generated number shape", () => {
     expect(
       PageAssetSchema.safeParse({
         name: "index",

@@ -489,7 +489,7 @@ function notesFor(assetType: AssetEnvelopeKey): string[] {
         "Use structuredData instead of xhtml when creating a data-definition page.",
       ];
     case "file":
-      return ["Use data instead of text when creating a binary file."];
+      return ["Use data for file bytes; keep text only when the file type needs text content."];
     case "xhtmlDataDefinitionBlock":
       return [
         "Use structuredData instead of xhtml when creating a data-definition block.",

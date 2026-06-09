@@ -745,13 +745,14 @@ The request body wraps a typed concrete asset envelope under \`asset\` — one c
 Payload conventions (apply to every create call):
   - Send ONLY the fields you actually need to set. Every optional field should be omitted unless you have a real value to provide — Cascade applies its own defaults server-side. Do not pad payloads with "reasonable defaults" like \`reviewOnSchedule: false\` or \`shouldBePublished: true\` when you do not need to override them.
   - For every \`<thing>Id\` / \`<thing>Path\` pair (parentFolderId vs parentFolderPath, siteId vs siteName, contentTypeId vs contentTypePath, metadataSetId vs metadataSetPath, ...), prefer the id form when you know the id. Path is a valid fallback and Cascade resolves it server-side — don't round-trip through cascade_read just to look up an id.
+  - File uploads: \`asset.file.data\` accepts signed Java bytes (-128..127) or unsigned file bytes (0..255); this MCP sends Cascade signed bytes. Cascade file assets may carry text, data, or both depending on file type.
   - Text encoding: rich-text fields (xhtml, WYSIWYG structuredData text, xmlBlock xml) must be well-formed XML — named HTML entities like \`&nbsp;\` and astral-plane Unicode (including emoji) crash the render. See resource \`cascade://text-encoding\` for the per-field-category rules.
 
 Args:
   - asset (object, required): One concrete asset envelope. Key is the camelCase type; value is the asset body. Optional \`workflowConfiguration\` may be included alongside the concrete asset key. If workflowConfiguration is supplied, include workflowName, workflowComments, and workflowDefinitionId or workflowDefinitionPath.
     Common shapes (required fields plus representative optionals shown — omit optionals unless you need them):
       - { page: { name, parentFolderId OR parentFolderPath, siteId OR siteName, contentTypeId OR contentTypePath, xhtml OR structuredData, ... } }
-      - { file: { name, parentFolderId OR parentFolderPath, siteId OR siteName, text OR data, ... } }
+      - { file: { name, parentFolderId OR parentFolderPath, siteId OR siteName, text, data, or both, ... } }
       - { folder: { name, parentFolderId OR parentFolderPath, siteId OR siteName, ... } }
       - { textBlock: { name, parentFolderId OR parentFolderPath, siteId OR siteName, text, ... } }
       - { xmlBlock: { name, parentFolderId OR parentFolderPath, siteId OR siteName, xml, ... } }
@@ -798,6 +799,7 @@ Payload conventions:
   - Edit replaces the asset body, so send the full object as read — do not try to send only the fields you are changing.
   - When constructing an edit payload from scratch (not round-tripping a read), still omit optional fields you have no intention of setting; don't invent defaults.
   - Prefer id over path on every id/path pair (metadataSetId over metadataSetPath, etc.). Cascade resolves paths server-side.
+  - File uploads: \`asset.file.data\` accepts signed Java bytes (-128..127) or unsigned file bytes (0..255); this MCP sends Cascade signed bytes. Preserve existing \`asset.file.text\` when that file type uses both text and data.
   - Text encoding: same rules as cascade_create — rich-text fields must be well-formed XML with only the five XML built-in entities (\`&amp;\`, \`&lt;\`, \`&gt;\`, \`&quot;\`, \`&apos;\`). See resource \`cascade://text-encoding\`.
 
 Args:

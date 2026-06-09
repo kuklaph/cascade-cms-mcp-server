@@ -1,7 +1,13 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Types } from "cascade-cms-api";
+import { readFile, stat } from "node:fs/promises";
+import { basename } from "node:path";
 import type { CascadeClient } from "../client.js";
 import { createResponseCache } from "../cache.js";
+import {
+  CHARACTER_LIMIT,
+  FILE_DATA_MAX_BYTES,
+} from "../constants.js";
 import {
   buildAssetIndex,
   createAssetCache,
@@ -52,11 +58,16 @@ import {
   DraftScaffoldFromAssetRequestSchema,
   DraftSearchKeysRequestSchema,
   DraftSearchValuesRequestSchema,
+  DraftSetFileDataRequestSchema,
   DraftSubmitRequestSchema,
   DraftMutationPlanExecuteRequestSchema,
   DraftValidateRequestSchema,
   EditRequestSchema,
 } from "../schemas/requests.js";
+import {
+  summarizeFileData,
+  toSignedFileData,
+} from "../fileData.js";
 import {
   evaluateStructuredDataAssertions,
   resolveSingleMatch,
@@ -104,12 +115,12 @@ type MutationPlanStep = {
     | "cascade_draft_apply_patch"
     | "cascade_draft_apply_semantic_patch"
     | "cascade_draft_assert_values"
+    | "cascade_draft_set_file_data"
     | "cascade_draft_validate"
     | "cascade_draft_submit";
   input?: Record<string, unknown>;
   save_as?: string;
 };
-import { CHARACTER_LIMIT } from "../constants.js";
 
 export function registerDraftTools(
   server: McpServer,
@@ -260,6 +271,56 @@ export function registerDraftTools(
     };
   }
 
+  async function setFileData(args: {
+    draft_handle: string;
+    expected_revision: number;
+    input_path?: string;
+    base64_data?: string;
+    expected_sha256?: string;
+  }): Promise<Record<string, unknown>> {
+    const draft = getDraftEntry(draftCache, args.draft_handle);
+    assertExpectedDraftRevision(draft, args.expected_revision);
+    await assertToolBlockAllowed(
+      "cascade_draft_set_file_data",
+      materializeDraftRoot(draft, "placeholder"),
+      resolved,
+    );
+    const file = fileBodyFromDraft(draft);
+    const bytes = await readFileDataInput(args);
+    const summary = summarizeFileData(
+      bytes,
+      "/asset/file/data",
+      args.input_path ? basename(args.input_path) : fileNameFromBody(file),
+    );
+    if (
+      args.expected_sha256 &&
+      args.expected_sha256.toLowerCase() !== summary.sha256.toLowerCase()
+    ) {
+      throw new Error(
+        `cascade_draft_set_file_data: expected_sha256 mismatch. Expected ${args.expected_sha256}, actual ${summary.sha256}.`,
+      );
+    }
+
+    const textRemoved = file.text === null;
+    await assertToolBlockAllowed(
+      "cascade_draft_set_file_data",
+      draftRootWithFileDataPlaceholder(draft, textRemoved),
+      resolved,
+    );
+    return {
+      success: true,
+      ...draftCache.setFileData(args.draft_handle, {
+        expectedRevision: args.expected_revision,
+        bytes,
+        summary,
+        removeNullText: textRemoved,
+      }),
+      ...summary,
+      file_data_attached: true,
+      text_removed: textRemoved,
+    };
+  }
+
   async function submitDraft(args: {
     draft_handle: string;
     expected_revision: number;
@@ -279,7 +340,7 @@ export function registerDraftTools(
 
     inFlightSubmits.add(draft.handle);
     try {
-      const validation = parseDraftRequest(draft);
+      const validation = parseDraftRequest(draft, "placeholder");
       if (!validation.valid) {
         throw new Error(
           `cascade_draft_submit validation failed for ${draft.operation} draft: ${validation.issues?.[0]?.message ?? "invalid draft"}`,
@@ -288,13 +349,20 @@ export function registerDraftTools(
 
       const submittedRevision = draft.revision;
       const submittedHash = draft.draftHash;
-      const request = validation.request as { asset: unknown };
+      const checkRequest = validation.request as { asset: unknown };
       const finalTool = draft.operation === "create" ? "cascade_create" : "cascade_edit";
-      assertEditTargetUnchanged(draft, request);
-      await assertToolBlockAllowed("cascade_draft_submit", request, resolved);
-      await assertToolBlockAllowed(finalTool, request, resolved);
+      assertEditTargetUnchanged(draft, checkRequest);
+      await assertToolBlockAllowed("cascade_draft_submit", checkRequest, resolved);
+      await assertToolBlockAllowed(finalTool, checkRequest, resolved);
       await assertEditSourceCurrent(draft, client);
       assertDraftStillCurrent(draftCache, draft.handle, submittedRevision, submittedHash);
+      const actualValidation = parseDraftRequest(draft, "actual");
+      if (!actualValidation.valid) {
+        throw new Error(
+          `cascade_draft_submit validation failed for ${draft.operation} draft: ${actualValidation.issues?.[0]?.message ?? "invalid draft"}`,
+        );
+      }
+      const request = actualValidation.request as { asset: unknown };
       const result =
         draft.operation === "create"
           ? await client.create(request as unknown as Types.CreateRequest)
@@ -450,14 +518,30 @@ export function registerDraftTools(
         });
         return [draft.root, preview.nextRoot];
       }
+      case "cascade_draft_set_file_data": {
+        const draft = getDraftEntry(draftCache, parsed.draft_handle);
+        assertExpectedDraftRevision(draft, parsed.expected_revision);
+        const file = fileBodyFromDraft(draft);
+        return [
+          materializeDraftRoot(draft, "placeholder"),
+          draftRootWithFileDataPlaceholder(draft, file.text === null),
+        ];
+      }
       case "cascade_draft_resolve_nodes":
       case "cascade_draft_assert_values":
       case "cascade_draft_validate":
-        return [getDraftEntry(draftCache, parsed.draft_handle).root];
+        return [
+          materializeDraftRoot(
+            getDraftEntry(draftCache, parsed.draft_handle),
+            "placeholder",
+          ),
+        ];
       case "cascade_draft_submit": {
         const draft = getDraftEntry(draftCache, parsed.draft_handle);
-        const validation = parseDraftRequest(draft);
-        return validation.valid ? [validation.request] : [draft.root];
+        const validation = parseDraftRequest(draft, "placeholder");
+        return validation.valid
+          ? [validation.request]
+          : [materializeDraftRoot(draft, "placeholder")];
       }
     }
   }
@@ -491,6 +575,8 @@ export function registerDraftTools(
         return applyJsonPatch(parsed as any);
       case "cascade_draft_apply_semantic_patch":
         return applySemanticPatch(parsed as any);
+      case "cascade_draft_set_file_data":
+        return setFileData(parsed as any);
       case "cascade_draft_assert_values": {
         const draft = getDraftEntry(draftCache, parsed.draft_handle as string);
         await assertToolBlockAllowed("cascade_draft_assert_values", draft.root, resolved);
@@ -506,7 +592,11 @@ export function registerDraftTools(
       }
       case "cascade_draft_validate": {
         const draft = getDraftEntry(draftCache, parsed.draft_handle as string);
-        await assertToolBlockAllowed("cascade_draft_validate", draft.root, resolved);
+        await assertToolBlockAllowed(
+          "cascade_draft_validate",
+          materializeDraftRoot(draft, "placeholder"),
+          resolved,
+        );
         return validateDraft(draft);
       }
       case "cascade_draft_submit":
@@ -740,6 +830,22 @@ export function registerDraftTools(
   }, resolved);
 
   registerCascadeTool(server, {
+    name: "cascade_draft_set_file_data",
+    title: "Set draft file data",
+    description: buildCascadeToolDescription(
+      `Read local file bytes from exactly one of input_path or base64_data, normalize them to Cascade signed Java bytes, and set asset.file.data on a mutable file draft. This mutates only the local draft, never Cascade. Existing string text is preserved because Cascade files may validly carry text, data, or both; a null text scaffold placeholder is removed so the draft can validate.`,
+    ),
+    inputSchema: DraftSetFileDataRequestSchema,
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
+    handler: async (input) => setFileData(input as any),
+  }, resolved);
+
+  registerCascadeTool(server, {
     name: "cascade_draft_validate",
     title: "Validate asset draft",
     description: buildCascadeToolDescription(
@@ -754,7 +860,11 @@ export function registerDraftTools(
     },
     handler: async (input) => {
       const draft = getDraftEntry(draftCache, (input as any).draft_handle);
-      await assertToolBlockAllowed("cascade_draft_validate", draft.root, resolved);
+      await assertToolBlockAllowed(
+        "cascade_draft_validate",
+        materializeDraftRoot(draft, "placeholder"),
+        resolved,
+      );
       return validateDraft(draft);
     },
   }, resolved);
@@ -874,6 +984,108 @@ function assetEnvelopeFromRaw(raw: unknown): Record<string, unknown> {
   return raw.asset;
 }
 
+function fileBodyFromDraft(draft: DraftCacheEntry): Record<string, unknown> {
+  const asset = isRecord(draft.root.asset) ? draft.root.asset : undefined;
+  const file = asset && isRecord(asset.file) ? asset.file : undefined;
+  if (!file || draft.index.assetType !== "file") {
+    throw new Error("cascade_draft_set_file_data: draft must contain a file asset.");
+  }
+  return file;
+}
+
+type DraftFileDataMaterialization = "actual" | "placeholder";
+
+function materializeDraftRoot(
+  entry: DraftCacheEntry,
+  fileDataMode: DraftFileDataMaterialization,
+): Record<string, unknown> {
+  if (!entry.fileData) return entry.root;
+
+  const root = structuredClone(entry.root) as Record<string, unknown>;
+  const file = fileBodyFromRoot(root);
+  file.data =
+    fileDataMode === "actual"
+      ? toSignedFileData(entry.fileData.bytes)
+      : [0];
+  return root;
+}
+
+function draftRootWithFileDataPlaceholder(
+  draft: DraftCacheEntry,
+  removeNullText: boolean,
+): Record<string, unknown> {
+  const root = structuredClone(draft.root) as Record<string, unknown>;
+  const file = fileBodyFromRoot(root);
+  file.data = [0];
+  if (removeNullText && file.text === null) delete file.text;
+  return root;
+}
+
+function fileBodyFromRoot(root: Record<string, unknown>): Record<string, unknown> {
+  const asset = isRecord(root.asset) ? root.asset : undefined;
+  const file = asset && isRecord(asset.file) ? asset.file : undefined;
+  if (!file) {
+    throw new Error("cascade_draft_set_file_data: draft must contain a file asset.");
+  }
+  return file;
+}
+
+async function readFileDataInput(args: {
+  input_path?: string;
+  base64_data?: string;
+}): Promise<Uint8Array> {
+  if (args.input_path !== undefined) {
+    const info = await stat(args.input_path);
+    if (!info.isFile()) {
+      throw new Error("cascade_draft_set_file_data: input_path must be a file.");
+    }
+    assertFileDataInputSize(info.size, "input_path");
+    const bytes = new Uint8Array(await readFile(args.input_path));
+    assertFileDataInputSize(bytes.length, "input_path");
+    return bytes;
+  }
+  return decodeBase64Data(args.base64_data ?? "");
+}
+
+function decodeBase64Data(value: string): Uint8Array {
+  const normalized = value.replace(/\s+/g, "");
+  const unpadded = normalized.replace(/=+$/, "");
+  if (
+    normalized.length === 0 ||
+    normalized.length % 4 === 1 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)
+  ) {
+    throw new Error("cascade_draft_set_file_data: base64_data is not valid base64.");
+  }
+  assertFileDataInputSize(decodedBase64ByteLength(normalized), "base64_data");
+  const buffer = Buffer.from(normalized, "base64");
+  if (buffer.toString("base64").replace(/=+$/, "") !== unpadded) {
+    throw new Error("cascade_draft_set_file_data: base64_data is not valid base64.");
+  }
+  assertFileDataInputSize(buffer.length, "base64_data");
+  return new Uint8Array(buffer);
+}
+
+function decodedBase64ByteLength(normalized: string): number {
+  const padding = normalized.endsWith("==")
+    ? 2
+    : normalized.endsWith("=")
+      ? 1
+      : 0;
+  return Math.floor((normalized.length * 3) / 4) - padding;
+}
+
+function assertFileDataInputSize(bytes: number, source: string): void {
+  if (bytes <= FILE_DATA_MAX_BYTES) return;
+  throw new Error(
+    `cascade_draft_set_file_data: ${source} is too large (${bytes} bytes, max ${FILE_DATA_MAX_BYTES}).`,
+  );
+}
+
+function fileNameFromBody(file: Record<string, unknown>): string | undefined {
+  return typeof file.name === "string" ? file.name : undefined;
+}
+
 function hydratePlanInput(
   step: MutationPlanStep,
   saved: Map<string, Record<string, unknown>>,
@@ -935,6 +1147,8 @@ function schemaForMutationPlanStep(tool: MutationPlanStep["tool"]) {
       return DraftApplySemanticPatchRequestSchema;
     case "cascade_draft_assert_values":
       return DraftAssertValuesRequestSchema;
+    case "cascade_draft_set_file_data":
+      return DraftSetFileDataRequestSchema;
     case "cascade_draft_validate":
       return DraftValidateRequestSchema;
     case "cascade_draft_submit":
@@ -993,6 +1207,7 @@ function planToolUsesExpectedRevision(tool: MutationPlanStep["tool"]): boolean {
   return (
     tool === "cascade_draft_apply_patch" ||
     tool === "cascade_draft_apply_semantic_patch" ||
+    tool === "cascade_draft_set_file_data" ||
     tool === "cascade_draft_submit"
   );
 }
@@ -1057,6 +1272,16 @@ function getDraftEntry(draftCache: DraftCache, handle: string): DraftCacheEntry 
   return entry;
 }
 
+function assertExpectedDraftRevision(
+  draft: DraftCacheEntry,
+  expectedRevision: number,
+): void {
+  if (expectedRevision === draft.revision) return;
+  throw new Error(
+    `expected_revision ${expectedRevision} does not match current draft revision ${draft.revision}.`,
+  );
+}
+
 function draftPage<T>(entry: DraftCacheEntry, page: AuditPage<T>): Record<string, unknown> {
   const {
     asset_handle: _assetHandle,
@@ -1104,6 +1329,17 @@ function draftValue(
   pointer: string,
   options?: { offset?: number; length?: number },
 ): Record<string, unknown> {
+  if (pointer === "/asset/file/data" && entry.fileData) {
+    return {
+      draft_handle: entry.handle,
+      draft_resource_uri: draftResourceUri(entry.handle),
+      draft_hash: entry.draftHash,
+      revision: entry.revision,
+      file_data_attached: true,
+      ...entry.fileData.summary,
+    };
+  }
+
   const value = getDraftValue(entry, pointer);
   if (value === undefined) {
     throw new Error(`Pointer ${pointer || "<root>"} not found in draft handle ${entry.handle}.`);
@@ -1143,13 +1379,16 @@ function draftValue(
 
 type DraftValidationIssue = { path: string; message: string; code: string };
 
-function parseDraftRequest(entry: DraftCacheEntry): {
+function parseDraftRequest(
+  entry: DraftCacheEntry,
+  fileDataMode: DraftFileDataMaterialization = "actual",
+): {
   valid: boolean;
   request?: unknown;
   issues?: DraftValidationIssue[];
 } {
   const schema = entry.operation === "create" ? CreateRequestSchema : EditRequestSchema;
-  const parsed = schema.safeParse(entry.root);
+  const parsed = schema.safeParse(materializeDraftRoot(entry, fileDataMode));
   if (parsed.success) {
     return { valid: true, request: parsed.data };
   }
@@ -1167,7 +1406,7 @@ function validateDraft(entry: DraftCacheEntry): Record<string, unknown> & {
   valid: boolean;
   issues?: DraftValidationIssue[];
 } {
-  const parsed = parseDraftRequest(entry);
+  const parsed = parseDraftRequest(entry, "placeholder");
   if (parsed.valid) {
     return {
       success: true,
@@ -1175,6 +1414,12 @@ function validateDraft(entry: DraftCacheEntry): Record<string, unknown> & {
       draft_handle: entry.handle,
       operation: entry.operation,
       revision: entry.revision,
+      ...(entry.fileData
+        ? {
+            file_data_attached: true,
+            file_data_bytes_total: entry.fileData.summary.bytes_total,
+          }
+        : {}),
     };
   }
   return {

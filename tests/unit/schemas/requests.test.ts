@@ -45,6 +45,7 @@ import {
   DraftApplySemanticPatchRequestSchema,
   DraftAssertValuesRequestSchema,
   DraftResolveNodesRequestSchema,
+  DraftSetFileDataRequestSchema,
   DraftSubmitRequestSchema,
   DraftMutationPlanExecuteRequestSchema,
 } from "../../../src/schemas/requests.js";
@@ -1291,6 +1292,38 @@ describe("draft workflow request schemas", () => {
     expect(
       DraftScaffoldFromAssetRequestSchema.safeParse({
         asset_handle: ASSET_HANDLE,
+      }).success,
+    ).toBe(false);
+  });
+
+  test("set file data requires exactly one byte source", () => {
+    expect(
+      DraftSetFileDataRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        input_path: "C:\\tmp\\hero.jpg",
+      }).success,
+    ).toBe(true);
+    expect(
+      DraftSetFileDataRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        base64_data: "/9j/4Q==",
+        expected_sha256: "0".repeat(64),
+      }).success,
+    ).toBe(true);
+    expect(
+      DraftSetFileDataRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+      }).success,
+    ).toBe(false);
+    expect(
+      DraftSetFileDataRequestSchema.safeParse({
+        draft_handle: DRAFT_HANDLE,
+        expected_revision: 1,
+        input_path: "C:\\tmp\\hero.jpg",
+        base64_data: "/9j/4Q==",
       }).success,
     ).toBe(false);
   });

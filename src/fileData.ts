@@ -39,7 +39,7 @@ export function isNumberArray(value: unknown): value is number[] {
 }
 
 export function summarizeFileData(
-  data: readonly number[],
+  data: ArrayLike<number>,
   pointer: string,
   filename?: string,
 ): BinaryFieldSummary {
@@ -75,6 +75,15 @@ export function summarizeFileData(
 
 export function toUnsignedBytes(data: readonly number[]): Uint8Array {
   return toUnsignedByteSlice(data, 0, data.length);
+}
+
+export function toSignedFileData(data: ArrayLike<number>): number[] {
+  const signed = new Array<number>(data.length);
+  for (let i = 0; i < data.length; i++) {
+    const byte = toUnsignedByte(data[i]!, i);
+    signed[i] = byte > 127 ? byte - 256 : byte;
+  }
+  return signed;
 }
 
 export function toUnsignedByteSlice(

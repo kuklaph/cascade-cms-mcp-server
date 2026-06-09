@@ -10,6 +10,7 @@ import {
   ASSET_DRAFT_MAX_BYTES,
   ASSET_DRAFT_PATCH_MAX_OPERATIONS,
 } from "./constants.js";
+import type { BinaryFieldSummary } from "./fileData.js";
 
 export type DraftOperation = "create" | "edit";
 
@@ -27,6 +28,12 @@ export interface DraftChange {
   new_length?: number;
 }
 
+export interface DraftFileData {
+  pointer: "/asset/file/data";
+  bytes: Uint8Array;
+  summary: BinaryFieldSummary;
+}
+
 export interface DraftCacheEntry {
   handle: string;
   operation: DraftOperation;
@@ -39,6 +46,7 @@ export interface DraftCacheEntry {
   sourceAssetHandle?: string;
   sourceRawHash?: string;
   sourceIdentifier?: DraftSourceIdentifier;
+  fileData?: DraftFileData;
 }
 
 export interface DraftPatchInput {
@@ -61,6 +69,7 @@ export interface DraftPatchPreview {
   nextRoot: Record<string, unknown>;
   nextHash: string;
   changes: DraftChange[];
+  nextFileData?: DraftFileData;
 }
 
 export interface DraftSourceIdentifier {
@@ -80,6 +89,12 @@ export interface DraftCache {
   previewPatch(handle: string, input: DraftPatchInput): DraftPatchPreview;
   commitPatch(preview: DraftPatchPreview): DraftPatchResult;
   applyPatch(handle: string, input: DraftPatchInput): DraftPatchResult;
+  setFileData(handle: string, input: {
+    expectedRevision: number;
+    bytes: Uint8Array;
+    summary: BinaryFieldSummary;
+    removeNullText?: boolean;
+  }): DraftPatchResult;
   delete(handle: string): boolean;
   size(): number;
 }
@@ -113,7 +128,7 @@ export function createDraftCache(opts?: DraftCacheOptions): DraftCache {
       root,
       index: buildDraftIndex(handle, root),
       revision: 1,
-      draftHash: hashJson(root),
+      draftHash: hashDraft(root),
       createdAt: now,
       updatedAt: now,
       ...source,
@@ -200,7 +215,10 @@ export function createDraftCache(opts?: DraftCacheOptions): DraftCache {
       applyOne(nextRoot, operation),
     );
     assertDraftSize(nextRoot, maxBytes);
-    const nextHash = hashJson(nextRoot);
+    const nextFileData = patchClearsFileData(input.operations)
+      ? undefined
+      : entry.fileData;
+    const nextHash = hashDraft(nextRoot, nextFileData);
 
     return {
       entry,
@@ -208,6 +226,7 @@ export function createDraftCache(opts?: DraftCacheOptions): DraftCache {
       nextRoot,
       nextHash,
       changes,
+      nextFileData,
     };
   }
 
@@ -230,6 +249,8 @@ export function createDraftCache(opts?: DraftCacheOptions): DraftCache {
     current.revision += 1;
     current.draftHash = preview.nextHash;
     current.updatedAt = Date.now();
+    if (preview.nextFileData) current.fileData = preview.nextFileData;
+    else delete current.fileData;
 
     return {
       draft_handle: current.handle,
@@ -241,6 +262,77 @@ export function createDraftCache(opts?: DraftCacheOptions): DraftCache {
     };
   }
 
+  function setFileData(handle: string, input: {
+    expectedRevision: number;
+    bytes: Uint8Array;
+    summary: BinaryFieldSummary;
+    removeNullText?: boolean;
+  }): DraftPatchResult {
+    const entry = get(handle);
+    if (!entry) {
+      throw new Error(
+        `Draft handle ${handle} not found. Re-open the draft before applying changes.`,
+      );
+    }
+    if (input.expectedRevision !== entry.revision) {
+      throw new Error(
+        `expected_revision ${input.expectedRevision} does not match current draft revision ${entry.revision}.`,
+      );
+    }
+
+    const nextRoot = cloneJson(entry.root) as Record<string, unknown>;
+    const file = fileBodyFromRoot(nextRoot);
+    const hasRootData = hasOwn(file, "data");
+    const changes: DraftChange[] = [
+      {
+        op: hasRootData || entry.fileData ? "replace" : "add",
+        path: "/asset/file/data",
+        old_value_type: hasRootData
+          ? valueType(file.data)
+          : entry.fileData
+            ? "file_data_sidecar"
+            : "missing",
+        new_value_type: "file_data_sidecar",
+        ...(Array.isArray(file.data) ? { old_length: file.data.length } : {}),
+        new_length: input.bytes.length,
+      },
+    ];
+
+    delete file.data;
+    if (input.removeNullText && file.text === null) {
+      delete file.text;
+      changes.push({
+        op: "remove",
+        path: "/asset/file/text",
+        old_value_type: "null",
+      });
+    }
+
+    assertDraftSize(nextRoot, maxBytes);
+    const nextFileData: DraftFileData = {
+      pointer: "/asset/file/data",
+      bytes: new Uint8Array(input.bytes),
+      summary: input.summary,
+    };
+    const nextHash = hashDraft(nextRoot, nextFileData);
+
+    entry.root = nextRoot;
+    entry.index = buildDraftIndex(entry.handle, nextRoot);
+    entry.revision += 1;
+    entry.draftHash = nextHash;
+    entry.updatedAt = Date.now();
+    entry.fileData = nextFileData;
+
+    return {
+      draft_handle: entry.handle,
+      draft_resource_uri: draftResourceUri(entry.handle),
+      operation: entry.operation,
+      revision: entry.revision,
+      draft_hash: entry.draftHash,
+      changes,
+    };
+  }
+
   return {
     createFromRead,
     createFromAsset,
@@ -248,6 +340,7 @@ export function createDraftCache(opts?: DraftCacheOptions): DraftCache {
     previewPatch,
     commitPatch,
     applyPatch: (handle, input) => commitPatch(previewPatch(handle, input)),
+    setFileData,
     delete: (handle) => store.delete(handle),
     size: () => store.size,
   };
@@ -521,10 +614,18 @@ function assertDraftSize(value: unknown, maxBytes: number): void {
   }
 }
 
-function hashJson(value: unknown): string {
-  return createHash("sha256")
-    .update(JSON.stringify(value) ?? "undefined")
-    .digest("hex");
+function hashDraft(root: unknown, fileData?: DraftFileData): string {
+  const hash = createHash("sha256")
+    .update(JSON.stringify(root) ?? "undefined");
+  if (fileData) {
+    hash.update("\nfileData:");
+    hash.update(fileData.pointer);
+    hash.update(":");
+    hash.update(String(fileData.summary.bytes_total));
+    hash.update(":");
+    hash.update(fileData.summary.sha256);
+  }
+  return hash.digest("hex");
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -533,6 +634,28 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function fileBodyFromRoot(root: Record<string, unknown>): Record<string, unknown> {
+  const asset = asRecord(root.asset);
+  const file = asset && asRecord(asset.file);
+  if (!file) {
+    throw new Error("Draft must contain a file asset.");
+  }
+  return file;
+}
+
+function patchClearsFileData(operations: DraftPatchOperation[]): boolean {
+  return operations.some(({ path }) =>
+    path === "/asset" ||
+    path === "/asset/file" ||
+    path === "/asset/file/data" ||
+    path.startsWith("/asset/file/data/")
+  );
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function isArrayIndex(value: string): boolean {

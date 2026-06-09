@@ -1,4 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { createAssetCache } from "../../../src/assetIndex.js";
 import { createResponseCache } from "../../../src/cache.js";
@@ -147,6 +154,7 @@ describe("draft tools", () => {
       "cascade_draft_scaffold_from_asset",
       "cascade_draft_search_keys",
       "cascade_draft_search_values",
+      "cascade_draft_set_file_data",
       "cascade_draft_submit",
       "cascade_draft_validate",
     ]);
@@ -158,6 +166,8 @@ describe("draft tools", () => {
     expect(findTool(tools, "cascade_draft_apply_patch").config.annotations.destructiveHint).toBe(true);
     expect(findTool(tools, "cascade_draft_apply_semantic_patch").config.annotations.destructiveHint).toBe(true);
     expect(findTool(tools, "cascade_draft_mutation_plan_execute").config.annotations.destructiveHint).toBe(true);
+    expect(findTool(tools, "cascade_draft_set_file_data").config.annotations.destructiveHint).toBe(true);
+    expect(findTool(tools, "cascade_draft_set_file_data").config.annotations.openWorldHint).toBe(true);
     expect(findTool(tools, "cascade_draft_submit").config.annotations.destructiveHint).toBe(true);
     expect(findTool(tools, "cascade_draft_submit").config.annotations.openWorldHint).toBe(true);
   });
@@ -656,6 +666,248 @@ describe("draft tools", () => {
     });
   });
 
+  test("sets draft file data from base64 and preserves existing text", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient({ create: mock(async () => CREATE_OK) });
+
+    registerDraftTools(server as any, client, {
+      cache: createResponseCache(),
+      assetCache: createAssetCache(),
+      draftCache: createDraftCache(),
+    });
+
+    const opened = await findTool(tools, "cascade_draft_open").handler({
+      operation: "create",
+      asset: {
+        file: {
+          name: "hero.jpg",
+          parentFolderPath: "/",
+          siteName: "my-site",
+          text: "metadata text",
+        },
+      },
+    });
+    const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
+    const setData = await findTool(tools, "cascade_draft_set_file_data").handler({
+      draft_handle: draftHandle,
+      expected_revision: 1,
+      base64_data: "/9j/4Q==",
+    });
+
+    expect(setData.isError).not.toBe(true);
+    expect(setData.structuredContent).toEqual(
+      expect.objectContaining({
+        success: true,
+        bytes_total: 4,
+        byte_preview_hex: "ff d8 ff e1",
+        text_removed: false,
+        revision: 2,
+      }),
+    );
+
+    const data = await findTool(tools, "cascade_draft_get_value").handler({
+      draft_handle: draftHandle,
+      pointer: "/asset/file/data",
+    });
+    const text = await findTool(tools, "cascade_draft_get_value").handler({
+      draft_handle: draftHandle,
+      pointer: "/asset/file/text",
+    });
+
+    expect(data.structuredContent).toEqual(
+      expect.objectContaining({
+        file_data_attached: true,
+        bytes_total: 4,
+        byte_preview_hex: "ff d8 ff e1",
+      }),
+    );
+    expect((data.structuredContent as Record<string, any>).value).toBeUndefined();
+    expect((text.structuredContent as Record<string, any>).value).toBe("metadata text");
+
+    const submitted = await findTool(tools, "cascade_draft_submit").handler({
+      draft_handle: draftHandle,
+      expected_revision: 2,
+    });
+
+    expect(submitted.isError).not.toBe(true);
+    expect(client.create).toHaveBeenCalledWith({
+      asset: {
+        file: {
+          name: "hero.jpg",
+          parentFolderPath: "/",
+          siteName: "my-site",
+          text: "metadata text",
+          data: [-1, -40, -1, -31],
+        },
+      },
+    });
+  });
+
+  test("sets draft file data from a local path and removes only null text placeholders", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cascade-draft-file-data-"));
+    const inputPath = join(dir, "hero.jpg");
+    try {
+      writeFileSync(inputPath, Uint8Array.from([255, 216, 255, 225]));
+      const { server, tools } = makeMockServer();
+
+      registerDraftTools(server as any, createMockClient(), {
+        cache: createResponseCache(),
+        assetCache: createAssetCache(),
+        draftCache: createDraftCache(),
+      });
+
+      const opened = await findTool(tools, "cascade_draft_open").handler({
+        operation: "create",
+        asset: {
+          file: {
+            name: "hero.jpg",
+            parentFolderPath: "/",
+            siteName: "my-site",
+            text: null,
+          },
+        },
+      });
+      const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
+      const setData = await findTool(tools, "cascade_draft_set_file_data").handler({
+        draft_handle: draftHandle,
+        expected_revision: 1,
+        input_path: inputPath,
+      });
+      const text = await findTool(tools, "cascade_draft_get_value").handler({
+        draft_handle: draftHandle,
+        pointer: "/asset/file/text",
+      });
+
+      expect(setData.isError).not.toBe(true);
+      expect((setData.structuredContent as Record<string, any>).text_removed).toBe(true);
+      expect(text.isError).toBe(true);
+      expect(firstText(text)).toContain("Pointer /asset/file/text not found");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("sets large draft file data without storing it in draft JSON", async () => {
+    const { server, tools } = makeMockServer();
+    const bytes = Buffer.alloc(525_000, 255);
+
+    registerDraftTools(server as any, createMockClient(), {
+      cache: createResponseCache(),
+      assetCache: createAssetCache(),
+      draftCache: createDraftCache(),
+    });
+
+    const opened = await findTool(tools, "cascade_draft_open").handler({
+      operation: "create",
+      asset: {
+        file: {
+          name: "large.bin",
+          parentFolderPath: "/",
+          siteName: "my-site",
+        },
+      },
+    });
+    const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
+    const setData = await findTool(tools, "cascade_draft_set_file_data").handler({
+      draft_handle: draftHandle,
+      expected_revision: 1,
+      base64_data: bytes.toString("base64"),
+    });
+    const validate = await findTool(tools, "cascade_draft_validate").handler({
+      draft_handle: draftHandle,
+    });
+    const data = await findTool(tools, "cascade_draft_get_value").handler({
+      draft_handle: draftHandle,
+      pointer: "/asset/file/data",
+    });
+
+    expect(setData.isError).not.toBe(true);
+    expect((setData.structuredContent as Record<string, any>).bytes_total).toBe(bytes.length);
+    expect(validate.structuredContent).toEqual(
+      expect.objectContaining({
+        valid: true,
+        file_data_attached: true,
+        file_data_bytes_total: bytes.length,
+      }),
+    );
+    expect(data.structuredContent).toEqual(
+      expect.objectContaining({
+        file_data_attached: true,
+        bytes_total: bytes.length,
+      }),
+    );
+  });
+
+  test("rejects stale draft file data revisions before reading local input", async () => {
+    const { server, tools } = makeMockServer();
+
+    registerDraftTools(server as any, createMockClient(), {
+      cache: createResponseCache(),
+      assetCache: createAssetCache(),
+      draftCache: createDraftCache(),
+    });
+
+    const opened = await findTool(tools, "cascade_draft_open").handler({
+      operation: "create",
+      asset: {
+        file: {
+          name: "hero.jpg",
+          parentFolderPath: "/",
+          siteName: "my-site",
+        },
+      },
+    });
+    const result = await findTool(tools, "cascade_draft_set_file_data").handler({
+      draft_handle: (opened.structuredContent as Record<string, any>).draft_handle,
+      expected_revision: 2,
+      input_path: "C:\\tmp\\does-not-exist.jpg",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toContain("expected_revision");
+    expect(firstText(result)).not.toContain("does-not-exist");
+  });
+
+  test("submits manually patched unsigned draft file data as signed bytes", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient({ create: mock(async () => CREATE_OK) });
+
+    registerDraftTools(server as any, client, {
+      cache: createResponseCache(),
+      assetCache: createAssetCache(),
+      draftCache: createDraftCache(),
+    });
+
+    const opened = await findTool(tools, "cascade_draft_open").handler({
+      operation: "create",
+      asset: {
+        file: {
+          name: "hero.jpg",
+          parentFolderPath: "/",
+          siteName: "my-site",
+          data: [255, 216],
+        },
+      },
+    });
+    const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
+    const submitted = await findTool(tools, "cascade_draft_submit").handler({
+      draft_handle: draftHandle,
+      expected_revision: 1,
+    });
+
+    expect(submitted.isError).not.toBe(true);
+    expect(client.create).toHaveBeenCalledWith({
+      asset: {
+        file: {
+          name: "hero.jpg",
+          parentFolderPath: "/",
+          siteName: "my-site",
+          data: [-1, -40],
+        },
+      },
+    });
+  });
+
   test("scaffolds create drafts with required placeholders", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({ create: mock(async () => CREATE_OK) });
@@ -863,6 +1115,52 @@ describe("draft tools", () => {
     expect(body.failed_step.index).toBe(1);
     expect(body.failed_step.name).toBe("bad assert");
     expect(body.current_drafts[0].draft_handle).toMatch(/^d_[0-9a-f-]+$/);
+  });
+
+  test("mutation plans can set draft file data", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient();
+
+    registerDraftTools(server as any, client, {
+      cache: createResponseCache(),
+      assetCache: createAssetCache(),
+      draftCache: createDraftCache(),
+    });
+
+    const result = await findTool(tools, "cascade_draft_mutation_plan_execute").handler({
+      steps: [
+        {
+          tool: "cascade_draft_open",
+          input: {
+            operation: "create",
+            asset: {
+              file: {
+                name: "hero.jpg",
+                parentFolderPath: "/",
+                siteName: "my-site",
+              },
+            },
+          },
+          save_as: "draft",
+        },
+        {
+          tool: "cascade_draft_set_file_data",
+          input: {
+            draft_ref: "draft",
+            base64_data: "/9j/4Q==",
+          },
+        },
+        {
+          tool: "cascade_draft_validate",
+          input: { draft_ref: "draft" },
+        },
+      ],
+    });
+    const body = result.structuredContent as Record<string, any>;
+
+    expect(body.success).toBe(true);
+    expect(body.completed_steps[1].result.bytes_total).toBe(4);
+    expect(body.completed_steps[2].result.valid).toBe(true);
   });
 
   test("validates each mutation plan step against the selected tool schema", async () => {

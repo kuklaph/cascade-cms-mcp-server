@@ -1127,6 +1127,36 @@ export const DraftSubmitRequestSchema = z
 
 export type DraftSubmitInput = z.infer<typeof DraftSubmitRequestSchema>;
 
+export const DraftSetFileDataRequestSchema = z
+  .object({
+    ...DraftHandleField,
+    expected_revision: DraftRevisionSchema,
+    input_path: z
+      .string()
+      .min(1, "input_path must not be empty")
+      .optional()
+      .describe("Local file path to read bytes from. Provide exactly one of input_path or base64_data."),
+    base64_data: z
+      .string()
+      .min(1, "base64_data must not be empty")
+      .optional()
+      .describe("Base64-encoded file bytes. Provide exactly one of input_path or base64_data."),
+    expected_sha256: Sha256Schema.optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const sources = [value.input_path !== undefined, value.base64_data !== undefined].filter(Boolean);
+    if (sources.length !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Provide exactly one of input_path or base64_data.",
+        path: ["input_path"],
+      });
+    }
+  });
+
+export type DraftSetFileDataInput = z.infer<typeof DraftSetFileDataRequestSchema>;
+
 const MutationPlanStepSchema = z
   .object({
     name: z.string().min(1).max(120).optional(),
@@ -1138,6 +1168,7 @@ const MutationPlanStepSchema = z
       "cascade_draft_apply_patch",
       "cascade_draft_apply_semantic_patch",
       "cascade_draft_assert_values",
+      "cascade_draft_set_file_data",
       "cascade_draft_validate",
       "cascade_draft_submit",
     ]),

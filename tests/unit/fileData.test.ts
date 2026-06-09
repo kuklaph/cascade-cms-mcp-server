@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   readFileDataRange,
   summarizeFileData,
+  toSignedFileData,
   toUnsignedBytes,
 } from "../../src/fileData.js";
 
@@ -51,6 +52,34 @@ describe("file data helpers", () => {
     expect(() => toUnsignedBytes([256])).toThrow("between -128 and 255");
     expect(() => toUnsignedBytes([-129])).toThrow("between -128 and 255");
     expect(() => toUnsignedBytes([Number.POSITIVE_INFINITY])).toThrow("finite");
+  });
+
+  test("normalizes unsigned file bytes to signed Cascade bytes for writes", () => {
+    expect(toSignedFileData([255, 216, 255, 225, 128, 127, 0])).toEqual([
+      -1,
+      -40,
+      -1,
+      -31,
+      -128,
+      127,
+      0,
+    ]);
+    expect(toSignedFileData(new Uint8Array([255, 216, 0]))).toEqual([
+      -1,
+      -40,
+      0,
+    ]);
+  });
+
+  test("preserves existing signed Cascade bytes for writes", () => {
+    expect(toSignedFileData([-128, -1, 0, 127])).toEqual([-128, -1, 0, 127]);
+  });
+
+  test("rejects invalid values when normalizing file data for writes", () => {
+    expect(() => toSignedFileData([1.5])).toThrow("integer");
+    expect(() => toSignedFileData([256])).toThrow("between -128 and 255");
+    expect(() => toSignedFileData([-129])).toThrow("between -128 and 255");
+    expect(() => toSignedFileData([Number.POSITIVE_INFINITY])).toThrow("finite");
   });
 
   test("reads bounded byte ranges as hex or base64", () => {

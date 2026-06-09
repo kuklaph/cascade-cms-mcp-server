@@ -24,6 +24,16 @@ import {
   StructuredDataSchema,
 } from "./nested.js";
 import { objectWithRequiredAlternatives } from "../requiredAlternatives.js";
+import { toSignedFileData } from "../../fileData.js";
+
+const FileDataByteSchema = z
+  .number()
+  .int()
+  .min(-128)
+  .max(255)
+  .describe(
+    "Binary byte. Accepts signed Java bytes (-128..127) or unsigned file bytes (0..255); values 128..255 are sent to Cascade as signed bytes.",
+  );
 
 // ─── Page (envelope: `page`) ────────────────────────────────────────────────
 
@@ -85,12 +95,23 @@ export const FileAssetSchema = z
       .string()
       .optional()
       .describe(
-        "Plaintext file content. One of text/data REQUIRED on create. Priority: text > data.",
+        "Plaintext file content. One of text/data is REQUIRED on create; some Cascade file types may carry both.",
       ),
     data: z
-      .array(z.number().describe("Binary data number."))
+      .array(FileDataByteSchema)
+      .superRefine((data, ctx) => {
+        try {
+          toSignedFileData(data);
+        } catch (error) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: error instanceof Error ? error.message : "Invalid file.data byte.",
+          });
+        }
+      })
+      .transform((data) => toSignedFileData(data))
       .optional()
-      .describe("Binary content as a byte array. Used for non-text files."),
+      .describe("Binary file bytes. One of text/data is REQUIRED on create; some Cascade file types may carry both."),
     rewriteLinks: z
       .boolean()
       .optional()

@@ -2,8 +2,8 @@
  * Integration test for the server factory (`createServer`).
  *
  * Verifies that all tool cohorts wire up correctly and produce
- * the expected 61 tools with well-formed names (25 direct Cascade API tools,
- * 14 cached asset follow-up tools, 18 draft workflow tools, and 4 local utilities). Also exercises one
+ * the expected 62 tools with well-formed names (25 direct Cascade API tools,
+ * 14 cached asset follow-up tools, 19 draft workflow tools, and 4 local utilities). Also exercises one
  * end-to-end handler invocation (`cascade_read`) through the real
  * pipeline that `registerCascadeTool` installs on the server, plus
  * the oversize-response round-trip through `cascade_read_response`.
@@ -198,7 +198,7 @@ function assetPropertyKeysFromTypes(): string[] {
   return assetPropertyEntriesFromTypes().map((entry) => entry.key).sort();
 }
 
-/** All 61 expected tool names: 25 direct Cascade API tools, 14 cached asset follow-up tools, 18 draft workflow tools, and 4 local utilities. */
+/** All 62 expected tool names: 25 direct Cascade API tools, 14 cached asset follow-up tools, 19 draft workflow tools, and 4 local utilities. */
 const EXPECTED_TOOL_NAMES = [
   // crud and asset follow-ups (20)
   "cascade_read",
@@ -221,7 +221,7 @@ const EXPECTED_TOOL_NAMES = [
   "cascade_remove",
   "cascade_move",
   "cascade_copy",
-  // draft workflow (18)
+  // draft workflow (19)
   "cascade_draft_open",
   "cascade_draft_list_facts",
   "cascade_draft_search_values",
@@ -238,6 +238,7 @@ const EXPECTED_TOOL_NAMES = [
   "cascade_draft_resolve_nodes",
   "cascade_draft_scaffold_create",
   "cascade_draft_scaffold_from_asset",
+  "cascade_draft_set_file_data",
   "cascade_draft_validate",
   "cascade_draft_submit",
   // search (1)
@@ -288,12 +289,12 @@ const READ_IMAGE_FILE = {
 } as const;
 
 describe("createServer (server factory)", () => {
-  test("registers exactly 61 tools", () => {
+  test("registers exactly 62 tools", () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
 
-    expect(Object.keys(tools)).toHaveLength(61);
+    expect(Object.keys(tools)).toHaveLength(62);
   });
 
   test("all tool names use snake_case with cascade_ prefix", () => {
@@ -315,7 +316,7 @@ describe("createServer (server factory)", () => {
     const names = Object.keys(tools);
     const unique = new Set(names);
     expect(unique.size).toBe(names.length);
-    expect(unique.size).toBe(61);
+    expect(unique.size).toBe(62);
   });
 
   test("every expected tool from each cohort is present", () => {
@@ -568,6 +569,7 @@ describe("createServer (server factory)", () => {
     const draftPatchSchema = tools["cascade_draft_apply_patch"].inputSchema;
     const draftScaffoldCreateSchema =
       tools["cascade_draft_scaffold_create"].inputSchema;
+    const draftSetFileDataSchema = tools["cascade_draft_set_file_data"].inputSchema;
     const draftSubmitSchema = tools["cascade_draft_submit"].inputSchema;
     const transitionSchema = tools["cascade_perform_workflow_transition"].inputSchema;
     const auditSchema = tools["cascade_read_audits"].inputSchema;
@@ -613,6 +615,13 @@ describe("createServer (server factory)", () => {
     expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["contentType", "contentTypePageConfigurations", "[]"], "pageConfigurationName")).toBe(true);
     expect(schemaPathTypes(createSchema.properties.asset, ["file", "data"])).toEqual(["array"]);
     expect(schemaPathTypes(createSchema.properties.asset, ["file", "data", "[]"])).toEqual(["number"]);
+    expect(schemaPathTypes(editSchema.properties.asset, ["file", "data", "[]"])).toEqual(["number"]);
+    expect(tools["cascade_create"].description).toContain(
+      "asset.file.data` accepts signed Java bytes (-128..127) or unsigned file bytes (0..255)",
+    );
+    expect(tools["cascade_edit"].description).toContain(
+      "asset.file.data` accepts signed Java bytes (-128..127) or unsigned file bytes (0..255)",
+    );
     expect(schemaPathTypes(createSchema.properties.asset, ["destination", "publishIntervalHours"])).toEqual(["number"]);
     expect(schemaPathTypes(createSchema.properties.asset, ["ftpTransport", "port"])).toEqual(["number"]);
     expect(schemaPathTypes(createSchema.properties.asset, ["site", "linkCheckerEnabled"])).toEqual(["boolean"]);
@@ -694,6 +703,9 @@ describe("createServer (server factory)", () => {
     expect(JSON.stringify(draftScaffoldCreateSchema.properties.asset_type)).toContain("page");
     expect(draftScaffoldCreateSchema.properties.relationship_style.default).toBe("path");
     expect(draftScaffoldCreateSchema.properties.role_type.default).toBe("global");
+    expect(schemaHasProperty(draftSetFileDataSchema, "input_path")).toBe(true);
+    expect(schemaHasProperty(draftSetFileDataSchema, "base64_data")).toBe(true);
+    expect(schemaHasProperty(draftSetFileDataSchema, "expected_sha256")).toBe(true);
     expect(draftPatchSchema.required).toEqual(
       expect.arrayContaining(["draft_handle", "expected_revision", "operations"]),
     );

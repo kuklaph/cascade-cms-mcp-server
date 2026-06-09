@@ -608,6 +608,53 @@ describe("cascade_create tool", () => {
     expect(parsed.success).toBe(false);
   });
 
+  test("normalizes file data to signed bytes before create", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient({
+      create: mock(() => Promise.resolve(CREATE_OK)),
+    });
+
+    registerCrudTools(server as any, client);
+    const tool = findTool(tools, "cascade_create");
+    const result = await tool.handler({
+      asset: {
+        file: {
+          name: "hero.jpg",
+          parentFolderPath: "/",
+          siteName: "my-site",
+          data: [255, 216, 255, 225],
+        },
+      },
+    });
+
+    expect(result.isError).not.toBe(true);
+    expect(client.create).toHaveBeenCalledWith({
+      asset: {
+        file: {
+          name: "hero.jpg",
+          parentFolderPath: "/",
+          siteName: "my-site",
+          data: [-1, -40, -1, -31],
+        },
+      },
+    });
+  });
+
+  test("schema validation rejects non-byte file data on create", () => {
+    const parsed = CreateRequestSchema.safeParse({
+      asset: {
+        file: {
+          name: "bad.bin",
+          parentFolderPath: "/",
+          siteName: "my-site",
+          data: [1.5],
+        },
+      },
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   test("description lists current generated asset branches", () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient();
@@ -668,6 +715,40 @@ describe("cascade_edit tool", () => {
   test("schema validation: rejects empty body", () => {
     const parsed = EditRequestSchema.safeParse({});
     expect(parsed.success).toBe(false);
+  });
+
+  test("normalizes file data to signed bytes before edit", async () => {
+    const { server, tools } = makeMockServer();
+    const client = createMockClient({
+      edit: mock(() => Promise.resolve(OK_RESULT)),
+    });
+
+    registerCrudTools(server as any, client);
+    const tool = findTool(tools, "cascade_edit");
+    const result = await tool.handler({
+      asset: {
+        file: {
+          id: "file-001",
+          name: "hero.jpg",
+          parentFolderPath: "/",
+          siteName: "my-site",
+          data: [128, 127],
+        },
+      },
+    });
+
+    expect(result.isError).not.toBe(true);
+    expect(client.edit).toHaveBeenCalledWith({
+      asset: {
+        file: {
+          id: "file-001",
+          name: "hero.jpg",
+          parentFolderPath: "/",
+          siteName: "my-site",
+          data: [-128, 127],
+        },
+      },
+    });
   });
 
   test("library throws: returns isError response", async () => {
