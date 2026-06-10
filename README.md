@@ -1,29 +1,31 @@
 # cascade-cms-mcp-server
 
-An MCP (Model Context Protocol) server that exposes the Cascade CMS REST API to LLMs and agents. It wraps the [cascade-cms-api](https://github.com/kuklaph/cascade-cms-api) library with Zod validation, JSON response text, structuredContent, and actionable error messages.
+An MCP (Model Context Protocol) server that exposes Cascade CMS operations to LLMs and agents. It wraps [cascade-cms-api](https://github.com/kuklaph/cascade-cms-api) with Zod validation, JSON responses, `structuredContent`, and actionable errors.
 
-Built in TypeScript on [Bun](https://bun.sh). The published server provides 68 MCP tools and 5 resources/templates for Cascade CMS asset reads/writes, binary file-data handling, draft-based create/edit workflows, browser-backed functionality, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish, blocked-call management, site-removal safeguarding, server version checks, and cached response retrieval.
+Built in TypeScript on [Bun](https://bun.sh). It provides Cascade asset tools, draft workflows, file-data helpers, browser-backed tools, guardrails, and local cache inspection.
 
-## Requirements
+Start with [Setup](#setup) for required values and client config. Use [What It Can Do](#what-it-can-do) to judge fit. [Agent Reference](#agent-reference) covers tool-call mechanics.
+
+## Setup
+
+### Requirements
 
 - Node 18+.
 - Bun 1.0+ for the preferred `bunx` setup.
 - A Cascade CMS instance with REST API access and an API key.
 - An MCP client that can launch stdio servers, such as Claude, Codex, Cline, MCP Inspector, or another compliant client.
 
-## Quick Start
+### Quick Start
 
-Most MCP clients need the same four values: command, args, `CASCADE_API_KEY`, and `CASCADE_URL`. Add them wherever your client manages MCP servers. `bunx` is the preferred runner; use `npx` if Bun is not installed.
+Most MCP clients need `command`, `args`, `CASCADE_API_KEY`, and `CASCADE_URL`. Browser-backed tools also need `CASCADE_BROWSER_USERNAME`, `CASCADE_BROWSER_PASSWORD`, and `CASCADE_BROWSER_SITE_ID`. Use `bunx` when available; use `npx` otherwise.
 
-The example credentials below are placeholders. For real credentials, use your MCP client's secret or environment management when available, or dotseal-encrypted values. Do not commit MCP config files that contain API keys.
+The credentials below are placeholders. Use your MCP client's secret/env handling, local environment, or dotseal-encrypted values for real credentials.
 
 For Cascade API access, consider using a dedicated service/API user when your organization can provide one. Give that user only the permissions needed for the MCP workflows instead of using a personal account.
 
-### MCP Client Config
+#### MCP Client Config
 
-Use one of these shapes for JSON-based MCP configs. Prefer the Bun example when available. If you prefer to encrypt your API key at rest, continue to [Encrypted Environment Values](#encrypted-environment-values).
-
-Preferred, with Bun:
+Use one of these shapes for JSON-based MCP configs.
 
 ```json
 {
@@ -33,14 +35,18 @@ Preferred, with Bun:
       "args": ["cascade-cms-mcp-server"],
       "env": {
         "CASCADE_API_KEY": "your_api_key_here",
-        "CASCADE_URL": "https://yourorg.cascadecms.com/api/v1/"
+        "CASCADE_URL": "https://yourorg.cascadecms.com/api/v1/",
+        "CASCADE_BROWSER_USERNAME": "browser_username",
+        "CASCADE_BROWSER_PASSWORD": "browser_password",
+        "CASCADE_BROWSER_SITE_ID": "production_site_id",
+        "CASCADE_BROWSER_URL": "https://yourorg.cascadecms.com/"
       }
     }
   }
 }
 ```
 
-Fallback, with Node/npm:
+Node/npm fallback:
 
 ```json
 {
@@ -50,45 +56,47 @@ Fallback, with Node/npm:
       "args": ["-y", "cascade-cms-mcp-server"],
       "env": {
         "CASCADE_API_KEY": "your_api_key_here",
-        "CASCADE_URL": "https://yourorg.cascadecms.com/api/v1/"
+        "CASCADE_URL": "https://yourorg.cascadecms.com/api/v1/",
+        "CASCADE_BROWSER_USERNAME": "browser_username",
+        "CASCADE_BROWSER_PASSWORD": "browser_password",
+        "CASCADE_BROWSER_SITE_ID": "production_site_id",
+        "CASCADE_BROWSER_URL": "https://yourorg.cascadecms.com/"
       }
     }
   }
 }
 ```
 
-For clients with a UI instead of JSON, enter the same values:
+Omit `CASCADE_BROWSER_URL` when the browser login host matches the origin derived from `CASCADE_URL`.
+
+For UI-based clients, enter the same values:
 
 | Field       | Bun value                                                       | Node/npm value                 |
 | ----------- | --------------------------------------------------------------- | ------------------------------ |
 | Command     | `bunx`                                                          | `npx`                          |
 | Arguments   | `cascade-cms-mcp-server`                                        | `-y`, `cascade-cms-mcp-server` |
-| Environment | `CASCADE_API_KEY`, `CASCADE_URL`, optional `CASCADE_TIMEOUT_MS`, optional browser API env | Same                           |
+| Environment | `CASCADE_API_KEY`, `CASCADE_URL`, browser env values when using browser-backed tools, optional `CASCADE_TIMEOUT_MS` | Same                           |
 
-Restart the client after changing its MCP config. Then call `cascade_server_version` to confirm the running server name and version.
+Restart the client after config changes. Call `cascade_server_version` to confirm the server is running.
 
-### Client-Specific Examples
+#### Client-Specific Examples
 
-Client-specific setup screens and config file locations vary. The examples below use the same server values from the generic config above.
+Client-specific setup screens and config file locations vary. Use the same command, args, and env values above.
 
-Codex uses `~/.codex/config.toml`. Prefer Bun when available.
-
-Preferred, with Bun:
+Codex uses `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.cascade-cms]
 command = "bunx"
 args = ["cascade-cms-mcp-server"]
-env = { CASCADE_API_KEY = "your_api_key_here", CASCADE_URL = "https://yourorg.cascadecms.com/api/v1/" }
-```
 
-Fallback, with Node/npm:
-
-```toml
-[mcp_servers.cascade-cms]
-command = "npx"
-args = ["-y", "cascade-cms-mcp-server"]
-env = { CASCADE_API_KEY = "your_api_key_here", CASCADE_URL = "https://yourorg.cascadecms.com/api/v1/" }
+[mcp_servers.cascade-cms.env]
+CASCADE_API_KEY = "your_api_key_here"
+CASCADE_URL = "https://yourorg.cascadecms.com/api/v1/"
+CASCADE_BROWSER_USERNAME = "browser_username"
+CASCADE_BROWSER_PASSWORD = "browser_password"
+CASCADE_BROWSER_SITE_ID = "production_site_id"
+CASCADE_BROWSER_URL = "https://yourorg.cascadecms.com/"
 ```
 
 Claude Desktop uses `claude_desktop_config.json`:
@@ -96,107 +104,73 @@ Claude Desktop uses `claude_desktop_config.json`:
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
-Claude Code can use its normal MCP config flow with the same command, args, and env values. This repo also includes a Claude Code plugin manifest in `.claude-plugin/plugin.json`; if you install the plugin, set credentials in the shell environment that launches Claude Code:
+Claude Code can use its normal MCP config flow. This repo also includes a Claude Code plugin manifest in `.claude-plugin/plugin.json`; if you install the plugin, set credentials in the shell environment that launches Claude Code.
 
-Native Windows Claude Code configs that use `npx` may need `command: "cmd"` with args `["/c", "npx", "-y", "cascade-cms-mcp-server"]`.
+Native Windows configs that use `npx` may need `command: "cmd"` with args `["/c", "npx", "-y", "cascade-cms-mcp-server"]`.
 
-POSIX:
+### Encrypted Environment Values
 
-```bash
-export CASCADE_API_KEY="your_api_key_here"
-export CASCADE_URL="https://yourorg.cascadecms.com/api/v1/"
-```
+All environment values below may use [dotseal](https://github.com/kuklaph/dotseal) ciphertexts in `enc:<iv>:<authTag>:<ciphertext>` format. Plaintext values still work.
 
-Windows PowerShell:
-
-```powershell
-$env:CASCADE_API_KEY = "your_api_key_here"
-$env:CASCADE_URL = "https://yourorg.cascadecms.com/api/v1/"
-```
-
-## Environment Variables
-
-| Variable                   | Required | Description                                                           |
-| -------------------------- | :------: | --------------------------------------------------------------------- |
-| `CASCADE_API_KEY`          |   Yes    | API key generated from your Cascade dashboard                         |
-| `CASCADE_URL`              |   Yes    | Cascade API URL, for example `https://yourorg.cascadecms.com/api/v1/` |
-| `CASCADE_TIMEOUT_MS`       |    No    | Request timeout in milliseconds. Default: `30000`                     |
-| `CASCADE_BROWSER_USERNAME` |    No    | Browser UI username for browser-backed tools. Use with `CASCADE_BROWSER_PASSWORD` and `CASCADE_BROWSER_SITE_ID` |
-| `CASCADE_BROWSER_PASSWORD` |    No    | Browser UI password for browser-backed tools. Use with `CASCADE_BROWSER_USERNAME` and `CASCADE_BROWSER_SITE_ID` |
-| `CASCADE_BROWSER_SITE_ID`  |    No    | Cascade site ID for startup/automatic browser login. Use the production site ID by default. If omitted, run `cascade_browser_login` with `site_id` before other browser tools |
-| `CASCADE_BROWSER_URL`      |    No    | HTTPS browser UI root URL. Defaults to the origin derived from `CASCADE_URL`. Set this when the browser login host or root path differs |
-
-## Browser API Setup
-
-The standard Cascade API tools only require `CASCADE_API_KEY` and `CASCADE_URL`. Browser-backed tools are separate: they log in through Cascade's browser UI, store a session cookie in the MCP server process, and call browser-only endpoints that are not available through the standard API.
-
-Recommended browser setup:
-
-1. Set `CASCADE_BROWSER_USERNAME`, `CASCADE_BROWSER_PASSWORD`, and `CASCADE_BROWSER_SITE_ID` together before starting the MCP server.
-2. Use the production site ID for `CASCADE_BROWSER_SITE_ID` unless you intentionally want browser tools scoped to another site.
-3. Set `CASCADE_BROWSER_URL` only when the browser login host differs from the origin derived from `CASCADE_URL`. The browser host must match `CASCADE_URL` or share its parent domain.
-
-The site ID is required because Cascade's browser UI keeps an active site context. The MCP browser login calls `switchSite.act` after login to mirror selecting a site in Cascade's site picker; many browser endpoints assume that active site has been selected.
-
-Easiest way to find the production site ID:
-
-1. Log in to Cascade in your browser.
-2. Select the production site from the site selector.
-3. Open that site's Manage Site area.
-4. Copy the site ID from the browser URL and paste it into `CASCADE_BROWSER_SITE_ID`.
-
-You can also call `cascade_list_sites` after configuring the core API values, but that depends on the API user's permissions and may not show the intended production site if permissions are incomplete.
-
-When all three browser values are present, server startup attempts browser login and caches the session. If that login fails, the MCP server still starts so normal API tools remain available. Browser tools can retry login automatically when full browser config is present. If browser config is missing or incomplete, browser tool errors name the missing setup and recovery path.
-
-## Encrypted Environment Values
-
-If you prefer keeping your env values encrypted at rest, all environment values above may also be [dotseal](https://github.com/kuklaph/dotseal) ciphertexts with the `enc:<iv>:<authTag>:<ciphertext>` format. This package includes dotseal as a runtime dependency, so encrypted `enc:` values work when the server runs through `bunx` or `npx`. Plaintext values pass through without loading dotseal.
-
-The bundled runtime dependency is not exposed as a `dotseal` shell command. Use `bunx`, `npx`, or a separate global install when you want to generate ciphertexts:
+Generate ciphertext with dotseal:
 
 ```bash
 bunx dotseal encrypt "your_api_key_here"
 ```
 
-Alternative with npm:
-
-```bash
-npx dotseal encrypt "your_api_key_here"
-```
-
-Paste the `enc:...` output into your MCP config or shell environment. If you prefer a global CLI install, `bun install -g dotseal` or `npm install -g dotseal` is also fine; it is not required for this server to decrypt values at runtime.
-
-Example MCP config with an encrypted API key:
+Example:
 
 ```json
-{
-  "mcpServers": {
-    "cascade-cms": {
-      "command": "bunx",
-      "args": ["cascade-cms-mcp-server"],
-      "env": {
-        "CASCADE_API_KEY": "enc:...",
-        "CASCADE_URL": "https://yourorg.cascadecms.com/api/v1/"
-      }
-    }
-  }
+"env": {
+  "CASCADE_API_KEY": "enc:...",
+  "CASCADE_URL": "https://yourorg.cascadecms.com/api/v1/",
+  "CASCADE_BROWSER_USERNAME": "browser_username",
+  "CASCADE_BROWSER_PASSWORD": "enc:...",
+  "CASCADE_BROWSER_SITE_ID": "production_site_id",
+  "CASCADE_BROWSER_URL": "https://yourorg.cascadecms.com/"
 }
 ```
 
-## Response Model
+### Environment Variables
 
-Most tool responses put JSON text in `content[0]`. When the response fits, `structuredContent` is the authoritative machine-readable result.
+| Variable                   |  Required   | Description                                                           |
+| -------------------------- | :---------: | --------------------------------------------------------------------- |
+| `CASCADE_API_KEY`          |     Yes     | API key generated from your Cascade dashboard                         |
+| `CASCADE_URL`              |     Yes     | Cascade API URL, for example `https://yourorg.cascadecms.com/api/v1/` |
+| `CASCADE_TIMEOUT_MS`       |     No      | Request timeout in milliseconds. Default: `30000`                     |
+| `CASCADE_BROWSER_USERNAME` | Browser API | Browser UI username for browser-backed tools                          |
+| `CASCADE_BROWSER_PASSWORD` | Browser API | Browser UI password for browser-backed tools                          |
+| `CASCADE_BROWSER_SITE_ID`  | Browser API | Cascade site ID for browser-backed tools. Use the [production site ID](#find-the-site-id) by default |
+| `CASCADE_BROWSER_URL`      |     No      | HTTPS browser UI root URL. Defaults to the origin derived from `CASCADE_URL`. Set this when the browser login host or root path differs |
 
-Oversized responses return bounded `_cache` metadata. Use `cascade_read_response` with that handle to page through the full serialized response. Handles are process-scoped and may be evicted after later calls.
+### Browser API Setup
 
-`cascade_read` returns a compact preview by default plus an `asset_handle` for follow-up inspection. Use `read_mode: "raw"` only when you need the full Cascade payload in the initial response. Follow-up tools inspect the cached asset and do not call Cascade again. To edit a cached read safely, open a separate draft with `cascade_draft_open`; draft mutations never change the original read cache.
+Standard Cascade API tools only require `CASCADE_API_KEY` and `CASCADE_URL`. Browser-backed tools also log in through Cascade's browser UI, cache a session cookie in the MCP process, and call browser-only endpoints.
 
-The beta `response_format` option was removed. Callers should parse the JSON text content block or prefer `structuredContent` when their client exposes it. `cascade_file_data_image` is the exception: it returns only MCP image content; call `cascade_file_data_info` separately for JSON metadata.
+Recommended browser setup:
 
-## Capabilities
+1. Set `CASCADE_BROWSER_USERNAME`, `CASCADE_BROWSER_PASSWORD`, and `CASCADE_BROWSER_SITE_ID` together before starting the MCP server.
+2. Use the [production site ID](#find-the-site-id) for `CASCADE_BROWSER_SITE_ID` unless you intentionally want browser tools scoped to another site.
+3. Set `CASCADE_BROWSER_URL` only when the browser login host differs from the origin derived from `CASCADE_URL`. The browser host must match `CASCADE_URL` or share its parent domain.
 
-Use this section to decide whether this MCP covers the job. Your MCP client or agent will see the exact tool schemas and choose the specific tool calls.
+The site ID is required because Cascade's browser UI keeps an active site context. Browser login calls `switchSite.act` after authentication to mirror selecting a site in Cascade's site picker.
+
+#### Find the Site ID
+
+`CASCADE_BROWSER_SITE_ID` is the browser setup value users usually need to look up. To get the recommended production site ID:
+
+1. Log in to Cascade in a browser.
+2. Select the production site from the site picker.
+3. Open Manage Site.
+4. Copy the site ID from the browser URL into `CASCADE_BROWSER_SITE_ID`.
+
+If `CASCADE_API_KEY` and `CASCADE_URL` are already configured, you can ask your MCP agent to list Cascade sites. The agent can call the `cascade_list_sites` tool and use the production site's ID from that response. This depends on the API user's permissions and may not show the intended production site.
+
+When all three browser values are present, startup attempts browser login and caches the session. If startup login fails, the MCP server still starts and standard API tools remain available. Without `CASCADE_BROWSER_SITE_ID`, call `cascade_browser_login` with `site_id` before other browser-backed tools in the same MCP session.
+
+## What It Can Do
+
+Use this section to decide whether this MCP covers the job. Your MCP client or agent reads the exact tool schemas and chooses the tool calls.
 
 | Need                                                                                                    | Supported |
 | ------------------------------------------------------------------------------------------------------- | --------- |
@@ -221,7 +195,21 @@ Use this section to decide whether this MCP covers the job. Your MCP client or a
 
 Use your MCP client's tool list or inspector for exact request schemas.
 
-## Tool Permissions
+## Agent Reference
+
+These sections are mainly for agents and users configuring MCP approvals. They cover response handling, tool groups, workflow examples, guardrails, and MCP resources.
+
+### Response Model
+
+Most tool responses put JSON text in `content[0]`. When present, `structuredContent` is the authoritative machine-readable result.
+
+Oversized responses return bounded `_cache` metadata. Use `cascade_read_response` with that handle to page through the full serialized response. Handles are process-scoped and may be evicted after later calls.
+
+`cascade_read` returns a compact preview plus an `asset_handle` by default. Use `read_mode: "raw"` only when you need the full Cascade payload immediately. Follow-up tools inspect cached data and do not call Cascade again.
+
+`cascade_file_data_image` returns image-only MCP content. Call `cascade_file_data_info` separately for JSON metadata.
+
+### Tool Permissions
 
 Use these groups when configuring MCP client approvals. Client config syntax varies, but a common policy is to allow read-only tools by default and require approval for tools that create, update, delete, publish, check in/out, change Cascade state, or mutate local MCP state such as drafts and guardrails.
 
@@ -275,11 +263,11 @@ These tools do not call Cascade directly. They inspect the in-memory `asset_hand
 | `cascade_asset_resolve_nodes`         | Resolve structured-data nodes by semantic criteria                 |
 | `cascade_asset_assert_values`         | Assert structured-data field values from a cached read             |
 
-Structured-data selectors support `expected_matches` as an exact count assertion. At the top level it asserts the number of resolved nodes; inside `where_child` it asserts the number of matching direct children on each candidate node. Single-target semantic patch and target-child selectors require `expected_matches: 1` when provided.
+Structured-data selectors support `expected_matches` to assert exact match counts.
 
 File data tools:
 
-Use these for Cascade `file` assets whose binary content is stored in `file.data`. `cascade_read` preview summarizes binary data instead of indexing every byte. Each file-data tool accepts either the `asset_handle` returned by `cascade_read` or a direct file `identifier`; direct identifier mode reads Cascade once and returns a fresh `asset_handle` for follow-up calls.
+Use these for Cascade `file` assets whose binary content is stored in `file.data`. Each tool accepts an `asset_handle` from `cascade_read` or a direct file `identifier`.
 
 | Tool                         | Purpose                                                                 |
 | ---------------------------- | ----------------------------------------------------------------------- |
@@ -288,11 +276,16 @@ Use these for Cascade `file` assets whose binary content is stored in `file.data
 | `cascade_file_data_image`    | Return magic-byte verified image files as image-only MCP content        |
 | `cascade_file_data_export`   | Write exact bytes to an explicit local `output_path`                    |
 
-`cascade_create`, `cascade_edit`, and `cascade_draft_submit` accept `file.data` as signed Java bytes (`-128..127`) or unsigned file bytes (`0..255`) and send Cascade signed bytes. Cascade file assets may carry `text`, `data`, or both depending on file type. `cascade_file_data_image` only returns magic-byte verified images, emits no JSON text/structured metadata, and caps inline MCP image content at 5 MiB; use `cascade_file_data_info` for metadata or `cascade_file_data_export` for larger images. `cascade_file_data_export` is an approval-gated local filesystem write: it is explicit-path only, does not create parent directories, refuses to overwrite existing files unless `overwrite: true`, and can verify `expected_sha256` before writing. File-data cache/export helpers reject a single `file.data` payload over 100 MiB, and the read cache evicts older binary entries once cached binary data exceeds 250 MiB. PDF files are supported as binary data for inspect/read/export; v1 does not extract PDF text.
+`cascade_create`, `cascade_edit`, and `cascade_draft_submit` accept `file.data` as signed Java bytes (`-128..127`) or unsigned file bytes (`0..255`) and send Cascade signed bytes. `cascade_file_data_export` writes to an explicit local path, refuses overwrites unless `overwrite: true`, and can verify `expected_sha256`.
 
 Draft workflow tools:
 
-Drafts are mutable, in-memory copies used to assemble complete `cascade_create` or `cascade_edit` payloads. Edit drafts start from a cloned and edit-normalized `asset_handle`; create drafts start from an optional asset envelope, from `cascade_draft_scaffold_create`, or from `cascade_draft_scaffold_from_asset`, which creates a create-safe scaffold from any cached asset envelope by stripping read-only fields/recycled flags, clearing credential fields present in the source, adding required hidden credential placeholders when absent, and optionally clearing structured-data text and asset-reference values. Patch tools mutate only the local draft addressed by `draft_handle`, never the original `asset_handle` read cache. `cascade_draft_set_file_data` reads exactly one of `input_path` or `base64_data`, normalizes bytes to Cascade signed `file.data`, preserves existing string `text`, removes only a null `text` placeholder, and keeps file bytes outside the draft JSON until submit. Semantic patch tools resolve exactly one structured-data node and then apply the existing JSON Pointer draft patch path. `cascade_draft_mutation_plan_execute` runs local draft steps sequentially, checks rules targeting the plan tool against hydrated/resolved step payloads, and stops on the first error; it is not a Cascade batch request. `cascade_draft_submit` validates the final `{ asset: ... }` payload with the normal create/edit schema, checks blocked-call rules against the resolved payload as both `cascade_draft_submit` and the final `cascade_create` or `cascade_edit` operation, re-reads edit sources to reject stale drafts, and then calls Cascade.
+Drafts are mutable, in-memory payloads for `cascade_create` or `cascade_edit`.
+
+- Edit drafts start from a cached `asset_handle`; create drafts start from an asset envelope or scaffold.
+- Patch tools mutate only the local draft addressed by `draft_handle`.
+- `cascade_draft_set_file_data` reads exactly one of `input_path` or `base64_data`, normalizes bytes to signed `file.data`, and keeps bytes outside draft JSON until submit.
+- `cascade_draft_submit` validates the final payload, checks tool-block rules, re-reads edit sources to reject stale drafts, and then calls Cascade.
 
 Approval recommended:
 
@@ -334,7 +327,7 @@ High-impact approval recommended:
 | `cascade_delete_message`    | Deletes a message                 |
 | `cascade_publish_unpublish` | Publishes or unpublishes an asset |
 
-## Examples
+### Workflow Examples
 
 Read a page by id:
 
@@ -433,9 +426,22 @@ Scaffold a create draft when starting from an asset type instead of a read:
 }
 ```
 
-The response includes the draft handle, the scaffolded asset envelope, and `required_value_pointers` for every `null` placeholder that must be patched before validation or submit.
+The response includes the draft handle, scaffolded asset envelope, and required placeholders to patch before validation or submit. To scaffold from a cached asset, use `cascade_draft_scaffold_from_asset` with the `asset_handle` and `raw_hash` from `cascade_read`.
 
-When starting from an existing cached asset, use `cascade_draft_scaffold_from_asset` with the `asset_handle` and `expected_raw_hash` set to the `raw_hash` returned by `cascade_read`. The response includes a create draft, a create-safe scaffold, `cleared_value_pointers`, and op-aware `replace_value_pointers`/`add_value_pointers` for values that need new content. Credential fields present in the source are cleared; required hidden credential fields are added as `null` placeholders when absent. `clear_values` controls only structured-data text and asset-reference clearing.
+Set binary file data on a file draft before submit:
+
+```json
+{
+  "tool": "cascade_draft_set_file_data",
+  "arguments": {
+    "draft_handle": "d_550e8400-e29b-41d4-a716-446655440001",
+    "expected_revision": 1,
+    "input_path": "C:\\tmp\\image.jpg"
+  }
+}
+```
+
+Provide exactly one of `input_path` or `base64_data`. The tool normalizes bytes to Cascade signed `file.data`, preserves existing string `text`, and keeps the byte payload outside draft JSON until submit.
 
 Search for pages:
 
@@ -455,71 +461,13 @@ Search for pages:
 }
 ```
 
-Create a page:
+### Guardrails: Blocked Tool Calls
 
-```json
-{
-  "tool": "cascade_create",
-  "arguments": {
-    "asset": {
-      "page": {
-        "name": "new-page",
-        "parentFolderPath": "/about",
-        "siteName": "www",
-        "contentTypePath": "/standard/content-type",
-        "xhtml": "<p>Page content</p>"
-      }
-    }
-  }
-}
-```
+Use `cascade_tool_blocks` to list or add local rules that block matching tool calls before they reach Cascade. Rules live at `~/.cascade-cms-mcp-server/tool-blocks.json`.
 
-Publish an asset:
+Each rule needs `tools` plus at least one selector: `url`, `id`, or `path`. Explicit `id` and `path` selectors also need `type`. `reason` is optional and appears in the blocked-call error.
 
-```json
-{
-  "tool": "cascade_publish_unpublish",
-  "arguments": {
-    "identifier": { "id": "abc123", "type": "page" },
-    "publishInformation": { "unpublish": false }
-  }
-}
-```
-
-## Guardrails: Blocked Tool Calls
-
-Use `cascade_tool_blocks` to list or add blocked Cascade tool-call rules. The rules live in a local JSON file at `~/.cascade-cms-mcp-server/tool-blocks.json`. If the file does not exist, the repository is treated as empty; deleting the file removes all stored blocks until new rules are added.
-
-Each rule requires a non-empty `tools` array plus `url`, `id`, or `path`. `url` means an HTTPS Cascade CMS asset URL on a `.cascadecms.com` host at `/entity/open.act` with `id` and `type` query parameters; it does not match published site URLs or symlink/feed/destination target URLs. Explicit `id` or `path` selectors require `type`. URL selectors and explicit selectors can be combined in the same rule; URL selectors use the URL's own `type`, while explicit `id` and `path` selectors use the rule's top-level `type`. Each selector may be a string or an array of strings. `reason` is optional and appears in the blocked-call error.
-
-Before a checked tool runs, the server reads this JSON repository and blocks the call if the tool name and payload match a rule. If the JSON file is malformed or cannot be read, checked tools fail closed before calling Cascade or mutating local draft state. Draft tools go through this checked-tool gate; tools that inspect or mutate an existing draft/source also check resolved payloads. `cascade_draft_mutation_plan_execute` checks hydrated/resolved step payloads under the plan tool name before delegating to each step. Local helper tools (`cascade_asset_*`), `cascade_read_response`, and `cascade_server_version` do not because they only inspect cached local data or server metadata.
-
-Because `cascade_tool_blocks` can add guardrails, MCP clients should require user approval before calling it. It cannot remove or replace existing guardrails; delete or edit the local JSON file directly when intentional cleanup is required.
-
-Use `cascade_protect_site_removal` to generate removal safeguards for accessible sites and their root folders. It lists sites, blocks `cascade_remove` for those site IDs and site names/paths, reads each root folder at `/`, blocks readable root folders by ID, and also blocks folder path `/` as a path-based root-folder fallback. Existing generated rules from this tool are replaced when it runs again; unrelated rules stay in place. The response reports unreadable root folders so you know which root IDs could not be added.
-
-Example stored rules:
-
-```json
-[
-  {
-    "type": "site",
-    "id": ["site-123", "site-456"],
-    "path": ["Protected Site"],
-    "tools": ["cascade_remove", "cascade_edit"],
-    "reason": "No site edits or deletes"
-  },
-  {
-    "url": [
-      "https://college.cascadecms.com/entity/open.act?id=link-1&type=symlink",
-      "https://college.cascadecms.com/entity/open.act?id=link-2&type=symlink"
-    ],
-    "tools": ["cascade_edit"]
-  }
-]
-```
-
-Example management calls:
+Use `cascade_protect_site_removal` to generate removal safeguards for accessible sites and their root folders. It replaces its previous generated rules and preserves unrelated rules.
 
 ```json
 {
@@ -535,14 +483,7 @@ Example management calls:
 }
 ```
 
-```json
-{
-  "tool": "cascade_tool_blocks",
-  "arguments": { "action": "list" }
-}
-```
-
-## Resources
+### Resources
 
 | URI                            |   Kind   | Description                                               |
 | ------------------------------ | :------: | --------------------------------------------------------- |
@@ -564,10 +505,11 @@ Example management calls:
 
 ## Security Notes
 
-- API keys are loaded from environment variables only. Do not commit MCP config files that contain real credentials.
-- `cascade_read` preview mode caches exact raw asset JSON in memory for follow-up inspection. Draft workflows clone and edit-normalize that read cache before mutation, with the same per-entry size cap as oversized response caching. Draft open and patch tools check blocked-call rules against resolved draft payloads before mutating local draft state. Raw draft resources also honor draft read tool-block rules and return an error body if the local tool-block repository cannot be read. `cascade_draft_submit` checks blocked-call rules against the final payload as both `cascade_draft_submit` and `cascade_create` or `cascade_edit`, and edit submits re-read the source asset before calling Cascade. Use `discard_on_success: true` to clear a submitted draft only when Cascade returns `success: true` and the submitted revision/hash is still current; if the draft changed while submit was in flight, the current draft is retained and `discard_skipped_reason` explains why. Restart the MCP server to clear cached asset and draft data.
+- Credentials are loaded from environment variables only. Keep real values in the local MCP client environment, a client secret store, or dotseal-encrypted env values.
+- Cached reads, drafts, and browser sessions are in-memory and process-scoped. Restart the MCP server to clear them.
+- Draft and write tools check blocked-call rules before mutating local state or calling Cascade.
 - Error messages are redacted before being logged or returned.
-- Input validation rejects unknown fields at the MCP boundary using Zod schemas that mirror the generated Cascade API request shapes.
+- Input validation rejects unknown fields at the MCP boundary.
 
 ## License
 
