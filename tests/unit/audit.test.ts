@@ -9,7 +9,7 @@
 
 import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
 import { z } from "zod";
-import type { ToolAnnotations, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { ToolAnnotations, CallToolResult } from "@modelcontextprotocol/server";
 import { logToolInvocation } from "../../src/audit.js";
 import { SERVER_NAME } from "../../src/constants.js";
 import { registerCascadeTool } from "../../src/tools/helper.js";

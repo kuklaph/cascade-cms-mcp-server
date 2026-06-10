@@ -6,7 +6,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import { createAssetCache } from "../../../src/assetIndex.js";
 import { createResponseCache } from "../../../src/cache.js";
 import { createDraftCache } from "../../../src/assetDrafts.js";
@@ -14,6 +14,7 @@ import { registerDraftTools } from "../../../src/tools/drafts.js";
 import type { ToolBlockStore } from "../../../src/toolBlocks.js";
 import { createMockClient } from "../../fixtures/mock-client.js";
 import { CREATE_OK, OK_RESULT, READ_PAGE_OK } from "../../fixtures/cascade-responses.js";
+import { inputJsonSchema } from "../../fixtures/mock-server.js";
 
 interface MockServer {
   registerTool: ReturnType<typeof mock>;
@@ -191,7 +192,10 @@ describe("draft tools", () => {
     const artifacts = findTool(tools, "cascade_draft_list_scalar_artifacts");
     expect(artifacts.config.description).toContain("Use href for any value found in an HTML/XHTML href attribute");
     expect(artifacts.config.description).toContain("use site_link for non-root, non-URL Cascade *Path fields");
-    expect((artifacts.config.inputSchema as any).shape.artifact_kind.description).toContain(
+    expect(
+      inputJsonSchema(artifacts.config.inputSchema).properties.artifact_kind
+        .description,
+    ).toContain(
       "Use href for any value found in an HTML/XHTML href attribute",
     );
   });

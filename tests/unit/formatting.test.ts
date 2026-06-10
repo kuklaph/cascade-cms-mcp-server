@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import { formatResponse } from "../../src/formatting.js";
 import { createResponseCache } from "../../src/cache.js";
 import { CHARACTER_LIMIT, PREVIEW_LIMIT } from "../../src/constants.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 
 function firstText(r: CallToolResult): string {
   const block = r.content[0];

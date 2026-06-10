@@ -1,5 +1,5 @@
 import { describe, test, expect, mock } from "bun:test";
-import type { ToolAnnotations, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { ToolAnnotations, CallToolResult } from "@modelcontextprotocol/server";
 import { registerPublishTools } from "../../../src/tools/publish.js";
 import { PublishUnpublishRequestSchema } from "../../../src/schemas/requests.js";
 import { createMockClient } from "../../fixtures/mock-client.js";

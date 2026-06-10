@@ -10,7 +10,7 @@ Start with [Setup](#setup) for required values and client config. Use [What It C
 
 ### Requirements
 
-- Node 18+.
+- Node 20+.
 - Bun 1.0+ for the preferred `bunx` setup.
 - A Cascade CMS instance with REST API access and an API key.
 - An MCP client that can launch stdio servers, such as Claude, Codex, Cline, MCP Inspector, or another compliant client.

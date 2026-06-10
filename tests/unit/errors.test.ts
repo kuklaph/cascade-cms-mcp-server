@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { translateError } from "../../src/errors.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 
 /** Narrow the first content block to a text block (TS-safe accessor). */
 function firstText(r: CallToolResult): string {

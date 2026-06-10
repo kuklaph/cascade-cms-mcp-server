@@ -1,6 +1,10 @@
 import { describe, test, expect, mock } from "bun:test";
 import { z } from "zod";
-import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/types.js";
+import type {
+  CallToolResult,
+  StandardSchemaWithJSON,
+  ToolAnnotations,
+} from "@modelcontextprotocol/server";
 import {
   buildCascadeToolDescription,
   registerCascadeTool,
@@ -85,7 +89,7 @@ function makeToolBlockStore(rules: ToolBlockRule[]): ToolBlockStore {
 }
 
 describe("registerCascadeTool", () => {
-  test("registers loose SDK metadata so project validation owns strict errors", () => {
+  test("registers loose SDK validation with exact advertised schema", async () => {
     const server = makeMockServer();
     const handler = mock(async () => ({ success: true }));
 
@@ -99,18 +103,24 @@ describe("registerCascadeTool", () => {
     });
 
     const call = server.registerTool.mock.calls[0];
+    const inputSchema = call[1].inputSchema as StandardSchemaWithJSON;
+    const advertised = inputSchema["~standard"].jsonSchema.input({
+      target: "draft-2020-12",
+    }) as Record<string, any>;
+    const sdkValidation = await inputSchema["~standard"].validate({
+      newSiteName: 123,
+      response_format: "json",
+    });
+
     expect(call[0]).toBe("cascade_site_copy");
-    expect(Object.keys(call[1].inputSchema.shape)).toEqual([
+    expect(Object.keys(advertised.properties)).toEqual([
       "originalSiteId",
       "originalSiteName",
       "newSiteName",
     ]);
-    expect(
-      call[1].inputSchema.safeParse({
-        newSiteName: 123,
-        response_format: "json",
-      }).success,
-    ).toBe(true);
+    expect(advertised.properties.newSiteName.type).toBe("string");
+    expect(advertised.required).toContain("newSiteName");
+    expect("issues" in sdkValidation).toBe(false);
   });
 
   test("passes parsed input with defaults to the handler and emits JSON text", async () => {

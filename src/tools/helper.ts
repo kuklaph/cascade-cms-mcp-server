@@ -9,14 +9,12 @@
  */
 
 import { z } from "zod";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type {
   CallToolResult,
+  McpServer,
+  StandardSchemaWithJSON,
   ToolAnnotations,
-} from "@modelcontextprotocol/sdk/types.js";
-import { ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { normalizeObjectSchema } from "@modelcontextprotocol/sdk/server/zod-compat.js";
-import { toJsonSchemaCompat } from "@modelcontextprotocol/sdk/server/zod-json-schema-compat.js";
+} from "@modelcontextprotocol/server";
 import { formatResponse } from "../formatting.js";
 import { redactSecrets, translateError } from "../errors.js";
 import { logToolInvocation } from "../audit.js";
@@ -76,18 +74,13 @@ export interface CascadeToolConfig<TSchema extends z.ZodTypeAny> {
   contentBlocksOnly?: boolean;
 }
 
-type RegisteredToolLike = {
-  title?: string;
-  description?: string;
-  inputSchema?: z.ZodTypeAny;
-  outputSchema?: z.ZodTypeAny;
-  annotations?: ToolAnnotations;
-  execution?: unknown;
-  _meta?: Record<string, unknown>;
-  enabled: boolean;
-};
+type StandardValidateOptions = Parameters<
+  StandardSchemaWithJSON["~standard"]["validate"]
+>[1];
 
-const exactInputSchemas = new WeakMap<McpServer, Map<string, z.ZodTypeAny>>();
+type StandardJsonSchemaOptions = Parameters<
+  StandardSchemaWithJSON["~standard"]["jsonSchema"]["input"]
+>[0];
 
 /**
  * Register a Cascade MCP tool on the given server.
@@ -114,8 +107,7 @@ export function registerCascadeTool<TSchema extends z.ZodTypeAny>(
     contentBlocksOnly,
     stripFromStructured,
   } = config;
-  const sdkInputSchema = looseSchemaForSdk(inputSchema);
-  rememberExactInputSchema(server, name, inputSchema);
+  const sdkInputSchema = schemaForSdk(inputSchema);
 
   server.registerTool(
     name,
@@ -170,42 +162,6 @@ export function registerCascadeTool<TSchema extends z.ZodTypeAny>(
 }
 
 /**
- * Override only tools/list so clients see the exact tool schemas while
- * tools/call still reaches our project-owned structured validation errors.
- */
-export function registerExactToolSchemaListHandler(server: McpServer): void {
-  server.server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: registeredTools(server)
-      .filter(([, tool]) => tool.enabled)
-      .map(([name, tool]) => {
-        const toolDefinition: Record<string, unknown> = {
-          name,
-          title: tool.title,
-          description: tool.description,
-          inputSchema: jsonSchemaForToolInput(
-            exactInputSchemas.get(server)?.get(name) ?? tool.inputSchema,
-          ),
-          annotations: tool.annotations,
-          execution: tool.execution,
-          _meta: tool._meta,
-        };
-
-        if (tool.outputSchema) {
-          const outputSchema = normalizeObjectSchema(tool.outputSchema as any);
-          if (outputSchema) {
-            toolDefinition.outputSchema = toJsonSchemaCompat(outputSchema, {
-              strictUnions: true,
-              pipeStrategy: "output",
-            });
-          }
-        }
-
-        return toolDefinition;
-      }),
-  }));
-}
-
-/**
  * Compose a consistent tool description. Keeps the footer prose identical
  * across all tools so agents see uniform guidance on response formats.
  */
@@ -230,6 +186,32 @@ function looseSchemaForSdk(schema: z.ZodTypeAny): z.ZodObject<z.ZodRawShape> {
     ]),
   ) as z.ZodRawShape;
   return z.object(looseShape).passthrough();
+}
+
+function schemaForSdk(schema: z.ZodTypeAny): StandardSchemaWithJSON {
+  const exactStandard = (schema as unknown as StandardSchemaWithJSON)["~standard"];
+  const looseStandard = (looseSchemaForSdk(schema) as unknown as StandardSchemaWithJSON)[
+    "~standard"
+  ];
+
+  if (!exactStandard?.jsonSchema || !looseStandard?.validate) {
+    throw new Error("registerCascadeTool inputSchema must implement Standard Schema JSON");
+  }
+
+  return {
+    "~standard": {
+      version: 1,
+      vendor: "cascade-cms-mcp-server",
+      validate: (value: unknown, options?: StandardValidateOptions) =>
+        looseStandard.validate(value, options),
+      jsonSchema: {
+        input: (options: StandardJsonSchemaOptions) =>
+          exactStandard.jsonSchema.input(options),
+        output: (options: StandardJsonSchemaOptions) =>
+          exactStandard.jsonSchema.output(options),
+      },
+    },
+  };
 }
 
 function objectShapesForSdk(schema: z.ZodTypeAny): z.ZodRawShape[] {
@@ -327,53 +309,4 @@ function looseField(schema: z.ZodTypeAny): z.ZodTypeAny {
   const field = z.unknown().optional();
   const description = schemaDescription(schema);
   return description ? field.describe(description) : field;
-}
-
-function rememberExactInputSchema(
-  server: McpServer,
-  name: string,
-  schema: z.ZodTypeAny,
-): void {
-  let toolSchemas = exactInputSchemas.get(server);
-  if (!toolSchemas) {
-    toolSchemas = new Map();
-    exactInputSchemas.set(server, toolSchemas);
-  }
-  toolSchemas.set(name, schema);
-}
-
-function registeredTools(server: McpServer): [string, RegisteredToolLike][] {
-  const holder = server as unknown as {
-    _registeredTools: Record<string, RegisteredToolLike>;
-  };
-  return Object.entries(holder._registeredTools);
-}
-
-function jsonSchemaForToolInput(
-  schema: z.ZodTypeAny | undefined,
-): Record<string, unknown> {
-  if (!schema) {
-    return { type: "object", properties: {}, additionalProperties: false };
-  }
-
-  if (schema instanceof z.ZodObject) {
-    const objectSchema = normalizeObjectSchema(schema as any);
-    return objectSchema
-      ? toJsonSchemaCompat(objectSchema, {
-          strictUnions: true,
-          pipeStrategy: "input",
-        })
-      : { type: "object", properties: {}, additionalProperties: false };
-  }
-
-  const jsonSchema = toJsonSchemaCompat(schema as any, {
-    strictUnions: true,
-    pipeStrategy: "input",
-  });
-  return rootObjectSchema(jsonSchema);
-}
-
-function rootObjectSchema(schema: Record<string, unknown>): Record<string, unknown> {
-  if (schema.type === "object") return schema;
-  return { ...schema, type: "object" };
 }

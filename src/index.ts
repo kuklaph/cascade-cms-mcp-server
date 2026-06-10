@@ -7,7 +7,7 @@
  * (stdout is reserved for the MCP protocol stream).
  */
 
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StdioServerTransport } from "@modelcontextprotocol/server";
 import { loadConfig } from "./config.js";
 import { createCascadeClient } from "./client.js";
 import { createBrowserSession } from "./browserApi.js";

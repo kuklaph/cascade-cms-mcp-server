@@ -12,7 +12,7 @@
  * tools inspect local read-cache entries without calling Cascade.
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { open, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { Types } from "cascade-cms-api";

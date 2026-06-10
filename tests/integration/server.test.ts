@@ -13,10 +13,12 @@
 import { describe, test, expect, mock } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
-  CallToolResultSchema,
-  ListToolsResultSchema,
+  LATEST_PROTOCOL_VERSION,
   type CallToolResult,
-} from "@modelcontextprotocol/sdk/types.js";
+  type JSONRPCMessage,
+  type McpServer,
+  type Transport,
+} from "@modelcontextprotocol/server";
 import { createServer } from "../../src/server.js";
 import { createMockClient } from "../fixtures/mock-client.js";
 import type { ToolBlockStore } from "../../src/toolBlocks.js";
@@ -30,19 +32,73 @@ import {
   SERVER_VERSION,
 } from "../../src/constants.js";
 
-/**
- * Extract the runtime `_registeredTools` map from an `McpServer`.
- *
- * The SDK stores each `server.registerTool(name, config, cb)` under
- * `server._registeredTools[name]` as `{ title, description, inputSchema,
- * annotations, handler, ... }`. TypeScript flags `_registeredTools` as
- * private, but it's a plain runtime property on the instance.
- */
-function getRegisteredTools(server: unknown): Record<string, {
-  handler: (input: Record<string, unknown>) => Promise<CallToolResult>;
-  annotations: { readOnlyHint?: boolean };
-}> {
-  return (server as { _registeredTools: Record<string, any> })._registeredTools;
+class InMemoryServerTransport implements Transport {
+  onclose?: () => void;
+  onerror?: (error: Error) => void;
+  onmessage?: Transport["onmessage"];
+  sessionId?: string;
+  sent: JSONRPCMessage[] = [];
+  supportedProtocolVersions: string[] = [];
+  protocolVersion?: string;
+
+  private nextId = 1;
+  private pending = new Map<
+    string | number,
+    {
+      method: string;
+      resolve: (value: any) => void;
+      reject: (error: Error) => void;
+    }
+  >();
+
+  async start(): Promise<void> {}
+
+  async send(message: JSONRPCMessage): Promise<void> {
+    this.sent.push(message);
+    if (!Object.hasOwn(message, "id")) return;
+
+    const response = message as any;
+    const entry = this.pending.get(response.id);
+    if (!entry) return;
+    this.pending.delete(response.id);
+
+    if (response.error) {
+      entry.reject(
+        new Error(`${entry.method} returned error: ${JSON.stringify(response.error)}`),
+      );
+      return;
+    }
+
+    entry.resolve(response.result);
+  }
+
+  async close(): Promise<void> {
+    this.onclose?.();
+  }
+
+  setProtocolVersion(version: string): void {
+    this.protocolVersion = version;
+  }
+
+  setSupportedProtocolVersions(versions: string[]): void {
+    this.supportedProtocolVersions = versions;
+  }
+
+  request<T = Record<string, any>>(
+    method: string,
+    params: Record<string, unknown> = {},
+  ): Promise<T> {
+    const id = this.nextId++;
+    const response = new Promise<T>((resolve, reject) => {
+      this.pending.set(id, { method, resolve, reject });
+    });
+    this.onmessage?.({ jsonrpc: "2.0", id, method, params } as JSONRPCMessage);
+    return response;
+  }
+
+  notify(method: string, params: Record<string, unknown> = {}): void {
+    this.onmessage?.({ jsonrpc: "2.0", method, params } as JSONRPCMessage);
+  }
 }
 
 function emptyToolBlockStore(): ToolBlockStore {
@@ -53,38 +109,39 @@ function emptyToolBlockStore(): ToolBlockStore {
   };
 }
 
-async function callToolViaSdkPath(
-  server: unknown,
+async function connectTestTransport(server: McpServer): Promise<InMemoryServerTransport> {
+  const transport = new InMemoryServerTransport();
+  await server.connect(transport);
+  await transport.request("initialize", {
+    protocolVersion: LATEST_PROTOCOL_VERSION,
+    capabilities: {},
+    clientInfo: { name: "cascade-cms-mcp-server-test", version: "0.0.0" },
+  });
+  transport.notify("notifications/initialized");
+  return transport;
+}
+
+async function callToolViaProtocol(
+  transport: InMemoryServerTransport,
   name: string,
   args: Record<string, unknown>,
 ): Promise<CallToolResult> {
-  const protocol = (server as { server: { _requestHandlers: Map<string, any> } }).server;
-  const handler = protocol._requestHandlers.get("tools/call");
-  if (!handler) throw new Error("tools/call handler not registered");
-  return handler(
-    {
-      method: "tools/call",
-      params: { name, arguments: args },
-    },
-    {},
-  );
+  return transport.request<CallToolResult>("tools/call", {
+    name,
+    arguments: args,
+  });
 }
 
-async function listToolsResultViaSdkPath(server: unknown): Promise<Record<string, any>> {
-  const protocol = (server as { server: { _requestHandlers: Map<string, any> } }).server;
-  const handler = protocol._requestHandlers.get("tools/list");
-  if (!handler) throw new Error("tools/list handler not registered");
-  return handler(
-    {
-      method: "tools/list",
-      params: {},
-    },
-    {},
-  );
+async function listToolsResultViaProtocol(
+  transport: InMemoryServerTransport,
+): Promise<Record<string, any>> {
+  return transport.request("tools/list");
 }
 
-async function listToolsViaSdkPath(server: unknown): Promise<Record<string, any>> {
-  const result = await listToolsResultViaSdkPath(server);
+async function listToolsViaProtocol(
+  transport: InMemoryServerTransport,
+): Promise<Record<string, any>> {
+  const result = await listToolsResultViaProtocol(transport);
   return Object.fromEntries(
     result.tools.map((tool: Record<string, any>) => [tool.name, tool]),
   );
@@ -297,18 +354,20 @@ const READ_IMAGE_FILE = {
 } as const;
 
 describe("createServer (server factory)", () => {
-  test("registers exactly 68 tools", () => {
+  test("registers exactly 68 tools", async () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
-    const tools = getRegisteredTools(server);
+    const transport = await connectTestTransport(server);
+    const tools = await listToolsViaProtocol(transport);
 
     expect(Object.keys(tools)).toHaveLength(68);
   });
 
-  test("all tool names use snake_case with cascade_ prefix", () => {
+  test("all tool names use snake_case with cascade_ prefix", async () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
-    const tools = getRegisteredTools(server);
+    const transport = await connectTestTransport(server);
+    const tools = await listToolsViaProtocol(transport);
 
     const namePattern = /^cascade_[a-z]+(?:_[a-z]+)*$/;
     for (const name of Object.keys(tools)) {
@@ -316,21 +375,23 @@ describe("createServer (server factory)", () => {
     }
   });
 
-  test("no duplicate tool names are registered", () => {
+  test("no duplicate tool names are registered", async () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
-    const tools = getRegisteredTools(server);
+    const transport = await connectTestTransport(server);
+    const listResult = await listToolsResultViaProtocol(transport);
 
-    const names = Object.keys(tools);
+    const names = listResult.tools.map((tool: Record<string, any>) => tool.name);
     const unique = new Set(names);
     expect(unique.size).toBe(names.length);
     expect(unique.size).toBe(68);
   });
 
-  test("every expected tool from each cohort is present", () => {
+  test("every expected tool from each cohort is present", async () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
-    const tools = getRegisteredTools(server);
+    const transport = await connectTestTransport(server);
+    const tools = await listToolsViaProtocol(transport);
     const registered = new Set(Object.keys(tools));
 
     for (const expected of EXPECTED_TOOL_NAMES) {
@@ -348,9 +409,9 @@ describe("createServer (server factory)", () => {
       write: async () => {},
     };
     const server = createServer(client, { toolBlockStore });
-    const tools = getRegisteredTools(server);
+    const transport = await connectTestTransport(server);
 
-    const result = await tools["cascade_server_version"].handler({});
+    const result = await callToolViaProtocol(transport, "cascade_server_version", {});
     const body = JSON.parse((result.content[0] as any).text);
 
     expect(result.isError).not.toBe(true);
@@ -367,12 +428,9 @@ describe("createServer (server factory)", () => {
       read: mock(() => Promise.resolve(READ_PAGE_OK)),
     });
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
-    const tools = getRegisteredTools(server);
+    const transport = await connectTestTransport(server);
 
-    const readTool = tools["cascade_read"];
-    expect(readTool).toBeDefined();
-
-    const result = await readTool.handler({
+    const result = await callToolViaProtocol(transport, "cascade_read", {
       identifier: { id: "abc", type: "page" },
     });
 
@@ -397,16 +455,17 @@ describe("createServer (server factory)", () => {
       read: mock(() => Promise.resolve(READ_IMAGE_FILE)),
     });
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+    const transport = await connectTestTransport(server);
 
-    const readResult = await callToolViaSdkPath(server, "cascade_read", {
+    const readResult = await callToolViaProtocol(transport, "cascade_read", {
       identifier: { id: "file123", type: "file" },
     });
     const handle = (readResult.structuredContent as Record<string, any>).asset_handle;
-    const imageResult = await callToolViaSdkPath(server, "cascade_file_data_image", {
+    const imageResult = await callToolViaProtocol(transport, "cascade_file_data_image", {
       asset_handle: handle,
     });
 
-    expect(CallToolResultSchema.safeParse(imageResult).success).toBe(true);
+    expect(imageResult.isError).not.toBe(true);
     expect(imageResult.content).toEqual([
       {
         type: "image",
@@ -422,15 +481,10 @@ describe("createServer (server factory)", () => {
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
     });
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
-    const tools = getRegisteredTools(server);
-
-    const readTool = tools["cascade_read"];
-    const readResponseTool = tools["cascade_read_response"];
-    expect(readTool).toBeDefined();
-    expect(readResponseTool).toBeDefined();
+    const transport = await connectTestTransport(server);
 
     // Act 1: cascade_read with oversize result should mint a handle.
-    const oversize = await readTool.handler({
+    const oversize = await callToolViaProtocol(transport, "cascade_read", {
       identifier: { id: "huge-page-id", type: "page" },
       read_mode: "raw",
     });
@@ -457,7 +511,7 @@ describe("createServer (server factory)", () => {
     const handle = envelope.handle;
 
     // Act 2: cascade_read_response {handle, offset: 0, length: 100}.
-    const firstSlice = await readResponseTool.handler({
+    const firstSlice = await callToolViaProtocol(transport, "cascade_read_response", {
       handle,
       offset: 0,
       length: 100,
@@ -481,7 +535,7 @@ describe("createServer (server factory)", () => {
     expect(firstSliceText.slice_text.length).toBe(100);
 
     // Act 3: cascade_read_response {handle, offset: 100, length: 100}.
-    const secondSlice = await readResponseTool.handler({
+    const secondSlice = await callToolViaProtocol(transport, "cascade_read_response", {
       handle,
       offset: 100,
       length: 100,
@@ -511,8 +565,9 @@ describe("createServer (server factory)", () => {
       read: mock(() => Promise.resolve(READ_PAGE_OK)),
     });
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+    const transport = await connectTestTransport(server);
 
-    const removedField = await callToolViaSdkPath(server, "cascade_read", {
+    const removedField = await callToolViaProtocol(transport, "cascade_read", {
       identifier: { id: "abc", type: "page" },
       response_format: "json",
     });
@@ -523,7 +578,7 @@ describe("createServer (server factory)", () => {
     expect(removedBody.error.issues[0].code).toBe("unrecognized_keys");
     expect(removedBody.error.issues[0].hint).toContain("response_format");
 
-    const invalidEnum = await callToolViaSdkPath(server, "cascade_read", {
+    const invalidEnum = await callToolViaProtocol(transport, "cascade_read", {
       identifier: { id: "abc", type: "page" },
       read_mode: "sk-testsecret123456",
     });
@@ -540,12 +595,14 @@ describe("createServer (server factory)", () => {
       read: mock(() => Promise.resolve(READ_PAGE_OK)),
     });
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+    const transport = await connectTestTransport(server);
 
-    const listResult = await listToolsResultViaSdkPath(server);
-    const parsedListResult = ListToolsResultSchema.safeParse(listResult);
+    const listResult = await listToolsResultViaProtocol(transport);
 
-    expect(parsedListResult.success).toBe(true);
+    expect(Array.isArray(listResult.tools)).toBe(true);
+    expect(listResult.tools).toHaveLength(68);
     for (const tool of listResult.tools) {
+      expect(typeof tool.name).toBe("string");
       expect(tool.inputSchema.type).toBe("object");
       for (const keyword of ["anyOf", "oneOf", "allOf", "enum", "not"]) {
         expect(Object.hasOwn(tool.inputSchema, keyword)).toBe(false);
@@ -622,8 +679,8 @@ describe("createServer (server factory)", () => {
     expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["contentType", "contentTypePageConfigurations", "[]"], "pageConfigurationId")).toBe(true);
     expect(schemaPathHasRequiredBranch(createSchema.properties.asset, ["contentType", "contentTypePageConfigurations", "[]"], "pageConfigurationName")).toBe(true);
     expect(schemaPathTypes(createSchema.properties.asset, ["file", "data"])).toEqual(["array"]);
-    expect(schemaPathTypes(createSchema.properties.asset, ["file", "data", "[]"])).toEqual(["number"]);
-    expect(schemaPathTypes(editSchema.properties.asset, ["file", "data", "[]"])).toEqual(["number"]);
+    expect(schemaPathTypes(createSchema.properties.asset, ["file", "data", "[]"])).toEqual(["integer"]);
+    expect(schemaPathTypes(editSchema.properties.asset, ["file", "data", "[]"])).toEqual(["integer"]);
     expect(tools["cascade_create"].description).toContain(
       "asset.file.data` accepts signed Java bytes (-128..127) or unsigned file bytes (0..255)",
     );
@@ -676,23 +733,23 @@ describe("createServer (server factory)", () => {
       schemaTypes(publishSchema.properties.publishInformation.properties.unpublish),
     ).toEqual(["boolean", "null"]);
 
-    expect(searchSchema.properties.limit.type).toBe("number");
+    expect(searchSchema.properties.limit.type).toBe("integer");
     expect(searchSchema.properties.limit.default).toBe(50);
-    expect(searchSchema.properties.offset.type).toBe("number");
+    expect(searchSchema.properties.offset.type).toBe("integer");
     expect(searchSchema.properties.offset.default).toBe(0);
     expect(schemaHasProperty(siteCopySchema, "originalSiteId")).toBe(true);
     expect(schemaHasProperty(siteCopySchema, "originalSiteName")).toBe(true);
     expect(siteCopySchema.required).toContain("newSiteName");
-    expect(nodeletSchema.properties.depth.type).toBe("number");
+    expect(nodeletSchema.properties.depth.type).toBe("integer");
     expect(nodeletSchema.properties.depth.default).toBe(0);
     expect(nodeletSchema.properties.include_text.type).toBe("boolean");
     expect(nodeletSchema.properties.include_text.default).toBe(true);
     expect(schemaHasProperty(fileDataInfoSchema, "asset_handle")).toBe(true);
     expect(schemaTypes(fileDataInfoSchema.properties.identifier)).toContain("object");
     expect(schemaTypes(fileDataReadSchema.properties.identifier)).toContain("object");
-    expect(fileDataReadSchema.properties.offset.type).toBe("number");
+    expect(fileDataReadSchema.properties.offset.type).toBe("integer");
     expect(fileDataReadSchema.properties.offset.default).toBe(0);
-    expect(fileDataReadSchema.properties.length.type).toBe("number");
+    expect(fileDataReadSchema.properties.length.type).toBe("integer");
     expect(fileDataReadSchema.properties.length.default).toBe(64);
     expect(JSON.stringify(fileDataReadSchema.properties.encoding)).toContain("base64");
     expect(schemaTypes(fileDataImageSchema.properties.identifier)).toContain("object");
@@ -720,7 +777,7 @@ describe("createServer (server factory)", () => {
     expect(JSON.stringify(draftPatchSchema.properties.operations)).toContain("replace");
     expect(JSON.stringify(draftPatchSchema.properties.operations)).toContain("remove");
     expect(draftSubmitSchema.required).toContain("expected_revision");
-    expect(draftSubmitSchema.properties.expected_revision.type).toBe("number");
+    expect(draftSubmitSchema.properties.expected_revision.type).toBe("integer");
     expect(draftSubmitSchema.properties.discard_on_success.type).toBe("boolean");
 
     expect(
@@ -753,7 +810,7 @@ describe("createServer (server factory)", () => {
     expect(markTypeSchema).toContain("unread");
     expect(markTypeSchema).not.toContain("archive");
 
-    const invalid = await callToolViaSdkPath(server, "cascade_read", {
+    const invalid = await callToolViaProtocol(transport, "cascade_read", {
       identifier: "{\"id\":\"abc\",\"type\":\"page\"}",
     });
     const body = JSON.parse((invalid.content[0] as any).text);
@@ -767,6 +824,7 @@ describe("createServer (server factory)", () => {
   test("tools/call rejects stringified object fields across write tools", async () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+    const transport = await connectTestTransport(server);
     const identifier = { id: "abc", type: "page" };
 
     const cases = [
@@ -869,7 +927,11 @@ describe("createServer (server factory)", () => {
     ];
 
     for (const testCase of cases) {
-      const result = await callToolViaSdkPath(server, testCase.tool, testCase.args);
+      const result = await callToolViaProtocol(
+        transport,
+        testCase.tool,
+        testCase.args,
+      );
       const body = JSON.parse((result.content[0] as any).text);
 
       expect(result.isError).toBe(true);
@@ -891,6 +953,7 @@ describe("createServer (server factory)", () => {
   test("tools/call rejects string numeric and boolean fields", async () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+    const transport = await connectTestTransport(server);
 
     const cases = [
       {
@@ -970,7 +1033,11 @@ describe("createServer (server factory)", () => {
     ];
 
     for (const testCase of cases) {
-      const result = await callToolViaSdkPath(server, testCase.tool, testCase.args);
+      const result = await callToolViaProtocol(
+        transport,
+        testCase.tool,
+        testCase.args,
+      );
       const body = JSON.parse((result.content[0] as any).text);
 
       expect(result.isError).toBe(true);
@@ -984,6 +1051,7 @@ describe("createServer (server factory)", () => {
   test("tools/call keeps cascade_remove safety policies at runtime", async () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+    const transport = await connectTestTransport(server);
 
     for (const args of [
       { identifier: { id: "site-1", type: "site" } },
@@ -994,7 +1062,7 @@ describe("createServer (server factory)", () => {
         },
       },
     ]) {
-      const result = await callToolViaSdkPath(server, "cascade_remove", args);
+      const result = await callToolViaProtocol(transport, "cascade_remove", args);
       const body = JSON.parse((result.content[0] as any).text);
 
       expect(result.isError).toBe(true);
@@ -1009,10 +1077,9 @@ describe("createServer (server factory)", () => {
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
     });
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
-    const tools = getRegisteredTools(server);
+    const transport = await connectTestTransport(server);
 
-    const readTool = tools["cascade_read"];
-    const result = await readTool.handler({
+    const result = await callToolViaProtocol(transport, "cascade_read", {
       identifier: { id: "huge-page-id", type: "page" },
     });
 
@@ -1045,20 +1112,21 @@ describe("createServer (server factory)", () => {
       edit: mock(() => Promise.resolve({ success: true })),
     });
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
+    const transport = await connectTestTransport(server);
 
-    const readResult = await callToolViaSdkPath(server, "cascade_read", {
+    const readResult = await callToolViaProtocol(transport, "cascade_read", {
       identifier: { id: "page-001", type: "page" },
     });
     const readBody = readResult.structuredContent as Record<string, any>;
 
-    const openResult = await callToolViaSdkPath(server, "cascade_draft_open", {
+    const openResult = await callToolViaProtocol(transport, "cascade_draft_open", {
       operation: "edit",
       asset_handle: readBody.asset_handle,
       expected_raw_hash: readBody.raw_hash,
     });
     const draftHandle = (openResult.structuredContent as Record<string, any>).draft_handle;
 
-    await callToolViaSdkPath(server, "cascade_draft_apply_patch", {
+    await callToolViaProtocol(transport, "cascade_draft_apply_patch", {
       draft_handle: draftHandle,
       expected_revision: 1,
       operations: [
@@ -1066,7 +1134,7 @@ describe("createServer (server factory)", () => {
       ],
     });
 
-    const submitResult = await callToolViaSdkPath(server, "cascade_draft_submit", {
+    const submitResult = await callToolViaProtocol(transport, "cascade_draft_submit", {
       draft_handle: draftHandle,
       expected_revision: 2,
     });

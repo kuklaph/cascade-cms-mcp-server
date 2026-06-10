@@ -8,17 +8,14 @@
  * Pure and side-effect-free: callers own transport/lifecycle.
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import type { CascadeClient } from "./client.js";
 import { SERVER_NAME, SERVER_VERSION } from "./constants.js";
 import { createResponseCache } from "./cache.js";
 import { createAssetCache } from "./assetIndex.js";
 import { createDraftCache } from "./assetDrafts.js";
 import { createToolBlockStore } from "./toolBlocks.js";
-import {
-  registerExactToolSchemaListHandler,
-  type CascadeDeps,
-} from "./tools/helper.js";
+import type { CascadeDeps } from "./tools/helper.js";
 import { registerCrudTools } from "./tools/crud.js";
 import { registerDraftTools } from "./tools/drafts.js";
 import { registerSearchTools } from "./tools/search.js";
@@ -86,8 +83,6 @@ export function createServer(
   registerSiteRemovalProtectionTool(server, client, resolved);
   registerServerVersionTool(server);
   registerReadResponseTool(server, resolved);
-
-  registerExactToolSchemaListHandler(server);
 
   return server;
 }

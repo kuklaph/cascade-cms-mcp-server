@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import { createResponseCache } from "../../../src/cache.js";
 import {
   registerSiteRemovalProtectionTool,

@@ -4,7 +4,7 @@
  * These tools report this MCP server's own metadata and do not call Cascade.
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { SERVER_NAME, SERVER_VERSION } from "../constants.js";
 import { ServerVersionRequestSchema } from "../schemas/requests.js";
 import {

@@ -15,8 +15,7 @@
  */
 
 import { describe, test, expect, mock } from "bun:test";
-import type { ResourceMetadata } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { ReadResourceResult } from "@modelcontextprotocol/sdk/types.js";
+import type { ResourceMetadata, ReadResourceResult } from "@modelcontextprotocol/server";
 import { registerCascadeResources } from "../../src/resources.js";
 import { createAssetCache } from "../../src/assetIndex.js";
 import { createDraftCache } from "../../src/assetDrafts.js";

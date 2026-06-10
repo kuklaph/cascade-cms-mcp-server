@@ -7,7 +7,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ToolAnnotations, CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { ToolAnnotations, CallToolResult } from "@modelcontextprotocol/server";
 import { registerCrudTools } from "../../../src/tools/crud.js";
 import {
   ReadRequestSchema,
@@ -34,6 +34,8 @@ import {
   makeMockServer,
   findTool,
   firstText,
+  inputJsonSchema,
+  validateInputSchema,
 } from "../../fixtures/mock-server.js";
 import {
   OK_RESULT,
@@ -196,7 +198,7 @@ describe("cascade_read tool", () => {
 
     registerCrudTools(server as any, client);
     const tool = findTool(tools, "cascade_read");
-    const parsedInput = (tool.config.inputSchema as any).parse({
+    const parsedInput = await validateInputSchema(tool.config.inputSchema, {
       identifier: { id: "huge-page-id", type: "page" },
     });
 
@@ -1047,7 +1049,10 @@ describe("registerCrudTools coverage", () => {
     const artifacts = findTool(tools, "cascade_asset_list_scalar_artifacts");
     expect(artifacts.config.description).toContain("Use href for any value found in an HTML/XHTML href attribute");
     expect(artifacts.config.description).toContain("use site_link for non-root, non-URL Cascade *Path fields");
-    expect((artifacts.config.inputSchema as any).shape.artifact_kind.description).toContain(
+    expect(
+      inputJsonSchema(artifacts.config.inputSchema).properties.artifact_kind
+        .description,
+    ).toContain(
       "Use href for any value found in an HTML/XHTML href attribute",
     );
   });

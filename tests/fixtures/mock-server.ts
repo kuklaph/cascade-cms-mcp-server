@@ -14,8 +14,9 @@
 import { mock } from "bun:test";
 import type {
   CallToolResult,
+  StandardSchemaWithJSON,
   ToolAnnotations,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "@modelcontextprotocol/server";
 
 /** A captured call to `server.registerTool(...)`. */
 export interface RegisteredTool {
@@ -66,4 +67,25 @@ export function firstText(r: CallToolResult): string {
     throw new Error("Expected first content block to be 'text'");
   }
   return block.text;
+}
+
+export function inputJsonSchema(inputSchema: unknown): Record<string, any> {
+  return (inputSchema as StandardSchemaWithJSON)["~standard"].jsonSchema.input({
+    target: "draft-2020-12",
+  }) as Record<string, any>;
+}
+
+export async function validateInputSchema(
+  inputSchema: unknown,
+  input: unknown,
+): Promise<Record<string, unknown>> {
+  const result = await (inputSchema as StandardSchemaWithJSON)[
+    "~standard"
+  ].validate(input);
+  if (result.issues) {
+    throw new Error(
+      result.issues.map((issue) => issue.message).join("; ") || "Invalid input",
+    );
+  }
+  return result.value as Record<string, unknown>;
 }

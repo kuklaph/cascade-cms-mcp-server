@@ -14,7 +14,7 @@
 import type {
   CallToolResult,
   ResourceLink,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "@modelcontextprotocol/server";
 import { CHARACTER_LIMIT, PREVIEW_LIMIT } from "./constants.js";
 import type { ResponseCache } from "./cache.js";
 

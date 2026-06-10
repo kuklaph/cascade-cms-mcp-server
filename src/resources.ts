@@ -25,11 +25,11 @@
 import {
   ResourceTemplate,
   type McpServer,
-} from "@modelcontextprotocol/sdk/server/mcp.js";
+} from "@modelcontextprotocol/server";
 import type {
   ReadResourceResult,
   TextResourceContents,
-} from "@modelcontextprotocol/sdk/types.js";
+} from "@modelcontextprotocol/server";
 import type { Types } from "cascade-cms-api";
 import type { CascadeClient } from "./client.js";
 import {

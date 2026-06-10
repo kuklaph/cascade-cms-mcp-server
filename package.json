@@ -41,19 +41,15 @@
     "prepublishOnly": "bun test && bun run build && bun run smoke:node"
   },
   "engines": {
-    "node": ">=18",
+    "node": ">=20",
     "bun": ">=1.0.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@cfworker/json-schema": "^4.1.1",
+    "@modelcontextprotocol/server": "2.0.0-alpha.2",
     "cascade-cms-api": "^2.0.2",
     "dotseal": "^1.0.0",
     "zod": "^4.4.3"
-  },
-  "overrides": {
-    "fast-uri": "^3.1.2",
-    "hono": "^4.12.18",
-    "ip-address": "^10.1.1"
   },
   "devDependencies": {
     "@types/bun": "latest",

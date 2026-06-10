@@ -11,7 +11,7 @@
  *     somehow embeds one (defensive redaction via `redactSecrets`).
  */
 
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 
 // Prefix that cascade-cms-api wraps around any failed request.
 // See main.js handleRequest: `throw new Error("Request Failed. Request Response: " + msg)`

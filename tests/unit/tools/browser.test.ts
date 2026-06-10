@@ -12,6 +12,7 @@ import {
 import {
   findTool,
   firstText,
+  inputJsonSchema,
   makeMockServer,
 } from "../../fixtures/mock-server.js";
 
@@ -37,7 +38,9 @@ describe("cascade_browser_login tool", () => {
     const tool = findTool(tools, "cascade_browser_login");
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.openWorldHint).toBe(true);
-    expect(Object.keys((tool.config.inputSchema as any).shape)).toEqual(["site_id"]);
+    expect(Object.keys(inputJsonSchema(tool.config.inputSchema).properties)).toEqual([
+      "site_id",
+    ]);
 
     const result = await tool.handler({ site_id: "site-123" });
 
@@ -132,7 +135,7 @@ describe("cascade_browser_check_draft tool", () => {
     const tool = findTool(tools, "cascade_browser_check_draft");
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
-    expect(Object.keys((tool.config.inputSchema as any).shape)).toEqual([
+    expect(Object.keys(inputJsonSchema(tool.config.inputSchema).properties)).toEqual([
       "asset_id",
       "asset_type",
     ]);

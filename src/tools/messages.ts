@@ -10,7 +10,7 @@
  * matching `CascadeClient` method.
  */
 
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import type { Types } from "cascade-cms-api";
 import type { CascadeClient } from "../client.js";
 import {
