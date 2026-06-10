@@ -155,6 +155,8 @@ Recommended browser setup:
 
 The site ID is required because Cascade's browser UI keeps an active site context. Browser login calls `switchSite.act` after authentication to mirror selecting a site in Cascade's site picker.
 
+Browser-backed requests start at most once every 3 seconds per MCP session to avoid pressuring Cascade's browser UI endpoints. This applies to startup login, auto-login, retries, draft checks, and snippet tools. Standard Cascade API tools are unaffected.
+
 #### Find the Site ID
 
 `CASCADE_BROWSER_SITE_ID` is the browser setup value users usually need to look up. To get the recommended production site ID:
