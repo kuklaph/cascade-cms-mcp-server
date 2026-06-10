@@ -9,15 +9,12 @@ import type {
   BrowserListSnippetsResult,
   BrowserSnippet,
   BrowserSnippetMutationResult,
-  TimeoutSignalFactory,
 } from "./types.js";
 
 type SnippetContext = {
   browserUrl: string;
   cookieHeader: string;
   fetchImpl: BrowserFetch;
-  timeoutMs: number;
-  timeoutSignal: TimeoutSignalFactory;
 };
 
 export async function listSnippets(
@@ -27,7 +24,6 @@ export async function listSnippets(
   const res = await ctx.fetchImpl(`${ctx.browserUrl}/ajax/snippets.act`, {
     headers: snippetJsonHeaders(ctx),
     method: "GET",
-    signal: ctx.timeoutSignal(ctx.timeoutMs),
   });
 
   await assertBrowserResponseOk(res, "List snippets");
@@ -99,7 +95,6 @@ export async function deleteSnippets(
     headers: snippetFormHeaders(ctx),
     body: body.toString(),
     method: "POST",
-    signal: ctx.timeoutSignal(ctx.timeoutMs),
   });
 
   await assertBrowserResponseOk(res, "Delete snippets");
@@ -116,7 +111,6 @@ async function submitSnippetForm(
     headers: snippetFormHeaders(ctx),
     body: body.toString(),
     method: "POST",
-    signal: ctx.timeoutSignal(ctx.timeoutMs),
   });
 
   await assertBrowserResponseOk(res, "Submit snippet");

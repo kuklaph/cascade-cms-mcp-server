@@ -6,15 +6,12 @@ import {
 import type {
   BrowserCheckDraftResult,
   BrowserFetch,
-  TimeoutSignalFactory,
 } from "./types.js";
 
 type CheckDraftContext = {
   browserUrl: string;
   cookieHeader: string;
   fetchImpl: BrowserFetch;
-  timeoutMs: number;
-  timeoutSignal: TimeoutSignalFactory;
 };
 
 export async function checkDraft(
@@ -31,7 +28,6 @@ export async function checkDraft(
           `&type=${encodeURIComponent(args.assetType)}&action=edit`,
       }),
       method: "GET",
-      signal: ctx.timeoutSignal(ctx.timeoutMs),
     },
   );
 

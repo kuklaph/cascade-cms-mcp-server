@@ -3,6 +3,7 @@ import {
   browserBaseUrlFromApiUrl,
   createBrowserSession,
 } from "../../src/browserApi.js";
+import { BROWSER_REQUEST_THROTTLE_MS } from "../../src/browser/throttle.js";
 
 type MockHeaders = {
   getSetCookie?: () => string[];
@@ -41,15 +42,32 @@ const response = ({
   json,
 });
 
-const fetchQueue = (responses: Array<ReturnType<typeof response>>) => {
+const fetchQueue = (
+  responses: Array<ReturnType<typeof response>>,
+  onFetch?: () => void,
+) => {
   const calls: Array<{ url: string; options: RequestInit }> = [];
   const fetchImpl = mock(async (url: string | URL | Request, options?: RequestInit) => {
+    onFetch?.();
     calls.push({ url: String(url), options: options ?? {} });
     const next = responses.shift();
     if (!next) throw new Error(`Unexpected fetch: ${String(url)}`);
     return next;
   });
   return { calls, fetchImpl };
+};
+
+const fakeClock = () => {
+  let current = 0;
+  return {
+    now: () => current,
+    sleep: async (ms: number) => {
+      current += ms;
+    },
+    get current() {
+      return current;
+    },
+  };
 };
 
 const loginResponses = ({
@@ -75,11 +93,23 @@ const configuredWithSiteId = {
   browserSiteId: "default-site",
 };
 
+const createFastBrowserSession = (
+  config: Parameters<typeof createBrowserSession>[0],
+  fetchImpl: Parameters<typeof createBrowserSession>[1],
+  timeoutSignal?: Parameters<typeof createBrowserSession>[2],
+) =>
+  createBrowserSession(
+    config,
+    fetchImpl,
+    timeoutSignal ?? ((ms) => AbortSignal.timeout(ms)),
+    { intervalMs: 0, sleep: async () => {} },
+  );
+
 const loggedInSession = async (
   responses: Array<ReturnType<typeof response>>,
 ) => {
   const { calls, fetchImpl } = fetchQueue([...loginResponses(), ...responses]);
-  const session = createBrowserSession(configured, fetchImpl as any);
+  const session = createFastBrowserSession(configured, fetchImpl as any);
   await session.login({ siteId: "site" });
   return { calls, session };
 };
@@ -110,7 +140,7 @@ describe("browserBaseUrlFromApiUrl", () => {
 describe("createBrowserSession", () => {
   test("preserves pathful browser URL overrides", async () => {
     const { calls, fetchImpl } = fetchQueue(loginResponses());
-    const session = createBrowserSession(
+    const session = createFastBrowserSession(
       {
         ...configured,
         browserUrl: "https://example.cascadecms.com/cascade/",
@@ -130,7 +160,7 @@ describe("createBrowserSession", () => {
 
   test("uses explicit browser URL host overrides", async () => {
     const { calls, fetchImpl } = fetchQueue(loginResponses());
-    const session = createBrowserSession(
+    const session = createFastBrowserSession(
       {
         ...configured,
         url: "https://cms.example.edu/api/v1/",
@@ -150,7 +180,7 @@ describe("createBrowserSession", () => {
 
   test("rejects unrelated browser URL host overrides before fetch", async () => {
     const { calls, fetchImpl } = fetchQueue([]);
-    const session = createBrowserSession(
+    const session = createFastBrowserSession(
       { ...configured, browserUrl: "https://not-cascade.example.net" },
       fetchImpl as any,
     );
@@ -163,7 +193,7 @@ describe("createBrowserSession", () => {
 
   test("logs in, switches site, and returns no cookie values", async () => {
     const { calls, fetchImpl } = fetchQueue(loginResponses());
-    const session = createBrowserSession(configured, fetchImpl as any);
+    const session = createFastBrowserSession(configured, fetchImpl as any);
 
     const result = await session.login({ siteId: "abc123" });
 
@@ -194,7 +224,7 @@ describe("createBrowserSession", () => {
 
   test("uses configured browser site ID when login input omits siteId", async () => {
     const { calls, fetchImpl } = fetchQueue(loginResponses());
-    const session = createBrowserSession(configuredWithSiteId, fetchImpl as any);
+    const session = createFastBrowserSession(configuredWithSiteId, fetchImpl as any);
 
     const result = await session.login({});
 
@@ -207,7 +237,7 @@ describe("createBrowserSession", () => {
 
   test("requires site ID from login input or CASCADE_BROWSER_SITE_ID", async () => {
     const { calls, fetchImpl } = fetchQueue([]);
-    const session = createBrowserSession(configured, fetchImpl as any);
+    const session = createFastBrowserSession(configured, fetchImpl as any);
 
     await expect(session.login({})).rejects.toThrow("CASCADE_BROWSER_SITE_ID");
     expect(calls).toHaveLength(0);
@@ -221,7 +251,7 @@ describe("createBrowserSession", () => {
         }),
       }),
     );
-    const session = createBrowserSession(configured, fetchImpl as any);
+    const session = createFastBrowserSession(configured, fetchImpl as any);
 
     await session.login({ siteId: "site" });
 
@@ -236,7 +266,7 @@ describe("createBrowserSession", () => {
         }),
       }),
     );
-    await createBrowserSession(configured, node.fetchImpl as any).login({ siteId: "site" });
+    await createFastBrowserSession(configured, node.fetchImpl as any).login({ siteId: "site" });
     expect(node.calls[1].options.headers).toMatchObject({ cookie: "JSESSIONID=node" });
 
     const bun = fetchQueue(
@@ -247,13 +277,13 @@ describe("createBrowserSession", () => {
         }),
       }),
     );
-    await createBrowserSession(configured, bun.fetchImpl as any).login({ siteId: "site" });
+    await createFastBrowserSession(configured, bun.fetchImpl as any).login({ siteId: "site" });
     expect(bun.calls[1].options.headers).toMatchObject({ cookie: "JSESSIONID=bun" });
   });
 
   test("rejects non-HTTPS browser URLs before fetch", async () => {
     const { calls, fetchImpl } = fetchQueue([]);
-    const session = createBrowserSession(
+    const session = createFastBrowserSession(
       { ...configured, browserUrl: "http://example.cascadecms.com" },
       fetchImpl as any,
     );
@@ -266,7 +296,7 @@ describe("createBrowserSession", () => {
 
   test("requires browser username and password before fetch", async () => {
     const { calls, fetchImpl } = fetchQueue([]);
-    const session = createBrowserSession(
+    const session = createFastBrowserSession(
       {
         apiKey: "api-key",
         url: "https://example.cascadecms.com/api/v1/",
@@ -290,7 +320,7 @@ describe("createBrowserSession", () => {
     ]);
 
     await expect(
-      createBrowserSession(configured, fetchImpl as any).login({ siteId: "site" }),
+      createFastBrowserSession(configured, fetchImpl as any).login({ siteId: "site" }),
     ).rejects.toThrow("Could not get browser session");
   });
 
@@ -299,7 +329,7 @@ describe("createBrowserSession", () => {
       response({ headers: headersFrom({ get: () => "JSESSIONID=init; Path=/" }) }),
       response({ ok: false }),
     ]);
-    const session = createBrowserSession(configured, fetchImpl as any);
+    const session = createFastBrowserSession(configured, fetchImpl as any);
 
     await expect(session.login({ siteId: "site" })).rejects.toThrow("Failed to login");
     expect(calls).toHaveLength(2);
@@ -313,7 +343,7 @@ describe("createBrowserSession", () => {
       response(),
       response({ ok: false }),
     ]);
-    const session = createBrowserSession(configured, fetchImpl as any);
+    const session = createFastBrowserSession(configured, fetchImpl as any);
 
     await expect(session.login({ siteId: "site" })).rejects.toThrow(
       "Failed to login/switch site",
@@ -331,7 +361,7 @@ describe("createBrowserSession", () => {
           '<form action="/loginsubmit.act"><input name="username"><input name="password"></form>',
       }),
     ]);
-    const session = createBrowserSession(configured, fetchImpl as any);
+    const session = createFastBrowserSession(configured, fetchImpl as any);
 
     await expect(session.login({ siteId: "site" })).rejects.toThrow("Failed to login");
     expect(session.hasSession()).toBe(false);
@@ -346,7 +376,7 @@ describe("createBrowserSession", () => {
       new AbortController().signal,
     ];
     const timeoutMs: number[] = [];
-    const session = createBrowserSession(
+    const session = createFastBrowserSession(
       { ...configured, timeoutMs: 1234 },
       fetchImpl as any,
       (ms) => {
@@ -359,6 +389,56 @@ describe("createBrowserSession", () => {
 
     expect(timeoutMs).toEqual([1234, 1234, 1234]);
     expect(calls.map((call) => call.options.signal)).toEqual(signals);
+  });
+
+  test("throttles login browser request starts", async () => {
+    const clock = fakeClock();
+    const starts: number[] = [];
+    const { fetchImpl } = fetchQueue(loginResponses(), () => {
+      starts.push(clock.current);
+    });
+    const session = createBrowserSession(
+      configured,
+      fetchImpl as any,
+      (ms) => AbortSignal.timeout(ms),
+      {
+        now: clock.now,
+        sleep: clock.sleep,
+      },
+    );
+
+    await session.login({ siteId: "site" });
+
+    expect(starts).toEqual([
+      0,
+      BROWSER_REQUEST_THROTTLE_MS,
+      BROWSER_REQUEST_THROTTLE_MS * 2,
+    ]);
+  });
+
+  test("creates browser timeout signals at request start after throttle waits", async () => {
+    const clock = fakeClock();
+    const signalStarts: number[] = [];
+    const session = createBrowserSession(
+      configured,
+      fetchQueue(loginResponses()).fetchImpl as any,
+      (ms) => {
+        signalStarts.push(clock.current);
+        return AbortSignal.timeout(ms);
+      },
+      {
+        now: clock.now,
+        sleep: clock.sleep,
+      },
+    );
+
+    await session.login({ siteId: "site" });
+
+    expect(signalStarts).toEqual([
+      0,
+      BROWSER_REQUEST_THROTTLE_MS,
+      BROWSER_REQUEST_THROTTLE_MS * 2,
+    ]);
   });
 
   test("checks draft notification with the authenticated browser session", async () => {
@@ -408,7 +488,7 @@ describe("createBrowserSession", () => {
 
   test("requires browser login before checking drafts", async () => {
     const { calls, fetchImpl } = fetchQueue([]);
-    const session = createBrowserSession(configured, fetchImpl as any);
+    const session = createFastBrowserSession(configured, fetchImpl as any);
 
     await expect(
       session.checkDraft({ assetId: "asset-123", assetType: "page" }),
@@ -512,7 +592,7 @@ describe("createBrowserSession", () => {
       ...loginResponses(),
       response({ json: async () => ({ snippets }) }),
     ]);
-    const session = createBrowserSession(configuredWithSiteId, fetchImpl as any);
+    const session = createFastBrowserSession(configuredWithSiteId, fetchImpl as any);
 
     const result = await session.listSnippets({ limit: 50, offset: 0 });
 
@@ -528,6 +608,115 @@ describe("createBrowserSession", () => {
       total: 1,
       count: 1,
     });
+  });
+
+  test("throttles automatic login and browser helper requests on one queue", async () => {
+    const clock = fakeClock();
+    const starts: number[] = [];
+    const snippets = [{ id: "id-1", name: "alpha" }];
+    const { fetchImpl } = fetchQueue(
+      [
+        ...loginResponses(),
+        response({ json: async () => ({ snippets }) }),
+      ],
+      () => {
+        starts.push(clock.current);
+      },
+    );
+    const session = createBrowserSession(
+      configuredWithSiteId,
+      fetchImpl as any,
+      (ms) => AbortSignal.timeout(ms),
+      {
+        now: clock.now,
+        sleep: clock.sleep,
+      },
+    );
+
+    await session.listSnippets({ limit: 50, offset: 0 });
+
+    expect(starts).toEqual([
+      0,
+      BROWSER_REQUEST_THROTTLE_MS,
+      BROWSER_REQUEST_THROTTLE_MS * 2,
+      BROWSER_REQUEST_THROTTLE_MS * 3,
+    ]);
+  });
+
+  test("throttles expired-session re-login and retried browser request", async () => {
+    const clock = fakeClock();
+    const starts: number[] = [];
+    const { fetchImpl } = fetchQueue(
+      [
+        ...loginResponses(),
+        response({ ok: false, status: 401, text: async () => "Unauthorized" }),
+        ...loginResponses(),
+        response({ json: async () => ({ snippets: [] }) }),
+      ],
+      () => {
+        starts.push(clock.current);
+      },
+    );
+    const session = createBrowserSession(
+      configuredWithSiteId,
+      fetchImpl as any,
+      (ms) => AbortSignal.timeout(ms),
+      {
+        now: clock.now,
+        sleep: clock.sleep,
+      },
+    );
+
+    await session.listSnippets({ limit: 50, offset: 0 });
+
+    expect(starts).toEqual([
+      0,
+      BROWSER_REQUEST_THROTTLE_MS,
+      BROWSER_REQUEST_THROTTLE_MS * 2,
+      BROWSER_REQUEST_THROTTLE_MS * 3,
+      BROWSER_REQUEST_THROTTLE_MS * 4,
+      BROWSER_REQUEST_THROTTLE_MS * 5,
+      BROWSER_REQUEST_THROTTLE_MS * 6,
+      BROWSER_REQUEST_THROTTLE_MS * 7,
+    ]);
+  });
+
+  test("throttles concurrent browser helper request starts", async () => {
+    const clock = fakeClock();
+    const starts: number[] = [];
+    const { fetchImpl } = fetchQueue(
+      [
+        ...loginResponses(),
+        response({ json: async () => ({ snippets: [] }) }),
+        response({ text: async () => "{}" }),
+      ],
+      () => {
+        starts.push(clock.current);
+      },
+    );
+    const session = createBrowserSession(
+      configured,
+      fetchImpl as any,
+      (ms) => AbortSignal.timeout(ms),
+      {
+        now: clock.now,
+        sleep: clock.sleep,
+      },
+    );
+    await session.login({ siteId: "site" });
+
+    await Promise.all([
+      session.listSnippets({ limit: 50, offset: 0 }),
+      session.checkDraft({ assetId: "asset-123", assetType: "page" }),
+    ]);
+
+    expect(starts).toEqual([
+      0,
+      BROWSER_REQUEST_THROTTLE_MS,
+      BROWSER_REQUEST_THROTTLE_MS * 2,
+      BROWSER_REQUEST_THROTTLE_MS * 3,
+      BROWSER_REQUEST_THROTTLE_MS * 4,
+    ]);
   });
 
   test("creates snippets with form-encoded fields and minimal headers", async () => {
@@ -647,7 +836,7 @@ describe("createBrowserSession", () => {
 
   test("requires browser login before snippet operations", async () => {
     const { calls, fetchImpl } = fetchQueue([]);
-    const session = createBrowserSession(configured, fetchImpl as any);
+    const session = createFastBrowserSession(configured, fetchImpl as any);
 
     await expect(session.listSnippets({ limit: 50, offset: 0 })).rejects.toThrow(
       "CASCADE_BROWSER_SITE_ID",

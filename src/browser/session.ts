@@ -17,6 +17,10 @@ import {
   listSnippets,
   updateSnippet,
 } from "./snippets.js";
+import {
+  BrowserRequestThrottle,
+  type BrowserRequestThrottleOptions,
+} from "./throttle.js";
 import type {
   BrowserCheckDraftResult,
   BrowserDeleteSnippetsResult,
@@ -35,8 +39,9 @@ export function createBrowserSession(
   config: Config,
   fetchImpl: BrowserFetch = fetch as BrowserFetch,
   timeoutSignal: TimeoutSignalFactory = (timeoutMs) => AbortSignal.timeout(timeoutMs),
+  throttleOptions?: BrowserRequestThrottleOptions,
 ): BrowserSession {
-  return new BrowserApiSession(config, fetchImpl, timeoutSignal);
+  return new BrowserApiSession(config, fetchImpl, timeoutSignal, throttleOptions);
 }
 
 class BrowserApiSession implements BrowserSession {
@@ -48,6 +53,7 @@ class BrowserApiSession implements BrowserSession {
   private readonly timeoutMs: number;
   private readonly fetchImpl: BrowserFetch;
   private readonly timeoutSignal: TimeoutSignalFactory;
+  private readonly throttle: BrowserRequestThrottle;
   private readonly cookies = new Map<string, string>();
   private authenticated = false;
 
@@ -55,6 +61,7 @@ class BrowserApiSession implements BrowserSession {
     config: Config,
     fetchImpl: BrowserFetch,
     timeoutSignal: TimeoutSignalFactory,
+    throttleOptions?: BrowserRequestThrottleOptions,
   ) {
     this.apiUrl = config.url;
     this.browserUrl = config.browserUrl
@@ -66,6 +73,7 @@ class BrowserApiSession implements BrowserSession {
     this.timeoutMs = config.timeoutMs;
     this.fetchImpl = fetchImpl;
     this.timeoutSignal = timeoutSignal;
+    this.throttle = new BrowserRequestThrottle(throttleOptions);
   }
 
   async login(args: { siteId?: string }): Promise<BrowserLoginResult> {
@@ -141,12 +149,11 @@ class BrowserApiSession implements BrowserSession {
   }
 
   private async init(cookies: Map<string, string>): Promise<void> {
-    const res = await this.fetchImpl(this.browserUrl, {
+    const res = await this.fetchBrowser(this.browserUrl, {
       headers: documentHeaders({
         Referer: this.browserUrl,
       }),
       method: "GET",
-      signal: this.timeoutSignal(this.timeoutMs),
     });
     this.rememberCookies(res.headers, cookies);
     if (!this.hasSessionCookie(cookies)) {
@@ -160,7 +167,7 @@ class BrowserApiSession implements BrowserSession {
       password: this.password ?? "",
       timeZone: getTimeZoneOffset(),
     }).toString();
-    const res = await this.fetchImpl(`${this.browserUrl}/loginsubmit.act`, {
+    const res = await this.fetchBrowser(`${this.browserUrl}/loginsubmit.act`, {
       headers: documentHeaders({
         "content-type": "application/x-www-form-urlencoded",
         cookie: cookieHeader(cookies),
@@ -168,7 +175,6 @@ class BrowserApiSession implements BrowserSession {
       }),
       body,
       method: "POST",
-      signal: this.timeoutSignal(this.timeoutMs),
     });
     if (!res.ok || await isLoginPageResponse(res)) {
       throw new Error("Failed to login");
@@ -180,7 +186,7 @@ class BrowserApiSession implements BrowserSession {
     siteId: string,
     cookies: Map<string, string>,
   ): Promise<void> {
-    const res = await this.fetchImpl(
+    const res = await this.fetchBrowser(
       `${this.browserUrl}/switchSite.act?siteId=${encodeURIComponent(siteId)}`,
       {
         headers: documentHeaders({
@@ -188,7 +194,6 @@ class BrowserApiSession implements BrowserSession {
           Referer: `${this.browserUrl}/home.act`,
         }),
         method: "GET",
-        signal: this.timeoutSignal(this.timeoutMs),
       },
     );
     if (!res.ok || await isLoginPageResponse(res)) {
@@ -246,10 +251,20 @@ class BrowserApiSession implements BrowserSession {
     return {
       browserUrl: this.browserUrl,
       cookieHeader: this.cookieHeader(),
-      fetchImpl: this.fetchImpl,
-      timeoutMs: this.timeoutMs,
-      timeoutSignal: this.timeoutSignal,
+      fetchImpl: (input: string, init?: RequestInit) => this.fetchBrowser(input, init),
     };
+  }
+
+  private async fetchBrowser(
+    input: string,
+    init: RequestInit = {},
+  ): Promise<Awaited<ReturnType<BrowserFetch>>> {
+    return this.throttle.run(() =>
+      this.fetchImpl(input, {
+        ...init,
+        signal: init.signal ?? this.timeoutSignal(this.timeoutMs),
+      }),
+    );
   }
 
   private invalidateSession(): void {

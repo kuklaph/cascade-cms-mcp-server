@@ -4,6 +4,10 @@ All notable changes to `cascade-cms-mcp-server` will be documented here.
 
 ## Unreleased
 
+### Changed
+
+- Browser-backed requests now start at most once every 3 seconds per MCP session to reduce pressure on Cascade browser UI endpoints.
+
 ## 1.1.3 - 2026-06-10
 
 ### Added
