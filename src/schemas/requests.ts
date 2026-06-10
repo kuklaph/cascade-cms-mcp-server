@@ -1714,7 +1714,116 @@ export type PublishUnpublishInput = z.infer<
 >;
 
 /** -------------------------------------------------------------------------
- * 25. EditPreferenceRequest
+ * 26. BrowserLoginRequest
+ * ------------------------------------------------------------------------ */
+export const BrowserLoginRequestSchema = z
+  .object({
+    site_id: z
+      .string()
+      .min(1, "site_id must not be empty")
+      .optional()
+      .describe(
+        "Cascade site ID to switch into after browser UI login. Required unless CASCADE_BROWSER_SITE_ID is configured.",
+      ),
+  })
+  .strict();
+
+export type BrowserLoginInput = z.infer<typeof BrowserLoginRequestSchema>;
+
+/** -------------------------------------------------------------------------
+ * 27. BrowserCheckDraftRequest
+ * ------------------------------------------------------------------------ */
+export const BrowserCheckDraftRequestSchema = z
+  .object({
+    asset_id: z
+      .string()
+      .min(1, "asset_id must not be empty")
+      .describe("REQUIRED: Cascade asset ID to check for active editing drafts."),
+    asset_type: EntityTypeSchema.describe(
+      "REQUIRED: Cascade entity type for the asset, used when building the browser edit referer.",
+    ),
+  })
+  .strict();
+
+export type BrowserCheckDraftInput = z.infer<
+  typeof BrowserCheckDraftRequestSchema
+>;
+
+/** -------------------------------------------------------------------------
+ * 28. BrowserListSnippetsRequest
+ * ------------------------------------------------------------------------ */
+export const BrowserListSnippetsRequestSchema = z
+  .object({
+    ...PaginationFields,
+  })
+  .strict();
+
+export type BrowserListSnippetsInput = z.infer<
+  typeof BrowserListSnippetsRequestSchema
+>;
+
+/** -------------------------------------------------------------------------
+ * 29. BrowserCreateSnippetRequest
+ * ------------------------------------------------------------------------ */
+export const BrowserCreateSnippetRequestSchema = z
+  .object({
+    title: z
+      .string()
+      .min(1, "title must not be empty")
+      .describe("REQUIRED: Human-readable snippet title."),
+    name: z
+      .string()
+      .min(1, "name must not be empty")
+      .describe("REQUIRED: Snippet system name used in the snippet token."),
+    value: z.string().describe("REQUIRED: Snippet replacement value."),
+  })
+  .strict();
+
+export type BrowserCreateSnippetInput = z.infer<
+  typeof BrowserCreateSnippetRequestSchema
+>;
+
+/** -------------------------------------------------------------------------
+ * 30. BrowserUpdateSnippetRequest
+ * ------------------------------------------------------------------------ */
+export const BrowserUpdateSnippetRequestSchema = z
+  .object({
+    id: z
+      .string()
+      .min(1, "id must not be empty")
+      .describe("REQUIRED: Snippet ID from cascade_browser_list_snippets."),
+    title: z
+      .string()
+      .min(1, "title must not be empty")
+      .describe("REQUIRED: Updated snippet title."),
+    value: z.string().describe("REQUIRED: Updated snippet replacement value."),
+  })
+  .strict();
+
+export type BrowserUpdateSnippetInput = z.infer<
+  typeof BrowserUpdateSnippetRequestSchema
+>;
+
+/** -------------------------------------------------------------------------
+ * 31. BrowserDeleteSnippetsRequest
+ * ------------------------------------------------------------------------ */
+export const BrowserDeleteSnippetsRequestSchema = z
+  .object({
+    ids: z
+      .array(z.string().min(1, "snippet id must not be empty"))
+      .min(1, "ids must include at least one snippet id")
+      .describe(
+        "REQUIRED: One or more snippet IDs from cascade_browser_list_snippets.",
+      ),
+  })
+  .strict();
+
+export type BrowserDeleteSnippetsInput = z.infer<
+  typeof BrowserDeleteSnippetsRequestSchema
+>;
+
+/** -------------------------------------------------------------------------
+ * 32. EditPreferenceRequest
  * ------------------------------------------------------------------------ */
 export const EditPreferenceRequestSchema = z
   .object({
@@ -1727,7 +1836,7 @@ export const EditPreferenceRequestSchema = z
 export type EditPreferenceInput = z.infer<typeof EditPreferenceRequestSchema>;
 
 /** -------------------------------------------------------------------------
- * 26. ReadResponseRequest — retrieve a slice of a cached oversize response.
+ * 33. ReadResponseRequest — retrieve a slice of a cached oversize response.
  *
  * This is the only MCP-native tool (no Cascade backend). Agents call it with
  * a handle produced by an oversize tool response to fetch additional bytes.

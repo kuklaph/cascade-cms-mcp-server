@@ -23,6 +23,7 @@ import { logToolInvocation } from "../audit.js";
 import type { ResponseCache } from "../cache.js";
 import type { AssetCache } from "../assetIndex.js";
 import type { DraftCache } from "../assetDrafts.js";
+import type { BrowserSession } from "../browserApi.js";
 import {
   describeToolBlockRule,
   findDeniedToolCall,
@@ -41,6 +42,7 @@ export interface CascadeDeps {
   assetCache?: AssetCache;
   draftCache?: DraftCache;
   toolBlockStore?: ToolBlockStore;
+  browserSession?: BrowserSession;
 }
 
 /**

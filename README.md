@@ -2,7 +2,7 @@
 
 An MCP (Model Context Protocol) server that exposes the Cascade CMS REST API to LLMs and agents. It wraps the [cascade-cms-api](https://github.com/kuklaph/cascade-cms-api) library with Zod validation, JSON response text, structuredContent, and actionable error messages.
 
-Built in TypeScript on [Bun](https://bun.sh). The published server provides 62 MCP tools and 5 resources/templates for Cascade CMS asset reads/writes, binary file-data handling, draft-based create/edit workflows, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish, blocked-call management, site-removal safeguarding, server version checks, and cached response retrieval.
+Built in TypeScript on [Bun](https://bun.sh). The published server provides 68 MCP tools and 5 resources/templates for Cascade CMS asset reads/writes, binary file-data handling, draft-based create/edit workflows, browser-backed functionality, search, sites, access rights, workflow, messages, check in/out, audits/preferences, publish, blocked-call management, site-removal safeguarding, server version checks, and cached response retrieval.
 
 ## Requirements
 
@@ -16,6 +16,8 @@ Built in TypeScript on [Bun](https://bun.sh). The published server provides 62 M
 Most MCP clients need the same four values: command, args, `CASCADE_API_KEY`, and `CASCADE_URL`. Add them wherever your client manages MCP servers. `bunx` is the preferred runner; use `npx` if Bun is not installed.
 
 The example credentials below are placeholders. For real credentials, use your MCP client's secret or environment management when available, or dotseal-encrypted values. Do not commit MCP config files that contain API keys.
+
+For Cascade API access, consider using a dedicated service/API user when your organization can provide one. Give that user only the permissions needed for the MCP workflows instead of using a personal account.
 
 ### MCP Client Config
 
@@ -61,7 +63,7 @@ For clients with a UI instead of JSON, enter the same values:
 | ----------- | --------------------------------------------------------------- | ------------------------------ |
 | Command     | `bunx`                                                          | `npx`                          |
 | Arguments   | `cascade-cms-mcp-server`                                        | `-y`, `cascade-cms-mcp-server` |
-| Environment | `CASCADE_API_KEY`, `CASCADE_URL`, optional `CASCADE_TIMEOUT_MS` | Same                           |
+| Environment | `CASCADE_API_KEY`, `CASCADE_URL`, optional `CASCADE_TIMEOUT_MS`, optional browser API env | Same                           |
 
 Restart the client after changing its MCP config. Then call `cascade_server_version` to confirm the running server name and version.
 
@@ -114,15 +116,42 @@ $env:CASCADE_URL = "https://yourorg.cascadecms.com/api/v1/"
 
 ## Environment Variables
 
-| Variable             | Required | Description                                                           |
-| -------------------- | :------: | --------------------------------------------------------------------- |
-| `CASCADE_API_KEY`    |   Yes    | API key generated from your Cascade dashboard                         |
-| `CASCADE_URL`        |   Yes    | Cascade API URL, for example `https://yourorg.cascadecms.com/api/v1/` |
-| `CASCADE_TIMEOUT_MS` |    No    | Request timeout in milliseconds. Default: `30000`                     |
+| Variable                   | Required | Description                                                           |
+| -------------------------- | :------: | --------------------------------------------------------------------- |
+| `CASCADE_API_KEY`          |   Yes    | API key generated from your Cascade dashboard                         |
+| `CASCADE_URL`              |   Yes    | Cascade API URL, for example `https://yourorg.cascadecms.com/api/v1/` |
+| `CASCADE_TIMEOUT_MS`       |    No    | Request timeout in milliseconds. Default: `30000`                     |
+| `CASCADE_BROWSER_USERNAME` |    No    | Browser UI username for browser-backed tools. Use with `CASCADE_BROWSER_PASSWORD` and `CASCADE_BROWSER_SITE_ID` |
+| `CASCADE_BROWSER_PASSWORD` |    No    | Browser UI password for browser-backed tools. Use with `CASCADE_BROWSER_USERNAME` and `CASCADE_BROWSER_SITE_ID` |
+| `CASCADE_BROWSER_SITE_ID`  |    No    | Cascade site ID for startup/automatic browser login. Use the production site ID by default. If omitted, run `cascade_browser_login` with `site_id` before other browser tools |
+| `CASCADE_BROWSER_URL`      |    No    | HTTPS browser UI root URL. Defaults to the origin derived from `CASCADE_URL`. Set this when the browser login host or root path differs |
+
+## Browser API Setup
+
+The standard Cascade API tools only require `CASCADE_API_KEY` and `CASCADE_URL`. Browser-backed tools are separate: they log in through Cascade's browser UI, store a session cookie in the MCP server process, and call browser-only endpoints that are not available through the standard API.
+
+Recommended browser setup:
+
+1. Set `CASCADE_BROWSER_USERNAME`, `CASCADE_BROWSER_PASSWORD`, and `CASCADE_BROWSER_SITE_ID` together before starting the MCP server.
+2. Use the production site ID for `CASCADE_BROWSER_SITE_ID` unless you intentionally want browser tools scoped to another site.
+3. Set `CASCADE_BROWSER_URL` only when the browser login host differs from the origin derived from `CASCADE_URL`. The browser host must match `CASCADE_URL` or share its parent domain.
+
+The site ID is required because Cascade's browser UI keeps an active site context. The MCP browser login calls `switchSite.act` after login to mirror selecting a site in Cascade's site picker; many browser endpoints assume that active site has been selected.
+
+Easiest way to find the production site ID:
+
+1. Log in to Cascade in your browser.
+2. Select the production site from the site selector.
+3. Open that site's Manage Site area.
+4. Copy the site ID from the browser URL and paste it into `CASCADE_BROWSER_SITE_ID`.
+
+You can also call `cascade_list_sites` after configuring the core API values, but that depends on the API user's permissions and may not show the intended production site if permissions are incomplete.
+
+When all three browser values are present, server startup attempts browser login and caches the session. If that login fails, the MCP server still starts so normal API tools remain available. Browser tools can retry login automatically when full browser config is present. If browser config is missing or incomplete, browser tool errors name the missing setup and recovery path.
 
 ## Encrypted Environment Values
 
-If you prefer keeping your env values encrypted at rest, `CASCADE_API_KEY`, `CASCADE_URL`, and `CASCADE_TIMEOUT_MS` may also be [dotseal](https://github.com/kuklaph/dotseal) ciphertexts with the `enc:<iv>:<authTag>:<ciphertext>` format. This package includes dotseal as a runtime dependency, so encrypted `enc:` values work when the server runs through `bunx` or `npx`. Plaintext values pass through without loading dotseal.
+If you prefer keeping your env values encrypted at rest, all environment values above may also be [dotseal](https://github.com/kuklaph/dotseal) ciphertexts with the `enc:<iv>:<authTag>:<ciphertext>` format. This package includes dotseal as a runtime dependency, so encrypted `enc:` values work when the server runs through `bunx` or `npx`. Plaintext values pass through without loading dotseal.
 
 The bundled runtime dependency is not exposed as a `dotseal` shell command. Use `bunx`, `npx`, or a separate global install when you want to generate ciphertexts:
 
@@ -183,6 +212,9 @@ Use this section to decide whether this MCP covers the job. Your MCP client or a
 | Inspect raw asset content, references, strings, links, paths, and structured-data nodelets after a read | Yes       |
 | Inspect binary `file.data`, read bounded byte ranges, return image content, and export files locally    | Yes       |
 | Build, inspect, patch, validate, and submit complete create/edit asset drafts                           | Yes       |
+| Authenticate to the Cascade browser UI and cache a browser session                                      | Yes       |
+| Check the browser-only active editing draft notification for an asset                                   | Yes; requires browser API config or prior `cascade_browser_login`, plus `asset_id` and `asset_type` |
+| List, create, update, and delete browser-admin snippets                                                 | Yes; requires browser API config or prior `cascade_browser_login` |
 | Fetch additional bytes from large/truncated responses                                                   | Yes       |
 | Persist blocked-call rules that prevent matching Cascade tool calls from running                        | Yes       |
 | Generate site and root-folder removal safeguards                                                        | Yes       |
@@ -223,6 +255,8 @@ Read-only tools:
 | `cascade_draft_resolve_nodes`       | Resolve structured-data nodes by semantic criteria |
 | `cascade_draft_assert_values`       | Assert structured-data field values in a draft     |
 | `cascade_draft_validate`            | Validate a draft without calling Cascade           |
+| `cascade_browser_check_draft`       | Check browser-only active editing draft notification for an asset |
+| `cascade_browser_list_snippets`     | List browser-admin snippets with pagination        |
 
 `cascade_read` helper tools:
 
@@ -275,6 +309,10 @@ Approval recommended:
 | `cascade_draft_set_file_data`         | Sets signed Cascade file bytes on a local file draft from exactly one path or base64 payload |
 | `cascade_draft_submit`                | Creates or edits an asset from the complete validated draft payload                       |
 | `cascade_file_data_export`            | Writes Cascade file bytes to an explicit local filesystem path                            |
+| `cascade_browser_login`               | Authenticates to the browser UI and stores a local browser session for later browser tools |
+| `cascade_browser_create_snippet`      | Creates a browser-admin snippet                                                        |
+| `cascade_browser_update_snippet`      | Updates a browser-admin snippet by ID                                                   |
+| `cascade_browser_delete_snippets`     | Deletes one or more browser-admin snippets by ID                                        |
 | `cascade_move`                        | Moves or renames an asset                                                                 |
 | `cascade_copy`                        | Copies an asset                                                                           |
 | `cascade_site_copy`                   | Copies a site                                                                             |

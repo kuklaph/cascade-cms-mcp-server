@@ -6,12 +6,18 @@ All notable changes to `cascade-cms-mcp-server` will be documented here.
 
 ### Added
 
+- Added browser-backed tools for Cascade browser UI login, active draft notification checks, and snippet administration.
 - Added `cascade_draft_set_file_data` to set draft `file.data` from exactly one local path or base64 payload, preserving real `text` values and removing only null scaffold placeholders.
 
 ### Changed
 
+- Browser-backed tools now cache the browser session in memory, auto-login when full browser config is present, and support `CASCADE_BROWSER_SITE_ID` for startup/default site activation.
 - `cascade_create`, `cascade_edit`, and `cascade_draft_submit` now normalize `file.data` byte arrays to Cascade signed Java bytes.
 - Draft file-data bytes are kept outside the draft JSON cache until submit so large uploads do not trip the draft JSON size guard.
+
+### Fixed
+
+- Preserved browser endpoint `success: false` mutation responses and surfaced non-auth browser HTTP failures without clearing valid sessions.
 
 ## 1.1.3 - 2026-06-03
 

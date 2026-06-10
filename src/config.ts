@@ -16,6 +16,10 @@ export type Config = {
   apiKey: string;
   url: string;
   timeoutMs: number;
+  browserUsername?: string;
+  browserPassword?: string;
+  browserUrl?: string;
+  browserSiteId?: string;
 };
 
 const ConfigSchema = z.object({
@@ -33,6 +37,32 @@ const ConfigSchema = z.object({
       (v) => v === undefined || /^\d+$/.test(v),
       "CASCADE_TIMEOUT_MS must be a positive integer (milliseconds)",
     ),
+  CASCADE_BROWSER_USERNAME: z
+    .string()
+    .min(1, "CASCADE_BROWSER_USERNAME must not be empty")
+    .optional(),
+  CASCADE_BROWSER_PASSWORD: z
+    .string()
+    .min(1, "CASCADE_BROWSER_PASSWORD must not be empty")
+    .optional(),
+  CASCADE_BROWSER_URL: z
+    .string()
+    .url("CASCADE_BROWSER_URL must be a valid URL")
+    .optional(),
+  CASCADE_BROWSER_SITE_ID: z
+    .string()
+    .min(1, "CASCADE_BROWSER_SITE_ID must not be empty")
+    .optional(),
+}).superRefine((data, ctx) => {
+  if (!!data.CASCADE_BROWSER_USERNAME === !!data.CASCADE_BROWSER_PASSWORD) return;
+  const missing = data.CASCADE_BROWSER_USERNAME
+    ? "CASCADE_BROWSER_PASSWORD"
+    : "CASCADE_BROWSER_USERNAME";
+  ctx.addIssue({
+    code: "custom",
+    path: [missing],
+    message: `${missing} is required when browser login credentials are configured`,
+  });
 });
 
 type dotsealModule = {
@@ -87,6 +117,10 @@ export async function loadConfig(
   let apiKey: string | undefined;
   let url: string | undefined;
   let timeoutMs: string | undefined;
+  let browserUsername: string | undefined;
+  let browserPassword: string | undefined;
+  let browserUrl: string | undefined;
+  let browserSiteId: string | undefined;
 
   ({ value: apiKey, dotseal } = await decryptIfNeeded(
     "CASCADE_API_KEY",
@@ -103,11 +137,35 @@ export async function loadConfig(
     env.CASCADE_TIMEOUT_MS,
     dotseal,
   ));
+  ({ value: browserUsername, dotseal } = await decryptIfNeeded(
+    "CASCADE_BROWSER_USERNAME",
+    env.CASCADE_BROWSER_USERNAME,
+    dotseal,
+  ));
+  ({ value: browserPassword, dotseal } = await decryptIfNeeded(
+    "CASCADE_BROWSER_PASSWORD",
+    env.CASCADE_BROWSER_PASSWORD,
+    dotseal,
+  ));
+  ({ value: browserUrl, dotseal } = await decryptIfNeeded(
+    "CASCADE_BROWSER_URL",
+    env.CASCADE_BROWSER_URL,
+    dotseal,
+  ));
+  ({ value: browserSiteId, dotseal } = await decryptIfNeeded(
+    "CASCADE_BROWSER_SITE_ID",
+    env.CASCADE_BROWSER_SITE_ID,
+    dotseal,
+  ));
 
   const parsed = ConfigSchema.safeParse({
     CASCADE_API_KEY: apiKey,
     CASCADE_URL: url,
     CASCADE_TIMEOUT_MS: timeoutMs,
+    CASCADE_BROWSER_USERNAME: browserUsername,
+    CASCADE_BROWSER_PASSWORD: browserPassword,
+    CASCADE_BROWSER_URL: browserUrl,
+    CASCADE_BROWSER_SITE_ID: browserSiteId,
   });
 
   if (!parsed.success) {
@@ -126,5 +184,17 @@ export async function loadConfig(
     timeoutMs: data.CASCADE_TIMEOUT_MS
       ? Number(data.CASCADE_TIMEOUT_MS)
       : DEFAULT_TIMEOUT_MS,
+    ...(data.CASCADE_BROWSER_USERNAME
+      ? { browserUsername: data.CASCADE_BROWSER_USERNAME }
+      : {}),
+    ...(data.CASCADE_BROWSER_PASSWORD
+      ? { browserPassword: data.CASCADE_BROWSER_PASSWORD }
+      : {}),
+    ...(data.CASCADE_BROWSER_URL
+      ? { browserUrl: data.CASCADE_BROWSER_URL }
+      : {}),
+    ...(data.CASCADE_BROWSER_SITE_ID
+      ? { browserSiteId: data.CASCADE_BROWSER_SITE_ID }
+      : {}),
   };
 }

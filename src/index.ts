@@ -10,6 +10,8 @@
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { loadConfig } from "./config.js";
 import { createCascadeClient } from "./client.js";
+import { createBrowserSession } from "./browserApi.js";
+import { redactSecrets } from "./errors.js";
 import { createServer } from "./server.js";
 import { SERVER_NAME } from "./constants.js";
 
@@ -36,7 +38,27 @@ async function main(): Promise<void> {
   }
 
   const client = createCascadeClient(config);
-  const server = createServer(client);
+  const browserSession = createBrowserSession(config);
+  if (config.browserUsername && config.browserPassword && config.browserSiteId) {
+    try {
+      await browserSession.login({});
+      process.stderr.write(
+        `[${SERVER_NAME}] browser login succeeded for site_id=${config.browserSiteId}\n`,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `[${SERVER_NAME}] browser login skipped: ${redactSecrets(msg)}\n`,
+      );
+    }
+  } else if (config.browserUsername && config.browserPassword) {
+    process.stderr.write(
+      `[${SERVER_NAME}] browser login skipped: set CASCADE_BROWSER_SITE_ID to the production site ID to enable startup browser login\n`,
+    );
+  }
+  const server = createServer(client, {
+    browserSession,
+  });
   const transport = new StdioServerTransport();
 
   await server.connect(transport);

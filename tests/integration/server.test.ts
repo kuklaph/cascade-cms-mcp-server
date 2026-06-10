@@ -2,8 +2,9 @@
  * Integration test for the server factory (`createServer`).
  *
  * Verifies that all tool cohorts wire up correctly and produce
- * the expected 62 tools with well-formed names (25 direct Cascade API tools,
- * 14 cached asset follow-up tools, 19 draft workflow tools, and 4 local utilities). Also exercises one
+ * the expected 68 tools with well-formed names (25 direct Cascade API tools,
+ * 14 cached asset follow-up tools, 19 draft workflow tools, 6 browser API tools,
+ * and 4 local utilities). Also exercises one
  * end-to-end handler invocation (`cascade_read`) through the real
  * pipeline that `registerCascadeTool` installs on the server, plus
  * the oversize-response round-trip through `cascade_read_response`.
@@ -198,7 +199,7 @@ function assetPropertyKeysFromTypes(): string[] {
   return assetPropertyEntriesFromTypes().map((entry) => entry.key).sort();
 }
 
-/** All 62 expected tool names: 25 direct Cascade API tools, 14 cached asset follow-up tools, 19 draft workflow tools, and 4 local utilities. */
+/** All 68 expected tool names: 25 direct Cascade API tools, 14 cached asset follow-up tools, 19 draft workflow tools, 6 browser API tools, and 4 local utilities. */
 const EXPECTED_TOOL_NAMES = [
   // crud and asset follow-ups (20)
   "cascade_read",
@@ -268,6 +269,13 @@ const EXPECTED_TOOL_NAMES = [
   "cascade_edit_preference",
   // publish (1)
   "cascade_publish_unpublish",
+  // browser API (6)
+  "cascade_browser_login",
+  "cascade_browser_check_draft",
+  "cascade_browser_list_snippets",
+  "cascade_browser_create_snippet",
+  "cascade_browser_update_snippet",
+  "cascade_browser_delete_snippets",
   // local MCP tools (4)
   "cascade_tool_blocks",
   "cascade_protect_site_removal",
@@ -289,12 +297,12 @@ const READ_IMAGE_FILE = {
 } as const;
 
 describe("createServer (server factory)", () => {
-  test("registers exactly 62 tools", () => {
+  test("registers exactly 68 tools", () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const tools = getRegisteredTools(server);
 
-    expect(Object.keys(tools)).toHaveLength(62);
+    expect(Object.keys(tools)).toHaveLength(68);
   });
 
   test("all tool names use snake_case with cascade_ prefix", () => {
@@ -316,7 +324,7 @@ describe("createServer (server factory)", () => {
     const names = Object.keys(tools);
     const unique = new Set(names);
     expect(unique.size).toBe(names.length);
-    expect(unique.size).toBe(62);
+    expect(unique.size).toBe(68);
   });
 
   test("every expected tool from each cohort is present", () => {

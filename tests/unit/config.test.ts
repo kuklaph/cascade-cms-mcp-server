@@ -18,6 +18,36 @@ describe("loadConfig", () => {
     });
   });
 
+  test("should include optional browser credentials when provided", async () => {
+    const env = {
+      CASCADE_API_KEY: "abc123",
+      CASCADE_URL: "https://cascade.example.edu/api/v1/",
+      CASCADE_BROWSER_USERNAME: "editor",
+      CASCADE_BROWSER_PASSWORD: "secret-password",
+      CASCADE_BROWSER_URL: "https://cascade.example.edu",
+      CASCADE_BROWSER_SITE_ID: "site-123",
+    };
+
+    const cfg = await loadConfig(env as NodeJS.ProcessEnv);
+
+    expect(cfg.browserUsername).toBe("editor");
+    expect(cfg.browserPassword).toBe("secret-password");
+    expect(cfg.browserUrl).toBe("https://cascade.example.edu");
+    expect(cfg.browserSiteId).toBe("site-123");
+  });
+
+  test("should require browser username and password together", async () => {
+    const env = {
+      CASCADE_API_KEY: "abc123",
+      CASCADE_URL: "https://cascade.example.edu/api/v1/",
+      CASCADE_BROWSER_USERNAME: "editor",
+    };
+
+    await expect(loadConfig(env as NodeJS.ProcessEnv)).rejects.toThrow(
+      /CASCADE_BROWSER_PASSWORD/,
+    );
+  });
+
   test("should throw with CASCADE_API_KEY named in message when key is missing", async () => {
     const env = {
       CASCADE_URL: "https://cascade.example.edu/api",

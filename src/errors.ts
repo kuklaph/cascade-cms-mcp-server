@@ -122,6 +122,26 @@ function suggestedRecovery(message: string): Record<string, unknown> {
       hints: ["Re-run cascade_read to create a fresh asset_handle."],
     };
   }
+  if (/Browser API login is not configured/i.test(message)) {
+    return {
+      hints: [
+        "Set CASCADE_BROWSER_USERNAME and CASCADE_BROWSER_PASSWORD to enable browser login.",
+        "Set CASCADE_BROWSER_SITE_ID to the production site ID for startup/automatic browser login.",
+        "Without CASCADE_BROWSER_SITE_ID, run cascade_browser_login with site_id before calling other browser-backed tools.",
+        "To find the site ID, select the production site in Cascade, open Manage Site, and copy the site ID from the browser URL.",
+      ],
+    };
+  }
+  if (/cascade_browser_login/i.test(message)) {
+    return {
+      suggested_tool: "cascade_browser_login",
+      hints: [
+        "Recommended setup: set CASCADE_BROWSER_SITE_ID to the production site ID and restart the MCP server.",
+        "To find the site ID, select the production site in Cascade, open Manage Site, and copy the site ID from the browser URL.",
+        "Temporary recovery: run cascade_browser_login with the target site_id.",
+      ],
+    };
+  }
   return {};
 }
 

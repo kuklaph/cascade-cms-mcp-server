@@ -29,6 +29,7 @@ import { registerMessageTools } from "./tools/messages.js";
 import { registerCheckoutTools } from "./tools/checkout.js";
 import { registerAuditTools } from "./tools/audits.js";
 import { registerPublishTools } from "./tools/publish.js";
+import { registerBrowserTools } from "./tools/browser.js";
 import {
   registerSiteRemovalProtectionTool,
   registerToolBlockTool,
@@ -62,6 +63,7 @@ export function createServer(
     assetCache: deps?.assetCache ?? createAssetCache(),
     draftCache: deps?.draftCache ?? createDraftCache(),
     toolBlockStore: deps?.toolBlockStore ?? createToolBlockStore(),
+    ...(deps?.browserSession ? { browserSession: deps.browserSession } : {}),
   };
 
   registerCrudTools(server, client, resolved);
@@ -74,6 +76,7 @@ export function createServer(
   registerCheckoutTools(server, client, resolved);
   registerAuditTools(server, client, resolved);
   registerPublishTools(server, client, resolved);
+  registerBrowserTools(server, resolved);
 
   registerCascadeResources(server, client, resolved);
 
