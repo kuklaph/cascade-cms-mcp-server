@@ -4,9 +4,18 @@ All notable changes to `cascade-cms-mcp-server` will be documented here.
 
 ## Unreleased
 
+## 2.0.0-alpha.0 - 2026-06-11
+
+### Breaking Changes
+
+- Migrated the MCP server runtime from `@modelcontextprotocol/sdk` v1 to `@modelcontextprotocol/server@2.0.0-alpha.2`.
+- Raised the supported Node.js runtime to Node 20 or newer.
+
 ### Changed
 
 - Browser-backed requests now start at most once every 3 seconds per MCP session to reduce pressure on Cascade browser UI endpoints.
+- Added `@cfworker/json-schema` as a direct runtime dependency required by the MCP server v2 alpha package.
+- Clarified `cascade_search` guidance for pass-through Cascade search syntax, quoted phrase searches, wildcard searches, and optional `searchFields` / `searchTypes` narrowing filters.
 
 ## 1.1.3 - 2026-06-10
 
