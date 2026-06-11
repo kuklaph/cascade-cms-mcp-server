@@ -1353,7 +1353,7 @@ const SearchInformationSchema = z
       .string()
       .min(1, "searchTerms must not be empty")
       .describe(
-        "REQUIRED: The query string to match. Supports Cascade's server-side search syntax.",
+        "REQUIRED: Query string passed through unchanged to Cascade server-side search. Unquoted words are broad keyword search; literal double quotes can request phrase matching; ? and * are Cascade search wildcards.",
       ),
     siteId: z
       .string()
@@ -1369,13 +1369,13 @@ const SearchInformationSchema = z
       .array(SearchFieldEnum)
       .optional()
       .describe(
-        "Asset fields to search within (e.g. ['name', 'title', 'keywords']). Omit to search all fields.",
+        "Optional field filter. Omit to search all Cascade-searchable fields; include only when field narrowing is intentional.",
       ),
     searchTypes: z
       .array(EntityTypeSchema)
       .optional()
       .describe(
-        "Asset types to include (e.g. ['page', 'file']). Omit to search all types.",
+        "Optional asset-type filter. Omit to include all searchable asset types; include only when type narrowing is intentional.",
       ),
   })
   .strict()
