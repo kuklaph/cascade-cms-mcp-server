@@ -56,7 +56,7 @@ export const FAILURE_NOT_FOUND = {
  * Read returned a page asset body with heavy fields included.
  *
  * Serves two purposes:
- *   1. Drives the `cascade_read` preview/raw mode tests. Preview mode returns
+ *   1. Drives the `read` preview/raw mode tests. Preview mode returns
  *      a compact handle-based outline; raw mode returns this full payload.
  *   2. Exercises the oversize-response cache pathway — the inflated `xhtml` body
  *      and repeated `structuredDataNodes` push the rendered payload well past

@@ -36,10 +36,10 @@ const PREFERENCES_OK = {
 } as const;
 
 // =============================================================================
-// cascade_read_audits
+// read_audits
 // =============================================================================
 
-describe("cascade_read_audits tool", () => {
+describe("read_audits tool", () => {
   test("happy path: calls client.readAudits (without pagination args) and returns paginated response", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -48,7 +48,7 @@ describe("cascade_read_audits tool", () => {
 
     registerAuditTools(server as any, client);
 
-    const tool = findTool(tools, "cascade_read_audits");
+    const tool = findTool(tools, "read_audits");
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.idempotentHint).toBe(true);
@@ -85,7 +85,7 @@ describe("cascade_read_audits tool", () => {
     });
 
     registerAuditTools(server as any, client);
-    const tool = findTool(tools, "cascade_read_audits");
+    const tool = findTool(tools, "read_audits");
 
     const result = await tool.handler({ auditParameters: {} });
 
@@ -109,7 +109,7 @@ describe("cascade_read_audits tool", () => {
     });
 
     registerAuditTools(server as any, client);
-    const tool = findTool(tools, "cascade_read_audits");
+    const tool = findTool(tools, "read_audits");
 
     const result = await tool.handler({
       auditParameters: {},
@@ -140,22 +140,22 @@ describe("cascade_read_audits tool", () => {
     });
 
     registerAuditTools(server as any, client);
-    const tool = findTool(tools, "cascade_read_audits");
+    const tool = findTool(tools, "read_audits");
 
     const result = await tool.handler({ auditParameters: {} });
 
     expect(result.isError).toBe(true);
     const text = firstText(result);
-    expect(text).toContain("cascade_read_audits");
+    expect(text).toContain("read_audits");
     expect(text).toContain("Forbidden");
   });
 });
 
 // =============================================================================
-// cascade_read_preferences
+// read_preferences
 // =============================================================================
 
-describe("cascade_read_preferences tool", () => {
+describe("read_preferences tool", () => {
   test("happy path: calls client.readPreferences and returns success response", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -163,7 +163,7 @@ describe("cascade_read_preferences tool", () => {
     });
 
     registerAuditTools(server as any, client);
-    const tool = findTool(tools, "cascade_read_preferences");
+    const tool = findTool(tools, "read_preferences");
 
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -192,20 +192,20 @@ describe("cascade_read_preferences tool", () => {
     });
 
     registerAuditTools(server as any, client);
-    const tool = findTool(tools, "cascade_read_preferences");
+    const tool = findTool(tools, "read_preferences");
 
     const result = await tool.handler({});
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_read_preferences");
+    expect(firstText(result)).toContain("read_preferences");
   });
 });
 
 // =============================================================================
-// cascade_edit_preference
+// edit_preference
 // =============================================================================
 
-describe("cascade_edit_preference tool", () => {
+describe("edit_preference tool", () => {
   test("happy path: calls client.editPreference with preference body", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -213,7 +213,7 @@ describe("cascade_edit_preference tool", () => {
     });
 
     registerAuditTools(server as any, client);
-    const tool = findTool(tools, "cascade_edit_preference");
+    const tool = findTool(tools, "edit_preference");
 
     expect(tool.config.annotations.readOnlyHint).toBe(false);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -247,14 +247,14 @@ describe("cascade_edit_preference tool", () => {
     });
 
     registerAuditTools(server as any, client);
-    const tool = findTool(tools, "cascade_edit_preference");
+    const tool = findTool(tools, "edit_preference");
 
     const result = await tool.handler({
       preference: { name: "unknown", value: "x" },
     });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_edit_preference");
+    expect(firstText(result)).toContain("edit_preference");
   });
 });
 
@@ -263,7 +263,7 @@ describe("cascade_edit_preference tool", () => {
 // =============================================================================
 
 describe("registerAuditTools coverage", () => {
-  test("registers all 3 audit tools with cascade_ prefix", () => {
+  test("registers all 3 audit tools", () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient();
 
@@ -271,9 +271,9 @@ describe("registerAuditTools coverage", () => {
 
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      "cascade_edit_preference",
-      "cascade_read_audits",
-      "cascade_read_preferences",
+      "edit_preference",
+      "read_audits",
+      "read_preferences",
     ]);
   });
 });

@@ -21,10 +21,10 @@ import { OK_RESULT } from "../../fixtures/cascade-responses.js";
 const ID_PAGE = { id: "abc123", type: "page" as const };
 
 // =============================================================================
-// cascade_check_out
+// check_out
 // =============================================================================
 
-describe("cascade_check_out tool", () => {
+describe("check_out tool", () => {
   test("happy path: calls client.checkOut with identifier and returns success response", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -33,7 +33,7 @@ describe("cascade_check_out tool", () => {
 
     registerCheckoutTools(server as any, client);
 
-    const tool = findTool(tools, "cascade_check_out");
+    const tool = findTool(tools, "check_out");
     expect(tool.config.annotations.readOnlyHint).toBe(false);
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.idempotentHint).toBe(false);
@@ -63,22 +63,22 @@ describe("cascade_check_out tool", () => {
     });
 
     registerCheckoutTools(server as any, client);
-    const tool = findTool(tools, "cascade_check_out");
+    const tool = findTool(tools, "check_out");
 
     const result = await tool.handler({ identifier: ID_PAGE });
 
     expect(result.isError).toBe(true);
     const text = firstText(result);
-    expect(text).toContain("cascade_check_out");
+    expect(text).toContain("check_out");
     expect(text).toContain("Locked");
   });
 });
 
 // =============================================================================
-// cascade_check_in
+// check_in
 // =============================================================================
 
-describe("cascade_check_in tool", () => {
+describe("check_in tool", () => {
   test("happy path: calls client.checkIn with identifier + comments", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -86,7 +86,7 @@ describe("cascade_check_in tool", () => {
     });
 
     registerCheckoutTools(server as any, client);
-    const tool = findTool(tools, "cascade_check_in");
+    const tool = findTool(tools, "check_in");
 
     expect(tool.config.annotations.readOnlyHint).toBe(false);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -120,7 +120,7 @@ describe("cascade_check_in tool", () => {
     });
 
     registerCheckoutTools(server as any, client);
-    const tool = findTool(tools, "cascade_check_in");
+    const tool = findTool(tools, "check_in");
 
     const result = await tool.handler({
       identifier: ID_PAGE,
@@ -128,7 +128,7 @@ describe("cascade_check_in tool", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_check_in");
+    expect(firstText(result)).toContain("check_in");
   });
 });
 
@@ -137,13 +137,13 @@ describe("cascade_check_in tool", () => {
 // =============================================================================
 
 describe("registerCheckoutTools coverage", () => {
-  test("registers both checkout tools with cascade_ prefix", () => {
+  test("registers both checkout tools", () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient();
 
     registerCheckoutTools(server as any, client);
 
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(["cascade_check_in", "cascade_check_out"]);
+    expect(names).toEqual(["check_in", "check_out"]);
   });
 });

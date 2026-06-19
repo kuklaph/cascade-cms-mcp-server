@@ -12,10 +12,10 @@ import { SEARCH_OK } from "../../fixtures/cascade-responses.js";
 
 
 // =============================================================================
-// cascade_search
+// search
 // =============================================================================
 
-describe("cascade_search tool", () => {
+describe("search tool", () => {
   test("happy path: calls client.search with input minus limit/offset and returns paginated response", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -24,7 +24,7 @@ describe("cascade_search tool", () => {
 
     registerSearchTools(server as any, client);
 
-    const tool = findTool(tools, "cascade_search");
+    const tool = findTool(tools, "search");
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.idempotentHint).toBe(true);
@@ -60,7 +60,7 @@ describe("cascade_search tool", () => {
     });
 
     registerSearchTools(server as any, client);
-    const tool = findTool(tools, "cascade_search");
+    const tool = findTool(tools, "search");
 
     const result = await tool.handler({
       searchInformation: { searchTerms: "x" },
@@ -89,7 +89,7 @@ describe("cascade_search tool", () => {
     });
 
     registerSearchTools(server as any, client);
-    const tool = findTool(tools, "cascade_search");
+    const tool = findTool(tools, "search");
 
     const result = await tool.handler({
       searchInformation: { searchTerms: "x" },
@@ -118,7 +118,7 @@ describe("cascade_search tool", () => {
     });
 
     registerSearchTools(server as any, client);
-    const tool = findTool(tools, "cascade_search");
+    const tool = findTool(tools, "search");
 
     const result = await tool.handler({
       searchInformation: { searchTerms: "x" },
@@ -126,7 +126,7 @@ describe("cascade_search tool", () => {
 
     expect(result.isError).toBe(true);
     const text = firstText(result);
-    expect(text).toContain("cascade_search");
+    expect(text).toContain("search");
     expect(text).toContain("Unauthorized");
   });
 });
@@ -136,13 +136,13 @@ describe("cascade_search tool", () => {
 // =============================================================================
 
 describe("registerSearchTools coverage", () => {
-  test("registers the cascade_search tool", () => {
+  test("registers the search tool", () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient();
 
     registerSearchTools(server as any, client);
 
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(["cascade_search"]);
+    expect(names).toEqual(["search"]);
   });
 });

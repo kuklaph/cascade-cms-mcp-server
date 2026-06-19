@@ -2,8 +2,8 @@
  * Audit logging for the Cascade CMS MCP server.
  *
  * Emits a single line to stderr for every tool invocation. Format:
- *   [cascade-cms-mcp-server] cascade_read: ok in 234ms
- *   [cascade-cms-mcp-server] cascade_create: error in 123ms — "Permission denied"
+ *   [cascade-cms-mcp-server] read: ok in 234ms
+ *   [cascade-cms-mcp-server] create: error in 123ms — "Permission denied"
  *
  * Logs go to stderr only; stdout is reserved for the MCP JSON-RPC protocol
  * stream and must never receive ad-hoc text or the transport breaks.
@@ -29,7 +29,7 @@ function sanitizeErrorForAudit(raw: string): string {
 /**
  * Log a single tool invocation.
  *
- * @param toolName   - The MCP tool name (e.g. `cascade_read`).
+ * @param toolName   - The MCP tool name (e.g. `read`).
  * @param outcome    - `"ok"` on success, `"error"` when the handler threw.
  * @param durationMs - Wall-clock duration of the invocation in milliseconds.
  * @param errorMsg   - Optional raw error message (only used when outcome is `"error"`).

@@ -405,7 +405,7 @@ describe("cascade://draft/{handle}/raw resource", () => {
           {
             type: "page",
             id: "blocked-page",
-            tools: ["cascade_draft_get_value"],
+            tools: ["local_draft_get_value"],
             reason: "Sensitive draft token=super-secret",
           },
         ],

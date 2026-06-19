@@ -5,9 +5,9 @@
  * the expected 68 tools with well-formed names (25 direct Cascade API tools,
  * 14 cached asset follow-up tools, 19 draft workflow tools, 6 browser API tools,
  * and 4 local utilities). Also exercises one
- * end-to-end handler invocation (`cascade_read`) through the real
+ * end-to-end handler invocation (`read`) through the real
  * pipeline that `registerCascadeTool` installs on the server, plus
- * the oversize-response round-trip through `cascade_read_response`.
+ * the oversize-response round-trip through `read_response`.
  */
 
 import { describe, test, expect, mock } from "bun:test";
@@ -259,85 +259,85 @@ function assetPropertyKeysFromTypes(): string[] {
 /** All 68 expected tool names: 25 direct Cascade API tools, 14 cached asset follow-up tools, 19 draft workflow tools, 6 browser API tools, and 4 local utilities. */
 const EXPECTED_TOOL_NAMES = [
   // crud and asset follow-ups (20)
-  "cascade_read",
-  "cascade_asset_list_facts",
-  "cascade_asset_search_values",
-  "cascade_asset_search_keys",
-  "cascade_asset_get_value",
-  "cascade_asset_list_scalar_artifacts",
-  "cascade_asset_list_references",
-  "cascade_asset_list_nodelets",
-  "cascade_asset_get_nodelet",
-  "cascade_asset_resolve_nodes",
-  "cascade_asset_assert_values",
-  "cascade_file_data_info",
-  "cascade_file_data_read",
-  "cascade_file_data_image",
-  "cascade_file_data_export",
-  "cascade_create",
-  "cascade_edit",
-  "cascade_remove",
-  "cascade_move",
-  "cascade_copy",
+  "read",
+  "asset_list_facts",
+  "asset_search_values",
+  "asset_search_keys",
+  "asset_get_value",
+  "asset_list_scalar_artifacts",
+  "asset_list_references",
+  "asset_list_nodelets",
+  "asset_get_nodelet",
+  "asset_resolve_nodes",
+  "asset_assert_values",
+  "file_data_info",
+  "file_data_read",
+  "file_data_image",
+  "file_data_export",
+  "create",
+  "edit",
+  "remove",
+  "move",
+  "copy",
   // draft workflow (19)
-  "cascade_draft_open",
-  "cascade_draft_list_facts",
-  "cascade_draft_search_values",
-  "cascade_draft_search_keys",
-  "cascade_draft_get_value",
-  "cascade_draft_list_scalar_artifacts",
-  "cascade_draft_list_references",
-  "cascade_draft_list_nodelets",
-  "cascade_draft_get_nodelet",
-  "cascade_draft_apply_patch",
-  "cascade_draft_apply_semantic_patch",
-  "cascade_draft_assert_values",
-  "cascade_draft_mutation_plan_execute",
-  "cascade_draft_resolve_nodes",
-  "cascade_draft_scaffold_create",
-  "cascade_draft_scaffold_from_asset",
-  "cascade_draft_set_file_data",
-  "cascade_draft_validate",
-  "cascade_draft_submit",
+  "local_draft_open",
+  "local_draft_list_facts",
+  "local_draft_search_values",
+  "local_draft_search_keys",
+  "local_draft_get_value",
+  "local_draft_list_scalar_artifacts",
+  "local_draft_list_references",
+  "local_draft_list_nodelets",
+  "local_draft_get_nodelet",
+  "local_draft_apply_patch",
+  "local_draft_apply_semantic_patch",
+  "local_draft_assert_values",
+  "local_draft_mutation_plan_execute",
+  "local_draft_resolve_nodes",
+  "local_draft_scaffold_create",
+  "local_draft_scaffold_from_asset",
+  "local_draft_set_file_data",
+  "local_draft_validate",
+  "local_draft_submit",
   // search (1)
-  "cascade_search",
+  "search",
   // sites (2)
-  "cascade_list_sites",
-  "cascade_site_copy",
+  "list_sites",
+  "site_copy",
   // access (2)
-  "cascade_read_access_rights",
-  "cascade_edit_access_rights",
+  "read_access_rights",
+  "edit_access_rights",
   // workflow (4)
-  "cascade_read_workflow_settings",
-  "cascade_edit_workflow_settings",
-  "cascade_read_workflow_information",
-  "cascade_perform_workflow_transition",
+  "read_workflow_settings",
+  "edit_workflow_settings",
+  "read_workflow_information",
+  "perform_workflow_transition",
   // messages (4)
-  "cascade_list_subscribers",
-  "cascade_list_messages",
-  "cascade_mark_message",
-  "cascade_delete_message",
+  "list_subscribers",
+  "list_messages",
+  "mark_message",
+  "delete_message",
   // checkout (2)
-  "cascade_check_out",
-  "cascade_check_in",
+  "check_out",
+  "check_in",
   // audits (3)
-  "cascade_read_audits",
-  "cascade_read_preferences",
-  "cascade_edit_preference",
+  "read_audits",
+  "read_preferences",
+  "edit_preference",
   // publish (1)
-  "cascade_publish_unpublish",
+  "publish_unpublish",
   // browser API (6)
-  "cascade_browser_login",
-  "cascade_browser_check_draft",
-  "cascade_browser_list_snippets",
-  "cascade_browser_create_snippet",
-  "cascade_browser_update_snippet",
-  "cascade_browser_delete_snippets",
+  "browser_login",
+  "browser_check_draft",
+  "browser_list_snippets",
+  "browser_create_snippet",
+  "browser_update_snippet",
+  "browser_delete_snippets",
   // local MCP tools (4)
-  "cascade_tool_blocks",
-  "cascade_protect_site_removal",
-  "cascade_server_version",
-  "cascade_read_response",
+  "tool_blocks",
+  "protect_site_removal",
+  "server_version",
+  "read_response",
 ];
 
 const READ_IMAGE_FILE = {
@@ -363,15 +363,16 @@ describe("createServer (server factory)", () => {
     expect(Object.keys(tools)).toHaveLength(68);
   });
 
-  test("all tool names use snake_case with cascade_ prefix", async () => {
+  test("all tool names use snake_case without cascade_ prefix", async () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const transport = await connectTestTransport(server);
     const tools = await listToolsViaProtocol(transport);
 
-    const namePattern = /^cascade_[a-z]+(?:_[a-z]+)*$/;
+    const namePattern = /^[a-z]+(?:_[a-z]+)*$/;
     for (const name of Object.keys(tools)) {
       expect(name).toMatch(namePattern);
+      expect(name.startsWith("cascade_")).toBe(false);
     }
   });
 
@@ -399,7 +400,7 @@ describe("createServer (server factory)", () => {
     }
   });
 
-  test("cascade_server_version reports server metadata without reading tool blocks", async () => {
+  test("server_version reports server metadata without reading tool blocks", async () => {
     const client = createMockClient();
     const toolBlockStore: ToolBlockStore = {
       path: "C:\\tmp\\tool-blocks.json",
@@ -411,7 +412,7 @@ describe("createServer (server factory)", () => {
     const server = createServer(client, { toolBlockStore });
     const transport = await connectTestTransport(server);
 
-    const result = await callToolViaProtocol(transport, "cascade_server_version", {});
+    const result = await callToolViaProtocol(transport, "server_version", {});
     const body = JSON.parse((result.content[0] as any).text);
 
     expect(result.isError).not.toBe(true);
@@ -423,14 +424,14 @@ describe("createServer (server factory)", () => {
     expect(toolBlockStore.read).not.toHaveBeenCalled();
   });
 
-  test("cascade_read handler invokes client.read and returns preview result", async () => {
+  test("read handler invokes client.read and returns preview result", async () => {
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_OK)),
     });
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const transport = await connectTestTransport(server);
 
-    const result = await callToolViaProtocol(transport, "cascade_read", {
+    const result = await callToolViaProtocol(transport, "read", {
       identifier: { id: "abc", type: "page" },
     });
 
@@ -450,18 +451,18 @@ describe("createServer (server factory)", () => {
     expect(structured.asset).toBeUndefined();
   });
 
-  test("cascade_file_data_image returns only image content through sdk tools call", async () => {
+  test("file_data_image returns only image content through sdk tools call", async () => {
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_IMAGE_FILE)),
     });
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const transport = await connectTestTransport(server);
 
-    const readResult = await callToolViaProtocol(transport, "cascade_read", {
+    const readResult = await callToolViaProtocol(transport, "read", {
       identifier: { id: "file123", type: "file" },
     });
     const handle = (readResult.structuredContent as Record<string, any>).asset_handle;
-    const imageResult = await callToolViaProtocol(transport, "cascade_file_data_image", {
+    const imageResult = await callToolViaProtocol(transport, "file_data_image", {
       asset_handle: handle,
     });
 
@@ -476,15 +477,15 @@ describe("createServer (server factory)", () => {
     expect(imageResult.structuredContent).toBeUndefined();
   });
 
-  test("cascade_read with oversize response mints handle, cascade_read_response retrieves slices", async () => {
+  test("read with oversize response mints handle, read_response retrieves slices", async () => {
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
     });
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const transport = await connectTestTransport(server);
 
-    // Act 1: cascade_read with oversize result should mint a handle.
-    const oversize = await callToolViaProtocol(transport, "cascade_read", {
+    // Act 1: read with oversize result should mint a handle.
+    const oversize = await callToolViaProtocol(transport, "read", {
       identifier: { id: "huge-page-id", type: "page" },
       read_mode: "raw",
     });
@@ -495,7 +496,7 @@ describe("createServer (server factory)", () => {
     if (!firstBlock || firstBlock.type !== "text") {
       throw new Error("expected first content block to be text");
     }
-    expect(firstBlock.text).toContain("cascade_read_response");
+    expect(firstBlock.text).toContain("read_response");
     expect(firstBlock.text).toMatch(/h_[a-z0-9-]+/i);
 
     const structured = oversize.structuredContent as Record<string, any>;
@@ -510,8 +511,8 @@ describe("createServer (server factory)", () => {
 
     const handle = envelope.handle;
 
-    // Act 2: cascade_read_response {handle, offset: 0, length: 100}.
-    const firstSlice = await callToolViaProtocol(transport, "cascade_read_response", {
+    // Act 2: read_response {handle, offset: 0, length: 100}.
+    const firstSlice = await callToolViaProtocol(transport, "read_response", {
       handle,
       offset: 0,
       length: 100,
@@ -534,8 +535,8 @@ describe("createServer (server factory)", () => {
     const firstSliceText = JSON.parse(firstSliceBlock.text);
     expect(firstSliceText.slice_text.length).toBe(100);
 
-    // Act 3: cascade_read_response {handle, offset: 100, length: 100}.
-    const secondSlice = await callToolViaProtocol(transport, "cascade_read_response", {
+    // Act 3: read_response {handle, offset: 100, length: 100}.
+    const secondSlice = await callToolViaProtocol(transport, "read_response", {
       handle,
       offset: 100,
       length: 100,
@@ -567,7 +568,7 @@ describe("createServer (server factory)", () => {
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const transport = await connectTestTransport(server);
 
-    const removedField = await callToolViaProtocol(transport, "cascade_read", {
+    const removedField = await callToolViaProtocol(transport, "read", {
       identifier: { id: "abc", type: "page" },
       response_format: "json",
     });
@@ -578,7 +579,7 @@ describe("createServer (server factory)", () => {
     expect(removedBody.error.issues[0].code).toBe("unrecognized_keys");
     expect(removedBody.error.issues[0].hint).toContain("response_format");
 
-    const invalidEnum = await callToolViaProtocol(transport, "cascade_read", {
+    const invalidEnum = await callToolViaProtocol(transport, "read", {
       identifier: { id: "abc", type: "page" },
       read_mode: "sk-testsecret123456",
     });
@@ -613,33 +614,33 @@ describe("createServer (server factory)", () => {
     const tools = Object.fromEntries(
       listResult.tools.map((tool: Record<string, any>) => [tool.name, tool]),
     );
-    const readSchema = tools["cascade_read"].inputSchema;
-    const createSchema = tools["cascade_create"].inputSchema;
-    const editSchema = tools["cascade_edit"].inputSchema;
-    const removeSchema = tools["cascade_remove"].inputSchema;
-    const moveSchema = tools["cascade_move"].inputSchema;
-    const copySchema = tools["cascade_copy"].inputSchema;
-    const accessSchema = tools["cascade_edit_access_rights"].inputSchema;
+    const readSchema = tools["read"].inputSchema;
+    const createSchema = tools["create"].inputSchema;
+    const editSchema = tools["edit"].inputSchema;
+    const removeSchema = tools["remove"].inputSchema;
+    const moveSchema = tools["move"].inputSchema;
+    const copySchema = tools["copy"].inputSchema;
+    const accessSchema = tools["edit_access_rights"].inputSchema;
     const workflowSettingsSchema =
-      tools["cascade_edit_workflow_settings"].inputSchema;
-    const publishSchema = tools["cascade_publish_unpublish"].inputSchema;
-    const searchSchema = tools["cascade_search"].inputSchema;
-    const siteCopySchema = tools["cascade_site_copy"].inputSchema;
-    const nodeletSchema = tools["cascade_asset_get_nodelet"].inputSchema;
-    const fileDataInfoSchema = tools["cascade_file_data_info"].inputSchema;
-    const fileDataReadSchema = tools["cascade_file_data_read"].inputSchema;
-    const fileDataImageSchema = tools["cascade_file_data_image"].inputSchema;
-    const fileDataExportSchema = tools["cascade_file_data_export"].inputSchema;
-    const draftOpenSchema = tools["cascade_draft_open"].inputSchema;
-    const draftPatchSchema = tools["cascade_draft_apply_patch"].inputSchema;
+      tools["edit_workflow_settings"].inputSchema;
+    const publishSchema = tools["publish_unpublish"].inputSchema;
+    const searchSchema = tools["search"].inputSchema;
+    const siteCopySchema = tools["site_copy"].inputSchema;
+    const nodeletSchema = tools["asset_get_nodelet"].inputSchema;
+    const fileDataInfoSchema = tools["file_data_info"].inputSchema;
+    const fileDataReadSchema = tools["file_data_read"].inputSchema;
+    const fileDataImageSchema = tools["file_data_image"].inputSchema;
+    const fileDataExportSchema = tools["file_data_export"].inputSchema;
+    const draftOpenSchema = tools["local_draft_open"].inputSchema;
+    const draftPatchSchema = tools["local_draft_apply_patch"].inputSchema;
     const draftScaffoldCreateSchema =
-      tools["cascade_draft_scaffold_create"].inputSchema;
-    const draftSetFileDataSchema = tools["cascade_draft_set_file_data"].inputSchema;
-    const draftSubmitSchema = tools["cascade_draft_submit"].inputSchema;
-    const transitionSchema = tools["cascade_perform_workflow_transition"].inputSchema;
-    const auditSchema = tools["cascade_read_audits"].inputSchema;
-    const preferenceSchema = tools["cascade_edit_preference"].inputSchema;
-    const markSchema = tools["cascade_mark_message"].inputSchema;
+      tools["local_draft_scaffold_create"].inputSchema;
+    const draftSetFileDataSchema = tools["local_draft_set_file_data"].inputSchema;
+    const draftSubmitSchema = tools["local_draft_submit"].inputSchema;
+    const transitionSchema = tools["perform_workflow_transition"].inputSchema;
+    const auditSchema = tools["read_audits"].inputSchema;
+    const preferenceSchema = tools["edit_preference"].inputSchema;
+    const markSchema = tools["mark_message"].inputSchema;
 
     expect(schemaTypes(readSchema.properties.identifier)).toContain("object");
     expect(schemaHasRequiredBranch(readSchema.properties.identifier, "id")).toBe(true);
@@ -681,10 +682,10 @@ describe("createServer (server factory)", () => {
     expect(schemaPathTypes(createSchema.properties.asset, ["file", "data"])).toEqual(["array"]);
     expect(schemaPathTypes(createSchema.properties.asset, ["file", "data", "[]"])).toEqual(["integer"]);
     expect(schemaPathTypes(editSchema.properties.asset, ["file", "data", "[]"])).toEqual(["integer"]);
-    expect(tools["cascade_create"].description).toContain(
+    expect(tools["create"].description).toContain(
       "asset.file.data` accepts signed Java bytes (-128..127) or unsigned file bytes (0..255)",
     );
-    expect(tools["cascade_edit"].description).toContain(
+    expect(tools["edit"].description).toContain(
       "asset.file.data` accepts signed Java bytes (-128..127) or unsigned file bytes (0..255)",
     );
     expect(schemaPathTypes(createSchema.properties.asset, ["destination", "publishIntervalHours"])).toEqual(["number"]);
@@ -810,7 +811,7 @@ describe("createServer (server factory)", () => {
     expect(markTypeSchema).toContain("unread");
     expect(markTypeSchema).not.toContain("archive");
 
-    const invalid = await callToolViaProtocol(transport, "cascade_read", {
+    const invalid = await callToolViaProtocol(transport, "read", {
       identifier: "{\"id\":\"abc\",\"type\":\"page\"}",
     });
     const body = JSON.parse((invalid.content[0] as any).text);
@@ -829,22 +830,22 @@ describe("createServer (server factory)", () => {
 
     const cases = [
       {
-        tool: "cascade_create",
+        tool: "create",
         method: client.create,
         args: { asset: JSON.stringify({ page: { name: "index" } }) },
       },
       {
-        tool: "cascade_edit",
+        tool: "edit",
         method: client.edit,
         args: { asset: JSON.stringify({ page: { id: "abc" } }) },
       },
       {
-        tool: "cascade_remove",
+        tool: "remove",
         method: client.remove,
         args: { identifier: JSON.stringify(identifier) },
       },
       {
-        tool: "cascade_move",
+        tool: "move",
         method: client.move,
         args: {
           identifier,
@@ -855,7 +856,7 @@ describe("createServer (server factory)", () => {
         },
       },
       {
-        tool: "cascade_copy",
+        tool: "copy",
         method: client.copy,
         args: {
           identifier,
@@ -866,7 +867,7 @@ describe("createServer (server factory)", () => {
         },
       },
       {
-        tool: "cascade_publish_unpublish",
+        tool: "publish_unpublish",
         method: client.publishUnpublish,
         args: {
           identifier,
@@ -874,7 +875,7 @@ describe("createServer (server factory)", () => {
         },
       },
       {
-        tool: "cascade_edit_access_rights",
+        tool: "edit_access_rights",
         method: client.editAccessRights,
         args: {
           identifier,
@@ -885,7 +886,7 @@ describe("createServer (server factory)", () => {
         },
       },
       {
-        tool: "cascade_edit_workflow_settings",
+        tool: "edit_workflow_settings",
         method: client.editWorkflowSettings,
         args: {
           identifier: { id: "folder-1", type: "folder" },
@@ -897,7 +898,7 @@ describe("createServer (server factory)", () => {
         },
       },
       {
-        tool: "cascade_perform_workflow_transition",
+        tool: "perform_workflow_transition",
         method: client.performWorkflowTransition,
         args: {
           workflowTransitionInformation: JSON.stringify({
@@ -907,14 +908,14 @@ describe("createServer (server factory)", () => {
         },
       },
       {
-        tool: "cascade_draft_open",
+        tool: "local_draft_open",
         args: {
           operation: "create",
           asset: JSON.stringify({ page: { name: "index" } }),
         },
       },
       {
-        tool: "cascade_draft_apply_patch",
+        tool: "local_draft_apply_patch",
         args: {
           draft_handle: "d_00000000-0000-0000-0000-000000000000",
           expected_revision: 1,
@@ -957,25 +958,25 @@ describe("createServer (server factory)", () => {
 
     const cases = [
       {
-        tool: "cascade_search",
+        tool: "search",
         method: client.search,
         args: { searchInformation: { searchTerms: "x" }, limit: "50" },
       },
       {
-        tool: "cascade_search",
+        tool: "search",
         method: client.search,
         args: { searchInformation: { searchTerms: "x" }, offset: "0" },
       },
       {
-        tool: "cascade_asset_get_nodelet",
+        tool: "asset_get_nodelet",
         args: { asset_handle: "a_abc", pointer: "", depth: "2" },
       },
       {
-        tool: "cascade_asset_get_nodelet",
+        tool: "asset_get_nodelet",
         args: { asset_handle: "a_abc", pointer: "", include_text: "false" },
       },
       {
-        tool: "cascade_remove",
+        tool: "remove",
         method: client.remove,
         args: {
           identifier: { id: "abc", type: "page" },
@@ -983,7 +984,7 @@ describe("createServer (server factory)", () => {
         },
       },
       {
-        tool: "cascade_move",
+        tool: "move",
         method: client.move,
         args: {
           identifier: { id: "abc", type: "page" },
@@ -994,7 +995,7 @@ describe("createServer (server factory)", () => {
         },
       },
       {
-        tool: "cascade_copy",
+        tool: "copy",
         method: client.copy,
         args: {
           identifier: { id: "abc", type: "page" },
@@ -1006,7 +1007,7 @@ describe("createServer (server factory)", () => {
         },
       },
       {
-        tool: "cascade_publish_unpublish",
+        tool: "publish_unpublish",
         method: client.publishUnpublish,
         args: {
           identifier: { id: "abc", type: "page" },
@@ -1014,7 +1015,7 @@ describe("createServer (server factory)", () => {
         },
       },
       {
-        tool: "cascade_edit_workflow_settings",
+        tool: "edit_workflow_settings",
         method: client.editWorkflowSettings,
         args: {
           identifier: { id: "folder-1", type: "folder" },
@@ -1022,7 +1023,7 @@ describe("createServer (server factory)", () => {
         },
       },
       {
-        tool: "cascade_edit_access_rights",
+        tool: "edit_access_rights",
         method: client.editAccessRights,
         args: {
           identifier: { id: "abc", type: "page" },
@@ -1048,7 +1049,7 @@ describe("createServer (server factory)", () => {
     }
   });
 
-  test("tools/call keeps cascade_remove safety policies at runtime", async () => {
+  test("tools/call keeps remove safety policies at runtime", async () => {
     const client = createMockClient();
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const transport = await connectTestTransport(server);
@@ -1062,7 +1063,7 @@ describe("createServer (server factory)", () => {
         },
       },
     ]) {
-      const result = await callToolViaProtocol(transport, "cascade_remove", args);
+      const result = await callToolViaProtocol(transport, "remove", args);
       const body = JSON.parse((result.content[0] as any).text);
 
       expect(result.isError).toBe(true);
@@ -1072,14 +1073,14 @@ describe("createServer (server factory)", () => {
     expect(client.remove).not.toHaveBeenCalled();
   });
 
-  test("cascade_read default preview omits heavy recursive fields", async () => {
+  test("read default preview omits heavy recursive fields", async () => {
     const client = createMockClient({
       read: mock(() => Promise.resolve(READ_PAGE_HUGE)),
     });
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const transport = await connectTestTransport(server);
 
-    const result = await callToolViaProtocol(transport, "cascade_read", {
+    const result = await callToolViaProtocol(transport, "read", {
       identifier: { id: "huge-page-id", type: "page" },
     });
 
@@ -1114,19 +1115,19 @@ describe("createServer (server factory)", () => {
     const server = createServer(client, { toolBlockStore: emptyToolBlockStore() });
     const transport = await connectTestTransport(server);
 
-    const readResult = await callToolViaProtocol(transport, "cascade_read", {
+    const readResult = await callToolViaProtocol(transport, "read", {
       identifier: { id: "page-001", type: "page" },
     });
     const readBody = readResult.structuredContent as Record<string, any>;
 
-    const openResult = await callToolViaProtocol(transport, "cascade_draft_open", {
+    const openResult = await callToolViaProtocol(transport, "local_draft_open", {
       operation: "edit",
       asset_handle: readBody.asset_handle,
       expected_raw_hash: readBody.raw_hash,
     });
     const draftHandle = (openResult.structuredContent as Record<string, any>).draft_handle;
 
-    await callToolViaProtocol(transport, "cascade_draft_apply_patch", {
+    await callToolViaProtocol(transport, "local_draft_apply_patch", {
       draft_handle: draftHandle,
       expected_revision: 1,
       operations: [
@@ -1134,7 +1135,7 @@ describe("createServer (server factory)", () => {
       ],
     });
 
-    const submitResult = await callToolViaProtocol(transport, "cascade_draft_submit", {
+    const submitResult = await callToolViaProtocol(transport, "local_draft_submit", {
       draft_handle: draftHandle,
       expected_revision: 2,
     });

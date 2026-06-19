@@ -51,17 +51,17 @@ import {
 } from "./toolBlocks.js";
 
 const DRAFT_RAW_RESOURCE_BLOCK_TOOLS = [
-  "cascade_draft_get_value",
-  "cascade_draft_list_facts",
-  "cascade_draft_search_values",
-  "cascade_draft_search_keys",
-  "cascade_draft_list_references",
-  "cascade_draft_list_scalar_artifacts",
-  "cascade_draft_list_nodelets",
-  "cascade_draft_get_nodelet",
-  "cascade_draft_resolve_nodes",
-  "cascade_draft_assert_values",
-  "cascade_draft_validate",
+  "local_draft_get_value",
+  "local_draft_list_facts",
+  "local_draft_search_values",
+  "local_draft_search_keys",
+  "local_draft_list_references",
+  "local_draft_list_scalar_artifacts",
+  "local_draft_list_nodelets",
+  "local_draft_get_nodelet",
+  "local_draft_resolve_nodes",
+  "local_draft_assert_values",
+  "local_draft_validate",
 ];
 
 /** Short human-readable descriptions for each Cascade entity type. */
@@ -295,7 +295,7 @@ export function registerCascadeResources(
     new ResourceTemplate("cascade://asset/{handle}/raw", { list: undefined }),
     {
       description:
-        "Exact raw JSON cached from a prior cascade_read preview. Replace {handle} with structuredContent.asset_handle.",
+        "Exact raw JSON cached from a prior read preview. Replace {handle} with structuredContent.asset_handle.",
       mimeType: "application/json",
     },
     async (uri: URL, variables) => {
@@ -314,7 +314,7 @@ export function registerCascadeResources(
           JSON.stringify(
             {
               error:
-                "Asset handle not found. Re-run cascade_read to create a fresh asset_handle.",
+                "Asset handle not found. Re-run read to create a fresh asset_handle.",
             },
             null,
             2,

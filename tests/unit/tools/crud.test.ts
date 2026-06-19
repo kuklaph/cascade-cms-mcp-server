@@ -101,10 +101,10 @@ function assetPropertyKeysFromTypes(): string[] {
 }
 
 // =============================================================================
-// cascade_read
+// read
 // =============================================================================
 
-describe("cascade_read tool", () => {
+describe("read tool", () => {
   test("preview default: calls client.read and returns compact handle-based preview", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -113,7 +113,7 @@ describe("cascade_read tool", () => {
 
     registerCrudTools(server as any, client);
 
-    const tool = findTool(tools, "cascade_read");
+    const tool = findTool(tools, "read");
     expect(tool.config.annotations.readOnlyHint).toBe(true);
 
     const result = await tool.handler({
@@ -158,13 +158,13 @@ describe("cascade_read tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_read");
+    const tool = findTool(tools, "read");
 
     const result = await tool.handler({ identifier: ID_PAGE });
 
     expect(result.isError).toBe(true);
     const text = firstText(result);
-    expect(text).toContain("cascade_read");
+    expect(text).toContain("read");
     expect(text).toContain("Not Found");
   });
 
@@ -175,7 +175,7 @@ describe("cascade_read tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_read");
+    const tool = findTool(tools, "read");
 
     const result = await tool.handler({
       identifier: { id: "huge-page-id", type: "page" },
@@ -197,7 +197,7 @@ describe("cascade_read tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_read");
+    const tool = findTool(tools, "read");
     const parsedInput = await validateInputSchema(tool.config.inputSchema, {
       identifier: { id: "huge-page-id", type: "page" },
     });
@@ -217,17 +217,17 @@ describe("cascade_read tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const read = findTool(tools, "cascade_read");
-    const listFacts = findTool(tools, "cascade_asset_list_facts");
-    const searchValues = findTool(tools, "cascade_asset_search_values");
-    const searchKeys = findTool(tools, "cascade_asset_search_keys");
-    const getValue = findTool(tools, "cascade_asset_get_value");
-    const listArtifacts = findTool(tools, "cascade_asset_list_scalar_artifacts");
-    const listReferences = findTool(tools, "cascade_asset_list_references");
-    const listNodelets = findTool(tools, "cascade_asset_list_nodelets");
-    const getNodelet = findTool(tools, "cascade_asset_get_nodelet");
-    const resolveNodes = findTool(tools, "cascade_asset_resolve_nodes");
-    const assertValues = findTool(tools, "cascade_asset_assert_values");
+    const read = findTool(tools, "read");
+    const listFacts = findTool(tools, "asset_list_facts");
+    const searchValues = findTool(tools, "asset_search_values");
+    const searchKeys = findTool(tools, "asset_search_keys");
+    const getValue = findTool(tools, "asset_get_value");
+    const listArtifacts = findTool(tools, "asset_list_scalar_artifacts");
+    const listReferences = findTool(tools, "asset_list_references");
+    const listNodelets = findTool(tools, "asset_list_nodelets");
+    const getNodelet = findTool(tools, "asset_get_nodelet");
+    const resolveNodes = findTool(tools, "asset_resolve_nodes");
+    const assertValues = findTool(tools, "asset_assert_values");
 
     const result = await read.handler({
       identifier: { id: "huge-page-id", type: "page" },
@@ -303,6 +303,7 @@ describe("cascade_read tool", () => {
     expect((keysResult.structuredContent as Record<string, any>).results[0].pointer).toBe("/asset/page/xhtml");
     expect((valueResult.structuredContent as Record<string, any>).value).toBe("xxxxx");
     expect((artifactsResult.structuredContent as Record<string, any>).source_scope).toBe("raw_scalar_artifacts");
+    expect((refsResult.structuredContent as Record<string, any>).source_scope).toBe("asset_references");
     expect((listResult.structuredContent as Record<string, any>).nodelets).toHaveLength(5);
     expect((getResult.structuredContent as Record<string, any>).pointer).toBe(
       firstPointer,
@@ -317,7 +318,7 @@ describe("cascade_read tool", () => {
     const client = createMockClient();
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_asset_get_nodelet");
+    const tool = findTool(tools, "asset_get_nodelet");
 
     const result = await tool.handler({
       asset_handle: "a_00000000-0000-0000-0000-000000000000",
@@ -325,7 +326,7 @@ describe("cascade_read tool", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_asset_get_nodelet");
+    expect(firstText(result)).toContain("asset_get_nodelet");
     expect(firstText(result)).toContain("not found");
   });
 
@@ -374,9 +375,9 @@ describe("cascade_read tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const read = findTool(tools, "cascade_read");
-    const info = findTool(tools, "cascade_file_data_info");
-    const readData = findTool(tools, "cascade_file_data_read");
+    const read = findTool(tools, "read");
+    const info = findTool(tools, "file_data_info");
+    const readData = findTool(tools, "file_data_read");
 
     const readResult = await read.handler({ identifier: ID_FILE });
     const handle = (readResult.structuredContent as Record<string, any>).asset_handle;
@@ -421,7 +422,7 @@ describe("cascade_read tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const info = findTool(tools, "cascade_file_data_info");
+    const info = findTool(tools, "file_data_info");
 
     const result = await info.handler({ identifier: ID_FILE });
     const structured = result.structuredContent as Record<string, any>;
@@ -432,7 +433,7 @@ describe("cascade_read tool", () => {
     expect(structured.asset_handle).toMatch(/^a_[0-9a-f-]+$/);
     expect(structured.bytes_total).toBe(10);
     expect(structured.next_actions.map((action: any) => action.tool)).toContain(
-      "cascade_file_data_read",
+      "file_data_read",
     );
   });
 
@@ -443,8 +444,8 @@ describe("cascade_read tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const read = findTool(tools, "cascade_read");
-    const image = findTool(tools, "cascade_file_data_image");
+    const read = findTool(tools, "read");
+    const image = findTool(tools, "file_data_image");
 
     const readResult = await read.handler({ identifier: ID_FILE });
     const handle = (readResult.structuredContent as Record<string, any>).asset_handle;
@@ -468,8 +469,8 @@ describe("cascade_read tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const info = findTool(tools, "cascade_file_data_info");
-    const image = findTool(tools, "cascade_file_data_image");
+    const info = findTool(tools, "file_data_info");
+    const image = findTool(tools, "file_data_image");
 
     const infoResult = await info.handler({ identifier: ID_FILE });
     const handle = (infoResult.structuredContent as Record<string, any>).asset_handle;
@@ -481,7 +482,7 @@ describe("cascade_read tool", () => {
       (infoResult.structuredContent as Record<string, any>).next_actions.map(
         (action: any) => action.tool,
       ),
-    ).not.toContain("cascade_file_data_image");
+    ).not.toContain("file_data_image");
     expect(result.isError).toBe(true);
     expect(firstText(result)).toContain("not a magic-byte verified image");
   });
@@ -496,8 +497,8 @@ describe("cascade_read tool", () => {
       });
 
       registerCrudTools(server as any, client);
-      const read = findTool(tools, "cascade_read");
-      const exportFile = findTool(tools, "cascade_file_data_export");
+      const read = findTool(tools, "read");
+      const exportFile = findTool(tools, "file_data_export");
 
       expect(exportFile.config.annotations.destructiveHint).toBe(true);
       const readResult = await read.handler({ identifier: ID_FILE });
@@ -552,8 +553,8 @@ describe("cascade_read tool", () => {
       });
 
       registerCrudTools(server as any, client);
-      const read = findTool(tools, "cascade_read");
-      const exportFile = findTool(tools, "cascade_file_data_export");
+      const read = findTool(tools, "read");
+      const exportFile = findTool(tools, "file_data_export");
 
       const readResult = await read.handler({ identifier: ID_FILE });
       const handle = (readResult.structuredContent as Record<string, any>).asset_handle;
@@ -579,10 +580,10 @@ describe("cascade_read tool", () => {
 });
 
 // =============================================================================
-// cascade_create
+// create
 // =============================================================================
 
-describe("cascade_create tool", () => {
+describe("create tool", () => {
   test("happy path: calls client.create and returns created id", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -590,7 +591,7 @@ describe("cascade_create tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_create");
+    const tool = findTool(tools, "create");
 
     expect(tool.config.annotations.readOnlyHint).toBe(false);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -617,7 +618,7 @@ describe("cascade_create tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_create");
+    const tool = findTool(tools, "create");
     const result = await tool.handler({
       asset: {
         file: {
@@ -662,7 +663,7 @@ describe("cascade_create tool", () => {
     const client = createMockClient();
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_create");
+    const tool = findTool(tools, "create");
 
     for (const key of assetPropertyKeysFromTypes()) {
       expect(tool.config.description).toContain(key);
@@ -677,20 +678,20 @@ describe("cascade_create tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_create");
+    const tool = findTool(tools, "create");
 
     const result = await tool.handler({ asset: VALID_ASSET });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_create");
+    expect(firstText(result)).toContain("create");
   });
 });
 
 // =============================================================================
-// cascade_edit
+// edit
 // =============================================================================
 
-describe("cascade_edit tool", () => {
+describe("edit tool", () => {
   test("happy path: calls client.edit with asset wrapper", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -698,7 +699,7 @@ describe("cascade_edit tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_edit");
+    const tool = findTool(tools, "edit");
 
     expect(tool.config.annotations.readOnlyHint).toBe(false);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -726,7 +727,7 @@ describe("cascade_edit tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_edit");
+    const tool = findTool(tools, "edit");
     const result = await tool.handler({
       asset: {
         file: {
@@ -760,20 +761,20 @@ describe("cascade_edit tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_edit");
+    const tool = findTool(tools, "edit");
 
     const result = await tool.handler({ asset: { page: { ...VALID_ASSET.page, id: "p1" } } });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_edit");
+    expect(firstText(result)).toContain("edit");
   });
 });
 
 // =============================================================================
-// cascade_remove
+// remove
 // =============================================================================
 
-describe("cascade_remove tool", () => {
+describe("remove tool", () => {
   test("happy path: calls client.remove with identifier", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -781,7 +782,7 @@ describe("cascade_remove tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_remove");
+    const tool = findTool(tools, "remove");
 
     expect(tool.config.annotations.destructiveHint).toBe(true);
     expect(tool.config.annotations.idempotentHint).toBe(true);
@@ -802,7 +803,7 @@ describe("cascade_remove tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_remove");
+    const tool = findTool(tools, "remove");
 
     const result = await tool.handler({
       identifier: { id: "site-1", type: "site" },
@@ -820,7 +821,7 @@ describe("cascade_remove tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_remove");
+    const tool = findTool(tools, "remove");
 
     const result = await tool.handler({
       identifier: {
@@ -841,7 +842,7 @@ describe("cascade_remove tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_remove");
+    const tool = findTool(tools, "remove");
 
     const result = await tool.handler({
       identifier: {
@@ -867,20 +868,20 @@ describe("cascade_remove tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_remove");
+    const tool = findTool(tools, "remove");
 
     const result = await tool.handler({ identifier: ID_PAGE });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_remove");
+    expect(firstText(result)).toContain("remove");
   });
 });
 
 // =============================================================================
-// cascade_move
+// move
 // =============================================================================
 
-describe("cascade_move tool", () => {
+describe("move tool", () => {
   test("happy path: calls client.move with identifier + moveParameters", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -888,7 +889,7 @@ describe("cascade_move tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_move");
+    const tool = findTool(tools, "move");
 
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.idempotentHint).toBe(false);
@@ -923,7 +924,7 @@ describe("cascade_move tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_move");
+    const tool = findTool(tools, "move");
 
     const result = await tool.handler({
       identifier: ID_PAGE,
@@ -931,15 +932,15 @@ describe("cascade_move tool", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_move");
+    expect(firstText(result)).toContain("move");
   });
 });
 
 // =============================================================================
-// cascade_copy
+// copy
 // =============================================================================
 
-describe("cascade_copy tool", () => {
+describe("copy tool", () => {
   test("happy path: calls client.copy with identifier + copyParameters", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -947,7 +948,7 @@ describe("cascade_copy tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_copy");
+    const tool = findTool(tools, "copy");
 
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.idempotentHint).toBe(false);
@@ -982,7 +983,7 @@ describe("cascade_copy tool", () => {
     });
 
     registerCrudTools(server as any, client);
-    const tool = findTool(tools, "cascade_copy");
+    const tool = findTool(tools, "copy");
 
     const result = await tool.handler({
       identifier: ID_PAGE,
@@ -994,7 +995,7 @@ describe("cascade_copy tool", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_copy");
+    expect(firstText(result)).toContain("copy");
   });
 });
 
@@ -1003,7 +1004,7 @@ describe("cascade_copy tool", () => {
 // =============================================================================
 
 describe("registerCrudTools coverage", () => {
-  test("registers CRUD tools and asset follow-up tools with cascade_ prefix", () => {
+  test("registers CRUD tools and asset follow-up tools", () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient();
 
@@ -1011,26 +1012,26 @@ describe("registerCrudTools coverage", () => {
 
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      "cascade_asset_assert_values",
-      "cascade_asset_get_nodelet",
-      "cascade_asset_get_value",
-      "cascade_asset_list_facts",
-      "cascade_asset_list_nodelets",
-      "cascade_asset_list_references",
-      "cascade_asset_list_scalar_artifacts",
-      "cascade_asset_resolve_nodes",
-      "cascade_asset_search_keys",
-      "cascade_asset_search_values",
-      "cascade_copy",
-      "cascade_create",
-      "cascade_edit",
-      "cascade_file_data_export",
-      "cascade_file_data_image",
-      "cascade_file_data_info",
-      "cascade_file_data_read",
-      "cascade_move",
-      "cascade_read",
-      "cascade_remove",
+      "asset_assert_values",
+      "asset_get_nodelet",
+      "asset_get_value",
+      "asset_list_facts",
+      "asset_list_nodelets",
+      "asset_list_references",
+      "asset_list_scalar_artifacts",
+      "asset_resolve_nodes",
+      "asset_search_keys",
+      "asset_search_values",
+      "copy",
+      "create",
+      "edit",
+      "file_data_export",
+      "file_data_image",
+      "file_data_info",
+      "file_data_read",
+      "move",
+      "read",
+      "remove",
     ]);
   });
 
@@ -1040,13 +1041,13 @@ describe("registerCrudTools coverage", () => {
 
     registerCrudTools(server as any, client);
 
-    expect(findTool(tools, "cascade_asset_list_facts").config.description).toContain(
-      "prefer cascade_asset_search_values",
+    expect(findTool(tools, "asset_list_facts").config.description).toContain(
+      "prefer asset_search_values",
     );
-    expect(findTool(tools, "cascade_asset_search_values").config.description).toContain(
+    expect(findTool(tools, "asset_search_values").config.description).toContain(
       "Best first choice for finding text/content by known snippet",
     );
-    const artifacts = findTool(tools, "cascade_asset_list_scalar_artifacts");
+    const artifacts = findTool(tools, "asset_list_scalar_artifacts");
     expect(artifacts.config.description).toContain("Use href for any value found in an HTML/XHTML href attribute");
     expect(artifacts.config.description).toContain("use site_link for non-root, non-URL Cascade *Path fields");
     expect(

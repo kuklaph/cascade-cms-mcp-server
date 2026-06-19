@@ -108,16 +108,16 @@ type SemanticPatchArgs = {
 type MutationPlanStep = {
   name?: string;
   tool:
-    | "cascade_draft_open"
-    | "cascade_draft_scaffold_create"
-    | "cascade_draft_scaffold_from_asset"
-    | "cascade_draft_resolve_nodes"
-    | "cascade_draft_apply_patch"
-    | "cascade_draft_apply_semantic_patch"
-    | "cascade_draft_assert_values"
-    | "cascade_draft_set_file_data"
-    | "cascade_draft_validate"
-    | "cascade_draft_submit";
+    | "local_draft_open"
+    | "local_draft_scaffold_create"
+    | "local_draft_scaffold_from_asset"
+    | "local_draft_resolve_nodes"
+    | "local_draft_apply_patch"
+    | "local_draft_apply_semantic_patch"
+    | "local_draft_assert_values"
+    | "local_draft_set_file_data"
+    | "local_draft_validate"
+    | "local_draft_submit";
   input?: Record<string, unknown>;
   save_as?: string;
 };
@@ -143,13 +143,13 @@ export function registerDraftTools(
       const entry = getAssetEntry(
         assetCache,
         args.asset_handle ?? "",
-        "cascade_draft_open",
+        "local_draft_open",
       );
-      await assertToolBlockAllowed("cascade_draft_open", entry.raw, resolved);
+      await assertToolBlockAllowed("local_draft_open", entry.raw, resolved);
       draft = draftCache.createFromRead(entry, args.expected_raw_hash ?? "");
     } else {
       await assertToolBlockAllowed(
-        "cascade_draft_open",
+        "local_draft_open",
         { asset: args.asset ?? {} },
         resolved,
       );
@@ -193,21 +193,21 @@ export function registerDraftTools(
     const entry = getAssetEntry(
       assetCache,
       args.asset_handle,
-      "cascade_draft_scaffold_from_asset",
+      "local_draft_scaffold_from_asset",
     );
     if (entry.rawHash !== args.expected_raw_hash) {
       throw new Error(
-        `expected_raw_hash mismatch for asset handle ${entry.handle}. Re-run cascade_read or use the current raw_hash.`,
+        `expected_raw_hash mismatch for asset handle ${entry.handle}. Re-run read or use the current raw_hash.`,
       );
     }
 
-    await assertToolBlockAllowed("cascade_draft_scaffold_from_asset", entry.raw, resolved);
+    await assertToolBlockAllowed("local_draft_scaffold_from_asset", entry.raw, resolved);
     const scaffold = buildCreateAssetScaffoldFromAsset(assetEnvelopeFromRaw(entry.raw), {
       clearValues: args.clear_values,
       preserveDefinition: args.preserve_definition,
     });
     await assertToolBlockAllowed(
-      "cascade_draft_scaffold_from_asset",
+      "local_draft_scaffold_from_asset",
       { asset: scaffold.asset },
       resolved,
     );
@@ -232,13 +232,13 @@ export function registerDraftTools(
     operations: DraftPatchOperation[];
   }): Promise<Record<string, unknown>> {
     const draft = getDraftEntry(draftCache, args.draft_handle);
-    await assertToolBlockAllowed("cascade_draft_apply_patch", draft.root, resolved);
+    await assertToolBlockAllowed("local_draft_apply_patch", draft.root, resolved);
     const preview = draftCache.previewPatch(args.draft_handle, {
       expectedRevision: args.expected_revision,
       operations: args.operations,
     });
     await assertToolBlockAllowed(
-      "cascade_draft_apply_patch",
+      "local_draft_apply_patch",
       preview.nextRoot,
       resolved,
     );
@@ -250,14 +250,14 @@ export function registerDraftTools(
 
   async function applySemanticPatch(args: SemanticPatchArgs): Promise<Record<string, unknown>> {
     const draft = getDraftEntry(draftCache, args.draft_handle);
-    await assertToolBlockAllowed("cascade_draft_apply_semantic_patch", draft.root, resolved);
+    await assertToolBlockAllowed("local_draft_apply_semantic_patch", draft.root, resolved);
     const semantic = buildSemanticDraftPatch(draft.index, args);
     const preview = draftCache.previewPatch(args.draft_handle, {
       expectedRevision: args.expected_revision,
       operations: semantic.operations,
     });
     await assertToolBlockAllowed(
-      "cascade_draft_apply_semantic_patch",
+      "local_draft_apply_semantic_patch",
       preview.nextRoot,
       resolved,
     );
@@ -281,7 +281,7 @@ export function registerDraftTools(
     const draft = getDraftEntry(draftCache, args.draft_handle);
     assertExpectedDraftRevision(draft, args.expected_revision);
     await assertToolBlockAllowed(
-      "cascade_draft_set_file_data",
+      "local_draft_set_file_data",
       materializeDraftRoot(draft, "placeholder"),
       resolved,
     );
@@ -297,13 +297,13 @@ export function registerDraftTools(
       args.expected_sha256.toLowerCase() !== summary.sha256.toLowerCase()
     ) {
       throw new Error(
-        `cascade_draft_set_file_data: expected_sha256 mismatch. Expected ${args.expected_sha256}, actual ${summary.sha256}.`,
+        `local_draft_set_file_data: expected_sha256 mismatch. Expected ${args.expected_sha256}, actual ${summary.sha256}.`,
       );
     }
 
     const textRemoved = file.text === null;
     await assertToolBlockAllowed(
-      "cascade_draft_set_file_data",
+      "local_draft_set_file_data",
       draftRootWithFileDataPlaceholder(draft, textRemoved),
       resolved,
     );
@@ -343,23 +343,23 @@ export function registerDraftTools(
       const validation = parseDraftRequest(draft, "placeholder");
       if (!validation.valid) {
         throw new Error(
-          `cascade_draft_submit validation failed for ${draft.operation} draft: ${validation.issues?.[0]?.message ?? "invalid draft"}`,
+          `local_draft_submit validation failed for ${draft.operation} draft: ${validation.issues?.[0]?.message ?? "invalid draft"}`,
         );
       }
 
       const submittedRevision = draft.revision;
       const submittedHash = draft.draftHash;
       const checkRequest = validation.request as { asset: unknown };
-      const finalTool = draft.operation === "create" ? "cascade_create" : "cascade_edit";
+      const finalTool = draft.operation === "create" ? "create" : "edit";
       assertEditTargetUnchanged(draft, checkRequest);
-      await assertToolBlockAllowed("cascade_draft_submit", checkRequest, resolved);
+      await assertToolBlockAllowed("local_draft_submit", checkRequest, resolved);
       await assertToolBlockAllowed(finalTool, checkRequest, resolved);
       await assertEditSourceCurrent(draft, client);
       assertDraftStillCurrent(draftCache, draft.handle, submittedRevision, submittedHash);
       const actualValidation = parseDraftRequest(draft, "actual");
       if (!actualValidation.valid) {
         throw new Error(
-          `cascade_draft_submit validation failed for ${draft.operation} draft: ${actualValidation.issues?.[0]?.message ?? "invalid draft"}`,
+          `local_draft_submit validation failed for ${draft.operation} draft: ${actualValidation.issues?.[0]?.message ?? "invalid draft"}`,
         );
       }
       const request = actualValidation.request as { asset: unknown };
@@ -452,7 +452,7 @@ export function registerDraftTools(
     if (!resolved.toolBlockStore) return;
     for (const payload of mutationPlanToolBlockPayloads(tool, input)) {
       await assertToolBlockAllowed(
-        "cascade_draft_mutation_plan_execute",
+        "local_draft_mutation_plan_execute",
         payload,
         resolved,
       );
@@ -465,18 +465,18 @@ export function registerDraftTools(
   ): unknown[] {
     const parsed = validateMutationPlanStepInput(tool, input) as Record<string, any>;
     switch (tool) {
-      case "cascade_draft_open":
+      case "local_draft_open":
         if (parsed.operation === "edit") {
           return [
             getAssetEntry(
               assetCache,
               parsed.asset_handle ?? "",
-              "cascade_draft_mutation_plan_execute",
+              "local_draft_mutation_plan_execute",
             ).raw,
           ];
         }
         return [{ asset: parsed.asset ?? {} }];
-      case "cascade_draft_scaffold_create": {
+      case "local_draft_scaffold_create": {
         const scaffold = buildCreateAssetScaffold({
           assetType: parsed.asset_type,
           relationshipStyle: parsed.relationship_style,
@@ -484,15 +484,15 @@ export function registerDraftTools(
         });
         return [{ asset: scaffold.asset }];
       }
-      case "cascade_draft_scaffold_from_asset": {
+      case "local_draft_scaffold_from_asset": {
         const entry = getAssetEntry(
           assetCache,
           parsed.asset_handle,
-          "cascade_draft_mutation_plan_execute",
+          "local_draft_mutation_plan_execute",
         );
         if (entry.rawHash !== parsed.expected_raw_hash) {
           throw new Error(
-            `expected_raw_hash mismatch for asset handle ${entry.handle}. Re-run cascade_read or use the current raw_hash.`,
+            `expected_raw_hash mismatch for asset handle ${entry.handle}. Re-run read or use the current raw_hash.`,
           );
         }
         const scaffold = buildCreateAssetScaffoldFromAsset(assetEnvelopeFromRaw(entry.raw), {
@@ -501,7 +501,7 @@ export function registerDraftTools(
         });
         return [entry.raw, { asset: scaffold.asset }];
       }
-      case "cascade_draft_apply_patch": {
+      case "local_draft_apply_patch": {
         const draft = getDraftEntry(draftCache, parsed.draft_handle);
         const preview = draftCache.previewPatch(parsed.draft_handle, {
           expectedRevision: parsed.expected_revision,
@@ -509,7 +509,7 @@ export function registerDraftTools(
         });
         return [draft.root, preview.nextRoot];
       }
-      case "cascade_draft_apply_semantic_patch": {
+      case "local_draft_apply_semantic_patch": {
         const draft = getDraftEntry(draftCache, parsed.draft_handle);
         const semantic = buildSemanticDraftPatch(draft.index, parsed as SemanticPatchArgs);
         const preview = draftCache.previewPatch(parsed.draft_handle, {
@@ -518,7 +518,7 @@ export function registerDraftTools(
         });
         return [draft.root, preview.nextRoot];
       }
-      case "cascade_draft_set_file_data": {
+      case "local_draft_set_file_data": {
         const draft = getDraftEntry(draftCache, parsed.draft_handle);
         assertExpectedDraftRevision(draft, parsed.expected_revision);
         const file = fileBodyFromDraft(draft);
@@ -527,16 +527,16 @@ export function registerDraftTools(
           draftRootWithFileDataPlaceholder(draft, file.text === null),
         ];
       }
-      case "cascade_draft_resolve_nodes":
-      case "cascade_draft_assert_values":
-      case "cascade_draft_validate":
+      case "local_draft_resolve_nodes":
+      case "local_draft_assert_values":
+      case "local_draft_validate":
         return [
           materializeDraftRoot(
             getDraftEntry(draftCache, parsed.draft_handle),
             "placeholder",
           ),
         ];
-      case "cascade_draft_submit": {
+      case "local_draft_submit": {
         const draft = getDraftEntry(draftCache, parsed.draft_handle);
         const validation = parseDraftRequest(draft, "placeholder");
         return validation.valid
@@ -552,15 +552,15 @@ export function registerDraftTools(
   ): Promise<Record<string, unknown>> {
     const parsed = validateMutationPlanStepInput(tool, input);
     switch (tool) {
-      case "cascade_draft_open":
+      case "local_draft_open":
         return openDraft(parsed as any);
-      case "cascade_draft_scaffold_create":
+      case "local_draft_scaffold_create":
         return scaffoldCreateDraft(parsed as any);
-      case "cascade_draft_scaffold_from_asset":
+      case "local_draft_scaffold_from_asset":
         return scaffoldFromAssetDraft(parsed as any);
-      case "cascade_draft_resolve_nodes": {
+      case "local_draft_resolve_nodes": {
         const draft = getDraftEntry(draftCache, parsed.draft_handle as string);
-        await assertToolBlockAllowed("cascade_draft_resolve_nodes", draft.root, resolved);
+        await assertToolBlockAllowed("local_draft_resolve_nodes", draft.root, resolved);
         return {
           success: true,
           draft_handle: draft.handle,
@@ -571,15 +571,15 @@ export function registerDraftTools(
           ),
         };
       }
-      case "cascade_draft_apply_patch":
+      case "local_draft_apply_patch":
         return applyJsonPatch(parsed as any);
-      case "cascade_draft_apply_semantic_patch":
+      case "local_draft_apply_semantic_patch":
         return applySemanticPatch(parsed as any);
-      case "cascade_draft_set_file_data":
+      case "local_draft_set_file_data":
         return setFileData(parsed as any);
-      case "cascade_draft_assert_values": {
+      case "local_draft_assert_values": {
         const draft = getDraftEntry(draftCache, parsed.draft_handle as string);
-        await assertToolBlockAllowed("cascade_draft_assert_values", draft.root, resolved);
+        await assertToolBlockAllowed("local_draft_assert_values", draft.root, resolved);
         return {
           success: true,
           draft_handle: draft.handle,
@@ -590,25 +590,25 @@ export function registerDraftTools(
           ),
         };
       }
-      case "cascade_draft_validate": {
+      case "local_draft_validate": {
         const draft = getDraftEntry(draftCache, parsed.draft_handle as string);
         await assertToolBlockAllowed(
-          "cascade_draft_validate",
+          "local_draft_validate",
           materializeDraftRoot(draft, "placeholder"),
           resolved,
         );
         return validateDraft(draft);
       }
-      case "cascade_draft_submit":
+      case "local_draft_submit":
         return submitDraft(parsed as any);
     }
   }
 
   registerCascadeTool(server, {
-    name: "cascade_draft_open",
+    name: "local_draft_open",
     title: "Open asset draft",
     description: buildCascadeToolDescription(
-      `Open a mutable local draft for a create or edit workflow. Edit drafts clone the immutable asset_handle returned by cascade_read preview and require expected_raw_hash. Create drafts start from an optional asset envelope. This tool never calls Cascade.`,
+      `Open a mutable local draft for a create or edit workflow. Edit drafts clone the immutable asset_handle returned by read preview and require expected_raw_hash. Create drafts start from an optional asset envelope. This tool never calls Cascade.`,
     ),
     inputSchema: DraftOpenRequestSchema,
     annotations: {
@@ -623,7 +623,7 @@ export function registerDraftTools(
   }, resolved);
 
   registerCascadeTool(server, {
-    name: "cascade_draft_scaffold_create",
+    name: "local_draft_scaffold_create",
     title: "Scaffold create draft",
     description: buildCascadeToolDescription(
       `Open a mutable local create draft containing the bare required asset envelope for one Cascade asset type. Required caller-supplied values are null placeholders and must be patched before validation or submit. This tool never calls Cascade.`,
@@ -641,7 +641,7 @@ export function registerDraftTools(
   }, resolved);
 
   registerCascadeTool(server, {
-    name: "cascade_draft_scaffold_from_asset",
+    name: "local_draft_scaffold_from_asset",
     title: "Scaffold create draft from asset",
     description: buildCascadeToolDescription(
       `Open a mutable local create draft by creating a create-safe scaffold from any existing cached asset envelope, stripping read-only fields/recycled flags, clearing credential fields present in the source to null, adding required hidden credential placeholders when absent, optionally clearing structuredData text and asset-reference values, and returning cleared/replace/add pointer lists. This mutates only the local draft addressed by the new draft_handle, never the original asset_handle, and never calls Cascade.`,
@@ -657,15 +657,15 @@ export function registerDraftTools(
   }, resolved);
 
   registerDraftReadTool(server, resolved, draftCache, {
-    name: "cascade_draft_list_facts",
+    name: "local_draft_list_facts",
     title: "List draft raw facts",
-    description: "Browse object, array, key, and scalar facts indexed from the current draft payload. Use this for audit/debug enumeration; when the task is to find text or content by snippet, prefer cascade_draft_search_values because list_facts can return both key facts and scalar facts for the same value.",
+    description: "Browse object, array, key, and scalar facts indexed from the current draft payload. Use this for audit/debug enumeration; when the task is to find text or content by snippet, prefer local_draft_search_values because list_facts can return both key facts and scalar facts for the same value.",
     inputSchema: DraftListFactsRequestSchema,
     handler: (entry, args) => draftPage(entry, listFacts(entry.index, args as any)),
   });
 
   registerDraftReadTool(server, resolved, draftCache, {
-    name: "cascade_draft_search_values",
+    name: "local_draft_search_values",
     title: "Search draft scalar values",
     description: "Search scalar string/number/boolean/null values inside the current draft payload. Best first choice for finding text/content by known snippet.",
     inputSchema: DraftSearchValuesRequestSchema,
@@ -673,7 +673,7 @@ export function registerDraftTools(
   });
 
   registerDraftReadTool(server, resolved, draftCache, {
-    name: "cascade_draft_search_keys",
+    name: "local_draft_search_keys",
     title: "Search draft object keys",
     description: "Search object keys inside the current draft payload.",
     inputSchema: DraftSearchKeysRequestSchema,
@@ -681,7 +681,7 @@ export function registerDraftTools(
   });
 
   registerDraftReadTool(server, resolved, draftCache, {
-    name: "cascade_draft_list_scalar_artifacts",
+    name: "local_draft_list_scalar_artifacts",
     title: "List draft scalar artifacts",
     description: "List derived link/path-like scalar artifacts in the current draft. Use href for any value found in an HTML/XHTML href attribute, whether absolute, root-relative, relative, or site://; use site_link for non-root, non-URL Cascade *Path fields such as pagePath, filePath, blockPath, and parentFolderPath. Other artifact kinds include http_url, src, anchor, mailto, tel, and root_path.",
     inputSchema: DraftListScalarArtifactsRequestSchema,
@@ -690,7 +690,7 @@ export function registerDraftTools(
   });
 
   registerDraftReadTool(server, resolved, draftCache, {
-    name: "cascade_draft_list_references",
+    name: "local_draft_list_references",
     title: "List draft references",
     description: "List Cascade-native references discovered in the current draft.",
     inputSchema: DraftListReferencesRequestSchema,
@@ -698,7 +698,7 @@ export function registerDraftTools(
   });
 
   registerDraftReadTool(server, resolved, draftCache, {
-    name: "cascade_draft_get_value",
+    name: "local_draft_get_value",
     title: "Get draft JSON value",
     description: "Fetch any JSON value from the current draft by JSON Pointer. Long strings can be sliced with offset and length.",
     inputSchema: DraftGetValueRequestSchema,
@@ -710,7 +710,7 @@ export function registerDraftTools(
   });
 
   registerDraftReadTool(server, resolved, draftCache, {
-    name: "cascade_draft_list_nodelets",
+    name: "local_draft_list_nodelets",
     title: "List draft nodelets",
     description: "List structuredData nodelets from the current draft.",
     inputSchema: DraftListNodeletsRequestSchema,
@@ -729,7 +729,7 @@ export function registerDraftTools(
           ...(listed.next_cursor
             ? [
                 {
-                  tool: "cascade_draft_list_nodelets",
+                  tool: "local_draft_list_nodelets",
                   reason: "Continue listing draft nodelets from the next cursor.",
                   input: {
                     draft_handle: entry.handle,
@@ -741,7 +741,7 @@ export function registerDraftTools(
               ]
             : []),
           ...listed.children.map((nodelet) => ({
-            tool: "cascade_draft_get_nodelet",
+            tool: "local_draft_get_nodelet",
             reason: "Fetch this draft nodelet or a bounded subtree.",
             input: {
               draft_handle: entry.handle,
@@ -754,7 +754,7 @@ export function registerDraftTools(
   });
 
   registerDraftReadTool(server, resolved, draftCache, {
-    name: "cascade_draft_get_nodelet",
+    name: "local_draft_get_nodelet",
     title: "Get draft nodelet",
     description: "Fetch a structuredData nodelet or bounded subtree from the current draft.",
     inputSchema: DraftGetNodeletRequestSchema,
@@ -766,7 +766,7 @@ export function registerDraftTools(
   });
 
   registerDraftReadTool(server, resolved, draftCache, {
-    name: "cascade_draft_resolve_nodes",
+    name: "local_draft_resolve_nodes",
     title: "Resolve draft structured data nodes",
     description: "Resolve structuredData nodes from the current draft by node type, identifier, text, direct child criteria, or field values.",
     inputSchema: DraftResolveNodesRequestSchema,
@@ -781,7 +781,7 @@ export function registerDraftTools(
   });
 
   registerDraftReadTool(server, resolved, draftCache, {
-    name: "cascade_draft_assert_values",
+    name: "local_draft_assert_values",
     title: "Assert draft structured data values",
     description: "Assert structuredData values from the current draft by semantic node selector and target field.",
     inputSchema: DraftAssertValuesRequestSchema,
@@ -796,7 +796,7 @@ export function registerDraftTools(
   });
 
   registerCascadeTool(server, {
-    name: "cascade_draft_apply_patch",
+    name: "local_draft_apply_patch",
     title: "Apply draft patch",
     description: buildCascadeToolDescription(
       `Atomically apply JSON Pointer add, replace, and remove operations to a mutable local draft. This mutates only the local draft addressed by draft_handle, never the original asset_handle read cache, and never calls Cascade.`,
@@ -814,7 +814,7 @@ export function registerDraftTools(
   }, resolved);
 
   registerCascadeTool(server, {
-    name: "cascade_draft_apply_semantic_patch",
+    name: "local_draft_apply_semantic_patch",
     title: "Apply draft semantic patch",
     description: buildCascadeToolDescription(
       `Resolve one structuredData node by semantic selector, compile the change to JSON Pointer patch operations, then atomically apply it to the mutable local draft. This mutates only the local draft addressed by draft_handle, never the original asset_handle read cache, and never calls Cascade.`,
@@ -830,7 +830,7 @@ export function registerDraftTools(
   }, resolved);
 
   registerCascadeTool(server, {
-    name: "cascade_draft_set_file_data",
+    name: "local_draft_set_file_data",
     title: "Set draft file data",
     description: buildCascadeToolDescription(
       `Read local file bytes from exactly one of input_path or base64_data, normalize them to Cascade signed Java bytes, and set asset.file.data on a mutable file draft. This mutates only the local draft, never Cascade. Existing string text is preserved because Cascade files may validly carry text, data, or both; a null text scaffold placeholder is removed so the draft can validate.`,
@@ -846,10 +846,10 @@ export function registerDraftTools(
   }, resolved);
 
   registerCascadeTool(server, {
-    name: "cascade_draft_validate",
+    name: "local_draft_validate",
     title: "Validate asset draft",
     description: buildCascadeToolDescription(
-      `Validate the current draft payload with the normal cascade_create or cascade_edit Zod schema without calling Cascade.`,
+      `Validate the current draft payload with the normal create or edit Zod schema without calling Cascade.`,
     ),
     inputSchema: DraftValidateRequestSchema,
     annotations: {
@@ -861,7 +861,7 @@ export function registerDraftTools(
     handler: async (input) => {
       const draft = getDraftEntry(draftCache, (input as any).draft_handle);
       await assertToolBlockAllowed(
-        "cascade_draft_validate",
+        "local_draft_validate",
         materializeDraftRoot(draft, "placeholder"),
         resolved,
       );
@@ -870,10 +870,10 @@ export function registerDraftTools(
   }, resolved);
 
   registerCascadeTool(server, {
-    name: "cascade_draft_mutation_plan_execute",
+    name: "local_draft_mutation_plan_execute",
     title: "Execute draft mutation plan",
     description: buildCascadeToolDescription(
-      `Execute a small sequence of draft workflow steps locally, passing saved draft handles between steps with draft_ref. Steps run sequentially and stop on the first tool error, failed assertion, failed validation, or a step/Cascade result with success: false. Tool-block rules targeting cascade_draft_mutation_plan_execute are checked against hydrated/resolved step payloads before each step runs. This is local orchestration, not a Cascade batch request.`,
+      `Execute a small sequence of draft workflow steps locally, passing saved draft handles between steps with draft_ref. Steps run sequentially and stop on the first tool error, failed assertion, failed validation, or a step/Cascade result with success: false. Tool-block rules targeting local_draft_mutation_plan_execute are checked against hydrated/resolved step payloads before each step runs. This is local orchestration, not a Cascade batch request.`,
     ),
     inputSchema: DraftMutationPlanExecuteRequestSchema,
     annotations: {
@@ -886,10 +886,10 @@ export function registerDraftTools(
   }, resolved);
 
   registerCascadeTool(server, {
-    name: "cascade_draft_submit",
+    name: "local_draft_submit",
     title: "Submit asset draft",
     description: buildCascadeToolDescription(
-      `Validate the current draft with the normal create/edit schema, check tool-block rules against the complete payload as cascade_draft_submit and the resolved cascade_create or cascade_edit operation, then call Cascade with the full { asset } request.`,
+      `Validate the current draft with the normal create/edit schema, check tool-block rules against the complete payload as local_draft_submit and the resolved create or edit operation, then call Cascade with the full { asset } request.`,
     ),
     inputSchema: DraftSubmitRequestSchema,
     annotations: {
@@ -988,7 +988,7 @@ function fileBodyFromDraft(draft: DraftCacheEntry): Record<string, unknown> {
   const asset = isRecord(draft.root.asset) ? draft.root.asset : undefined;
   const file = asset && isRecord(asset.file) ? asset.file : undefined;
   if (!file || draft.index.assetType !== "file") {
-    throw new Error("cascade_draft_set_file_data: draft must contain a file asset.");
+    throw new Error("local_draft_set_file_data: draft must contain a file asset.");
   }
   return file;
 }
@@ -1025,7 +1025,7 @@ function fileBodyFromRoot(root: Record<string, unknown>): Record<string, unknown
   const asset = isRecord(root.asset) ? root.asset : undefined;
   const file = asset && isRecord(asset.file) ? asset.file : undefined;
   if (!file) {
-    throw new Error("cascade_draft_set_file_data: draft must contain a file asset.");
+    throw new Error("local_draft_set_file_data: draft must contain a file asset.");
   }
   return file;
 }
@@ -1037,7 +1037,7 @@ async function readFileDataInput(args: {
   if (args.input_path !== undefined) {
     const info = await stat(args.input_path);
     if (!info.isFile()) {
-      throw new Error("cascade_draft_set_file_data: input_path must be a file.");
+      throw new Error("local_draft_set_file_data: input_path must be a file.");
     }
     assertFileDataInputSize(info.size, "input_path");
     const bytes = new Uint8Array(await readFile(args.input_path));
@@ -1055,12 +1055,12 @@ function decodeBase64Data(value: string): Uint8Array {
     normalized.length % 4 === 1 ||
     !/^[A-Za-z0-9+/]*={0,2}$/.test(normalized)
   ) {
-    throw new Error("cascade_draft_set_file_data: base64_data is not valid base64.");
+    throw new Error("local_draft_set_file_data: base64_data is not valid base64.");
   }
   assertFileDataInputSize(decodedBase64ByteLength(normalized), "base64_data");
   const buffer = Buffer.from(normalized, "base64");
   if (buffer.toString("base64").replace(/=+$/, "") !== unpadded) {
-    throw new Error("cascade_draft_set_file_data: base64_data is not valid base64.");
+    throw new Error("local_draft_set_file_data: base64_data is not valid base64.");
   }
   assertFileDataInputSize(buffer.length, "base64_data");
   return new Uint8Array(buffer);
@@ -1078,7 +1078,7 @@ function decodedBase64ByteLength(normalized: string): number {
 function assertFileDataInputSize(bytes: number, source: string): void {
   if (bytes <= FILE_DATA_MAX_BYTES) return;
   throw new Error(
-    `cascade_draft_set_file_data: ${source} is too large (${bytes} bytes, max ${FILE_DATA_MAX_BYTES}).`,
+    `local_draft_set_file_data: ${source} is too large (${bytes} bytes, max ${FILE_DATA_MAX_BYTES}).`,
   );
 }
 
@@ -1133,25 +1133,25 @@ function validateMutationPlanStepInput(
 
 function schemaForMutationPlanStep(tool: MutationPlanStep["tool"]) {
   switch (tool) {
-    case "cascade_draft_open":
+    case "local_draft_open":
       return DraftOpenRequestSchema;
-    case "cascade_draft_scaffold_create":
+    case "local_draft_scaffold_create":
       return DraftScaffoldCreateRequestSchema;
-    case "cascade_draft_scaffold_from_asset":
+    case "local_draft_scaffold_from_asset":
       return DraftScaffoldFromAssetRequestSchema;
-    case "cascade_draft_resolve_nodes":
+    case "local_draft_resolve_nodes":
       return DraftResolveNodesRequestSchema;
-    case "cascade_draft_apply_patch":
+    case "local_draft_apply_patch":
       return DraftApplyPatchRequestSchema;
-    case "cascade_draft_apply_semantic_patch":
+    case "local_draft_apply_semantic_patch":
       return DraftApplySemanticPatchRequestSchema;
-    case "cascade_draft_assert_values":
+    case "local_draft_assert_values":
       return DraftAssertValuesRequestSchema;
-    case "cascade_draft_set_file_data":
+    case "local_draft_set_file_data":
       return DraftSetFileDataRequestSchema;
-    case "cascade_draft_validate":
+    case "local_draft_validate":
       return DraftValidateRequestSchema;
-    case "cascade_draft_submit":
+    case "local_draft_submit":
       return DraftSubmitRequestSchema;
   }
 }
@@ -1205,10 +1205,10 @@ function planFailureReason(result: Record<string, unknown>): string | undefined 
 
 function planToolUsesExpectedRevision(tool: MutationPlanStep["tool"]): boolean {
   return (
-    tool === "cascade_draft_apply_patch" ||
-    tool === "cascade_draft_apply_semantic_patch" ||
-    tool === "cascade_draft_set_file_data" ||
-    tool === "cascade_draft_submit"
+    tool === "local_draft_apply_patch" ||
+    tool === "local_draft_apply_semantic_patch" ||
+    tool === "local_draft_set_file_data" ||
+    tool === "local_draft_submit"
   );
 }
 
@@ -1256,7 +1256,7 @@ function getAssetEntry(
   const entry = assetCache.get(handle);
   if (!entry) {
     throw new Error(
-      `${toolName}: asset handle ${handle} not found. Re-run cascade_read to create a fresh asset_handle.`,
+      `${toolName}: asset handle ${handle} not found. Re-run read to create a fresh asset_handle.`,
     );
   }
   return entry;
@@ -1319,8 +1319,8 @@ function rewriteDraftNextActions(
 }
 
 function draftToolName(tool: string): string {
-  return tool.startsWith("cascade_asset_")
-    ? tool.replace("cascade_asset_", "cascade_draft_")
+  return tool.startsWith("asset_")
+    ? tool.replace("asset_", "local_draft_")
     : tool;
 }
 
@@ -1458,7 +1458,7 @@ async function assertEditSourceCurrent(
   if (draft.operation !== "edit") return;
   if (!draft.sourceIdentifier || !draft.sourceRawHash) {
     throw new Error(
-      "Edit draft is missing its source identifier. Re-open the draft from a fresh cascade_read result.",
+      "Edit draft is missing its source identifier. Re-open the draft from a fresh read result.",
     );
   }
 
@@ -1469,7 +1469,7 @@ async function assertEditSourceCurrent(
   if (currentHash === draft.sourceRawHash) return;
 
   throw new Error(
-    "Source asset changed after this edit draft was opened. Re-run cascade_read and open a fresh draft before submitting.",
+    "Source asset changed after this edit draft was opened. Re-run read and open a fresh draft before submitting.",
   );
 }
 
@@ -1481,7 +1481,7 @@ function assertEditTargetUnchanged(
   const source = draft.sourceIdentifier;
   if (!source) {
     throw new Error(
-      "Edit draft is missing its source identifier. Re-open the draft from a fresh cascade_read result.",
+      "Edit draft is missing its source identifier. Re-open the draft from a fresh read result.",
     );
   }
 
@@ -1493,24 +1493,24 @@ function assertEditTargetUnchanged(
   if (source.id) {
     if (body.id === source.id) return;
     throw new Error(
-      "Edit draft target changed after the draft was opened. Re-run cascade_read for the intended asset and open a fresh draft before submitting.",
+      "Edit draft target changed after the draft was opened. Re-run read for the intended asset and open a fresh draft before submitting.",
     );
   }
 
   if (!source.path) return;
   if (body.id !== undefined || body.path !== source.path.path) {
     throw new Error(
-      "Edit draft target changed after the draft was opened. Re-run cascade_read for the intended asset and open a fresh draft before submitting.",
+      "Edit draft target changed after the draft was opened. Re-run read for the intended asset and open a fresh draft before submitting.",
     );
   }
   if (source.path.siteId && body.siteId !== source.path.siteId) {
     throw new Error(
-      "Edit draft target changed after the draft was opened. Re-run cascade_read for the intended asset and open a fresh draft before submitting.",
+      "Edit draft target changed after the draft was opened. Re-run read for the intended asset and open a fresh draft before submitting.",
     );
   }
   if (source.path.siteName && body.siteName !== source.path.siteName) {
     throw new Error(
-      "Edit draft target changed after the draft was opened. Re-run cascade_read for the intended asset and open a fresh draft before submitting.",
+      "Edit draft target changed after the draft was opened. Re-run read for the intended asset and open a fresh draft before submitting.",
     );
   }
 }
@@ -1586,38 +1586,38 @@ function cascadeResultSucceeded(result: unknown): boolean {
 function draftNextActions(entry: DraftCacheEntry): Array<Record<string, unknown>> {
   return [
     {
-      tool: "cascade_draft_get_value",
+      tool: "local_draft_get_value",
       reason: "Fetch a value from this draft by JSON Pointer.",
       input: { draft_handle: entry.handle, pointer: "/asset" },
     },
     {
-      tool: "cascade_draft_apply_patch",
+      tool: "local_draft_apply_patch",
       reason: "Mutate this draft with JSON Pointer operations.",
       required_inputs: ["draft_handle", "expected_revision", "operations"],
     },
     {
-      tool: "cascade_draft_resolve_nodes",
+      tool: "local_draft_resolve_nodes",
       reason: "Find structuredData nodes by semantic criteria before patching.",
       required_inputs: ["draft_handle", "selector"],
     },
     {
-      tool: "cascade_draft_apply_semantic_patch",
+      tool: "local_draft_apply_semantic_patch",
       reason: "Mutate one resolved structuredData field or node without hand-building a JSON Pointer.",
       required_inputs: ["draft_handle", "expected_revision", "match", "op"],
     },
     {
-      tool: "cascade_draft_assert_values",
+      tool: "local_draft_assert_values",
       reason: "Verify structuredData field values before or after draft mutation.",
       required_inputs: ["draft_handle", "assertions"],
     },
     {
-      tool: "cascade_draft_validate",
+      tool: "local_draft_validate",
       reason: "Validate the draft before submitting.",
       input: { draft_handle: entry.handle },
     },
     {
-      tool: "cascade_draft_submit",
-      reason: "Submit the complete draft through cascade_create or cascade_edit.",
+      tool: "local_draft_submit",
+      reason: "Submit the complete draft through create or edit.",
       required_inputs: ["draft_handle", "expected_revision"],
     },
   ];
@@ -1629,7 +1629,7 @@ function createScaffoldNextActions(
 ): Array<Record<string, unknown>> {
   return [
     {
-      tool: "cascade_draft_apply_patch",
+      tool: "local_draft_apply_patch",
       reason: "Replace all null scaffold placeholders with real create values.",
       required_inputs: ["draft_handle", "expected_revision", "operations"],
       input: {
@@ -1639,13 +1639,13 @@ function createScaffoldNextActions(
       placeholder_paths: requiredValuePointers,
     },
     {
-      tool: "cascade_draft_validate",
+      tool: "local_draft_validate",
       reason: "Validate the create draft after placeholders are replaced.",
       input: { draft_handle: entry.handle },
     },
     {
-      tool: "cascade_draft_submit",
-      reason: "Submit the complete create draft through cascade_create.",
+      tool: "local_draft_submit",
+      reason: "Submit the complete create draft through create.",
       required_inputs: ["draft_handle", "expected_revision"],
     },
   ];
@@ -1657,7 +1657,7 @@ function createScaffoldFromAssetNextActions(
 ): Array<Record<string, unknown>> {
   return [
     {
-      tool: "cascade_draft_apply_patch",
+      tool: "local_draft_apply_patch",
       reason: "Fill cleared scaffold values before validation, including structured-data values and credential placeholders. Use replace for replace_value_pointers and add for add_value_pointers.",
       required_inputs: ["draft_handle", "expected_revision", "operations"],
       input: {
@@ -1668,13 +1668,13 @@ function createScaffoldFromAssetNextActions(
       add_value_pointers: scaffold.add_value_pointers,
     },
     {
-      tool: "cascade_draft_validate",
+      tool: "local_draft_validate",
       reason: "Validate the create draft after cleared values are filled.",
       input: { draft_handle: entry.handle },
     },
     {
-      tool: "cascade_draft_submit",
-      reason: "Submit the complete create draft through cascade_create.",
+      tool: "local_draft_submit",
+      reason: "Submit the complete create draft through create.",
       required_inputs: ["draft_handle", "expected_revision"],
     },
   ];

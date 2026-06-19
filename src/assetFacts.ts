@@ -223,16 +223,16 @@ export function listFacts(
 ): AuditPage<RawFact> {
   return pageResults(
     index,
-    "cascade_asset_list_facts",
+    "asset_list_facts",
     "raw_fact_index",
     filters,
     (fact) => matchesFact(index.raw, fact, filters),
     index.rawFacts,
     [
-      "cascade_asset_get_value",
-      "cascade_asset_search_values",
-      "cascade_asset_search_keys",
-      "cascade_asset_list_references",
+      "asset_get_value",
+      "asset_search_values",
+      "asset_search_keys",
+      "asset_list_references",
     ],
   );
 }
@@ -243,12 +243,12 @@ export function searchValues(
 ): AuditPage<RawValueResult> {
   const page = pageResults(
     index,
-    "cascade_asset_search_values",
+    "asset_search_values",
     "raw_scalar_values",
     filters,
     (fact) => fact.fact_kind === "scalar" && matchesFact(index.raw, fact, filters),
     index.rawFacts,
-    ["cascade_asset_get_value", "cascade_asset_list_facts"],
+    ["asset_get_value", "asset_list_facts"],
   );
 
   return {
@@ -263,7 +263,7 @@ export function searchKeys(
 ): AuditPage<RawKeyResult> {
   const page = pageResults(
     index,
-    "cascade_asset_search_keys",
+    "asset_search_keys",
     "raw_object_keys",
     filters,
     (fact) =>
@@ -271,7 +271,7 @@ export function searchKeys(
       pointerMatches(fact.pointer, filters.pointer_prefix) &&
       keyMatches(fact.key, filters.key, filters.key_contains),
     index.rawFacts,
-    ["cascade_asset_get_value", "cascade_asset_list_facts"],
+    ["asset_get_value", "asset_list_facts"],
   );
 
   return {
@@ -290,15 +290,15 @@ export function listReferences(
 ): AuditPage<RawReference> {
   return pageResults(
     index,
-    "cascade_asset_list_references",
-    "cascade_references",
+    "asset_list_references",
+    "asset_references",
     filters,
     (ref) =>
       pointerMatches(ref.source_pointer, filters.pointer_prefix) &&
       (!filters.reference_kind || ref.reference_kind === filters.reference_kind) &&
       (!filters.value_contains || referenceText(ref).toLowerCase().includes(filters.value_contains.toLowerCase())),
     index.rawReferences,
-    ["cascade_asset_get_value", "cascade_asset_list_facts"],
+    ["asset_get_value", "asset_list_facts"],
   );
 }
 
@@ -309,7 +309,7 @@ export function listScalarArtifacts(
   const extraction = extractScalarArtifacts(index.raw, index.rawFacts, filters);
   const page = pageResults(
     index,
-    "cascade_asset_list_scalar_artifacts",
+    "asset_list_scalar_artifacts",
     "raw_scalar_artifacts",
     filters,
     (artifact) =>
@@ -318,7 +318,7 @@ export function listScalarArtifacts(
       (!filters.artifact_kind || artifact.artifact_kind === filters.artifact_kind) &&
       (!filters.value_contains || artifact.value.toLowerCase().includes(filters.value_contains.toLowerCase())),
     extraction.artifacts,
-    ["cascade_asset_get_value", "cascade_asset_search_values", "cascade_asset_list_facts"],
+    ["asset_get_value", "asset_search_values", "asset_list_facts"],
   );
   return {
     ...page,
@@ -340,7 +340,7 @@ export function getValueAtPointer(
   if (typeof value !== "string") {
     if (typeof value === "object" && value !== null) {
       throw new Error(
-        `Pointer ${pointer || "<root>"} resolves to ${Array.isArray(value) ? "an array" : "an object"}. Use cascade_asset_list_facts for indexed subvalues or ${index.rawResourceUri} for exact raw JSON.`,
+        `Pointer ${pointer || "<root>"} resolves to ${Array.isArray(value) ? "an array" : "an object"}. Use asset_list_facts for indexed subvalues or ${index.rawResourceUri} for exact raw JSON.`,
       );
     }
     return {
@@ -430,7 +430,7 @@ function rawForIndexSize(
 
 function binarySummaryForIndex(summary: BinaryFieldSummary): Record<string, unknown> {
   return {
-    __cascade_file_data_summary: true,
+    __file_data_summary: true,
     pointer: summary.pointer,
     bytes_total: summary.bytes_total,
     sha256: summary.sha256,

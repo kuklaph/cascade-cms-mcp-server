@@ -31,10 +31,10 @@ const ACCESS_RIGHTS_OK = {
 } as const;
 
 // =============================================================================
-// cascade_read_access_rights
+// read_access_rights
 // =============================================================================
 
-describe("cascade_read_access_rights tool", () => {
+describe("read_access_rights tool", () => {
   test("happy path: calls client.readAccessRights with identifier", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -43,7 +43,7 @@ describe("cascade_read_access_rights tool", () => {
 
     registerAccessTools(server as any, client);
 
-    const tool = findTool(tools, "cascade_read_access_rights");
+    const tool = findTool(tools, "read_access_rights");
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.idempotentHint).toBe(true);
@@ -71,20 +71,20 @@ describe("cascade_read_access_rights tool", () => {
     });
 
     registerAccessTools(server as any, client);
-    const tool = findTool(tools, "cascade_read_access_rights");
+    const tool = findTool(tools, "read_access_rights");
 
     const result = await tool.handler({ identifier: ID_PAGE });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_read_access_rights");
+    expect(firstText(result)).toContain("read_access_rights");
   });
 });
 
 // =============================================================================
-// cascade_edit_access_rights
+// edit_access_rights
 // =============================================================================
 
-describe("cascade_edit_access_rights tool", () => {
+describe("edit_access_rights tool", () => {
   test("happy path: calls client.editAccessRights with identifier + accessRightsInformation", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -92,7 +92,7 @@ describe("cascade_edit_access_rights tool", () => {
     });
 
     registerAccessTools(server as any, client);
-    const tool = findTool(tools, "cascade_edit_access_rights");
+    const tool = findTool(tools, "edit_access_rights");
 
     expect(tool.config.annotations.readOnlyHint).toBe(false);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -130,7 +130,7 @@ describe("cascade_edit_access_rights tool", () => {
     });
 
     registerAccessTools(server as any, client);
-    const tool = findTool(tools, "cascade_edit_access_rights");
+    const tool = findTool(tools, "edit_access_rights");
 
     const result = await tool.handler({
       identifier: ID_PAGE,
@@ -138,7 +138,7 @@ describe("cascade_edit_access_rights tool", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_edit_access_rights");
+    expect(firstText(result)).toContain("edit_access_rights");
   });
 });
 
@@ -155,8 +155,8 @@ describe("registerAccessTools coverage", () => {
 
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      "cascade_edit_access_rights",
-      "cascade_read_access_rights",
+      "edit_access_rights",
+      "read_access_rights",
     ]);
   });
 });

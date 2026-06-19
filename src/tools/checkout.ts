@@ -1,8 +1,8 @@
 /**
  * Checkout tools: 2 asset-locking operations.
  *
- *   cascade_check_out — lock an asset for exclusive editing
- *   cascade_check_in  — release a lock and commit a comment
+ *   check_out — lock an asset for exclusive editing
+ *   check_in  — release a lock and commit a comment
  *
  * Each tool is a thin `registerCascadeTool` call delegating to the
  * matching `CascadeClient` method.
@@ -27,12 +27,12 @@ export function registerCheckoutTools(
   deps?: CascadeDeps,
 ): void {
   registerCascadeTool(server, {
-    name: "cascade_check_out",
+    name: "check_out",
     title: "Check Out Asset",
     description: buildCascadeToolDescription(
       `Lock a Cascade asset for exclusive editing.
 
-Check-out creates a working copy of the asset that only the authenticated user can edit; other users see the previously committed version until check-in. Required for some asset types (especially files and binary content types) before cascade_edit will succeed. The response includes a workingCopyIdentifier that represents the locked working copy for subsequent calls. Always pair with cascade_check_in when editing finishes to release the lock.
+Check-out creates a working copy of the asset that only the authenticated user can edit; other users see the previously committed version until check-in. Required for some asset types (especially files and binary content types) before edit will succeed. The response includes a workingCopyIdentifier that represents the locked working copy for subsequent calls. Always pair with check_in when editing finishes to release the lock.
 
 Args:
   - identifier (object, required): The asset to check out
@@ -52,8 +52,8 @@ Returns:
 Examples:
   - Use when: "Lock a page before editing" -> { identifier: { type: "page", id: "..." } }
   - Use when: "Check out a file for binary replacement" -> { identifier: { type: "file", path: { path: "/assets/logo.png", siteName: "www" } } }
-  - Don't use when: You've finished editing — use cascade_check_in to release.
-  - Don't use when: Read-only operations — checkout isn't needed for cascade_read.
+  - Don't use when: You've finished editing — use check_in to release.
+  - Don't use when: Read-only operations — checkout isn't needed for read.
 
 Error Handling:
   - "Asset not found" when the identifier doesn't resolve
@@ -71,12 +71,12 @@ Error Handling:
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_check_in",
+    name: "check_in",
     title: "Check In Asset",
     description: buildCascadeToolDescription(
       `Release a checked-out Cascade asset and commit the working copy with a comment.
 
-Completes the pair opened by cascade_check_out: the working copy becomes the new committed version, the lock is released, and the comments string is stored in the asset's version history. Must be called by the same user who performed the check-out. The asset (identified by id/path) must be currently checked out — Cascade will reject check-in of an asset that isn't locked.
+Completes the pair opened by check_out: the working copy becomes the new committed version, the lock is released, and the comments string is stored in the asset's version history. Must be called by the same user who performed the check-out. The asset (identified by id/path) must be currently checked out — Cascade will reject check-in of an asset that isn't locked.
 
 Args:
   - identifier (object, required): The asset to check in

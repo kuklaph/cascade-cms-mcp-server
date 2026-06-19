@@ -14,10 +14,10 @@ import {
 
 export function registerServerVersionTool(server: McpServer): void {
   registerCascadeTool(server, {
-    name: "cascade_server_version",
+    name: "server_version",
     title: "Read MCP server version",
     description: buildCascadeToolDescription(
-      `Read this MCP server's name and version (cascade_server_version).
+      `Read this MCP server's name and version (server_version).
 
 Use this tool when you need to confirm which cascade-cms-mcp-server version is running in the client.
 

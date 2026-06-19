@@ -117,14 +117,14 @@ export function findDeniedToolCall(
   rules: readonly ToolBlockRule[] | undefined,
 ): ToolBlockRule | undefined {
   if (!rules?.length) return undefined;
-  return rules.find((rule) => rule.tools.includes(tool) && inputMatchesRule(input, rule));
+  return rules.find((rule) => ruleToolsInclude(rule, tool) && inputMatchesRule(input, rule));
 }
 
 export function shouldCheckToolBlocks(tool: string): boolean {
   return (
-    tool !== "cascade_tool_blocks" &&
-    tool !== "cascade_read_response" &&
-    !tool.startsWith("cascade_asset_")
+    tool !== "tool_blocks" &&
+    tool !== "read_response" &&
+    !tool.startsWith("asset_")
   );
 }
 
@@ -401,6 +401,20 @@ function parseCascadeUrlSelector(
 
 function selectors(value: string | string[]): string[] {
   return Array.isArray(value) ? value : [value];
+}
+
+function ruleToolsInclude(rule: ToolBlockRule, tool: string): boolean {
+  return rule.tools.some((candidate) => normalizeToolName(candidate) === tool);
+}
+
+function normalizeToolName(tool: string): string {
+  if (tool.startsWith("cascade_draft_")) {
+    return `local_draft_${tool.slice("cascade_draft_".length)}`;
+  }
+  if (tool.startsWith("cascade_")) {
+    return tool.slice("cascade_".length);
+  }
+  return tool;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

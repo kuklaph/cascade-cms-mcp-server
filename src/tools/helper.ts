@@ -1,10 +1,10 @@
 /**
- * Shared registration helper for all Cascade MCP tools.
+ * Shared registration helper for this server's MCP tools.
  *
  * Every tool in this server goes through `registerCascadeTool` so the
  * validate → checked-tool gate → handle → format → error-translate pipeline lives
  * in ONE place.
- * When the MCP SDK or Cascade library contracts change, only this file
+ * When the MCP SDK or Cascade API contracts change, only this file
  * needs editing — not every individual tool registration.
  */
 
@@ -44,12 +44,12 @@ export interface CascadeDeps {
 }
 
 /**
- * Configuration for a single Cascade MCP tool.
+ * Configuration for a single MCP tool.
  *
  * @typeParam TSchema - The full Zod object schema for this tool's inputs.
  */
 export interface CascadeToolConfig<TSchema extends z.ZodTypeAny> {
-  /** Tool name (snake_case, "cascade_" prefix). */
+  /** Tool name (snake_case, no package-specific prefix). */
   name: string;
   /** Short human-facing title. */
   title: string;
@@ -83,7 +83,7 @@ type StandardJsonSchemaOptions = Parameters<
 >[0];
 
 /**
- * Register a Cascade MCP tool on the given server.
+ * Register an MCP tool on the given server.
  *
  * Wraps the tool handler in a pipeline that:
  *   1. Runs the full Zod schema against raw input.
@@ -167,7 +167,7 @@ export function registerCascadeTool<TSchema extends z.ZodTypeAny>(
  */
 export function buildCascadeToolDescription(base: string): string {
   const footer =
-    "Most responses include JSON text; structuredContent is authoritative when the response fits. Multimodal helpers may return only image content; call cascade_file_data_info separately for file metadata. Oversized responses return bounded _cache metadata for cascade_read_response. For cascade_read, read_mode controls preview versus raw Cascade payload shape.";
+    "Most responses include JSON text; structuredContent is authoritative when the response fits. Multimodal helpers may return only image content; call file_data_info separately for file metadata. Oversized responses return bounded _cache metadata for read_response. For read, read_mode controls preview versus raw Cascade payload shape.";
   const trimmed = base.trim();
   const separator = trimmed.endsWith(".") ? " " : ". ";
   return `${trimmed}${separator}${footer}`;

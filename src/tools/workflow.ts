@@ -1,10 +1,10 @@
 /**
  * Workflow tools: 4 workflow-related operations exposed to MCP clients.
  *
- *   cascade_read_workflow_settings        — read folder workflow config
- *   cascade_edit_workflow_settings        — update folder workflow config
- *   cascade_read_workflow_information     — read an in-flight workflow
- *   cascade_perform_workflow_transition   — advance a workflow step
+ *   read_workflow_settings        — read folder workflow config
+ *   edit_workflow_settings        — update folder workflow config
+ *   read_workflow_information     — read an in-flight workflow
+ *   perform_workflow_transition   — advance a workflow step
  *
  * Each tool is a thin `registerCascadeTool` call delegating to the
  * matching `CascadeClient` method. The helper handles the
@@ -32,7 +32,7 @@ export function registerWorkflowTools(
   deps?: CascadeDeps,
 ): void {
   registerCascadeTool(server, {
-    name: "cascade_read_workflow_settings",
+    name: "read_workflow_settings",
     title: "Read Workflow Settings",
     description: buildCascadeToolDescription(
       `Read workflow settings for a Cascade folder.
@@ -63,7 +63,7 @@ Returns:
 Examples:
   - Use when: "Does /about require workflow?" -> { identifier: { type: "folder", path: { path: "/about", siteName: "www" } } }
   - Use when: "Read a folder's workflow policy" -> { identifier: { type: "folder", id: "..." } }
-  - Don't use when: You want to inspect an in-flight workflow — use cascade_read_workflow_information.
+  - Don't use when: You want to inspect an in-flight workflow — use read_workflow_information.
   - Don't use when: Target is not a folder — workflow settings are folder-only.
 
 Error Handling:
@@ -82,12 +82,12 @@ Error Handling:
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_edit_workflow_settings",
+    name: "edit_workflow_settings",
     title: "Edit Workflow Settings",
     description: buildCascadeToolDescription(
       `Update workflow settings for a Cascade folder. Optionally propagate to children.
 
-Replaces the folder's workflow configuration wholesale. Two boolean flags control propagation: applyInheritWorkflowsToChildren copies the "inherit" setting to descendants, applyRequireWorkflowToChildren copies the "required" setting. Call cascade_read_workflow_settings first, then copy only editable WorkflowSettingsSend fields into workflowSettings: workflowDefinitions?, inheritWorkflows?, and requireWorkflow?. Omit the returned identifier field.
+Replaces the folder's workflow configuration wholesale. Two boolean flags control propagation: applyInheritWorkflowsToChildren copies the "inherit" setting to descendants, applyRequireWorkflowToChildren copies the "required" setting. Call read_workflow_settings first, then copy only editable WorkflowSettingsSend fields into workflowSettings: workflowDefinitions?, inheritWorkflows?, and requireWorkflow?. Omit the returned identifier field.
 
 Args:
   - identifier (object, required): The folder to update
@@ -110,8 +110,8 @@ Returns:
 Examples:
   - Use when: "Require workflow on /releases and all its children" -> { identifier: { type: "folder", path: { path: "/releases", siteName: "www" } }, workflowSettings: { workflowDefinitions: [{ type: "workflowdefinition", id: "..." }], inheritWorkflows: false, requireWorkflow: true }, applyRequireWorkflowToChildren: true }
   - Use when: "Swap a workflow definition on a folder" -> pass workflowSettings with a new workflowDefinitions identifier array.
-  - Don't use when: You want to advance an in-flight workflow — use cascade_perform_workflow_transition.
-  - Don't use when: You only need to read — use cascade_read_workflow_settings.
+  - Don't use when: You want to advance an in-flight workflow — use perform_workflow_transition.
+  - Don't use when: You only need to read — use read_workflow_settings.
 
 Error Handling:
   - "Asset not found" when the identifier doesn't resolve
@@ -129,12 +129,12 @@ Error Handling:
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_read_workflow_information",
+    name: "read_workflow_information",
     title: "Read Workflow Information",
     description: buildCascadeToolDescription(
       `Read information about the in-flight workflow attached to an asset.
 
-When an asset is going through an approval workflow, Cascade returns the workflow id, related entity, current step, and optional ordered/unordered steps. Actions, when present, live under workflow step objects as orderedSteps[].actions or unorderedSteps[].actions; pass the workflow id and one action identifier to cascade_perform_workflow_transition to advance the workflow.
+When an asset is going through an approval workflow, Cascade returns the workflow id, related entity, current step, and optional ordered/unordered steps. Actions, when present, live under workflow step objects as orderedSteps[].actions or unorderedSteps[].actions; pass the workflow id and one action identifier to perform_workflow_transition to advance the workflow.
 
 Args:
   - identifier (object, required): The asset whose workflow state to read
@@ -161,7 +161,7 @@ Returns:
 Examples:
   - Use when: "What step is /about/team in?" -> { identifier: { type: "page", path: { path: "/about/team", siteName: "www" } } }
   - Use when: "List actions I can take on this asset's workflow" -> pass the identifier and inspect workflow orderedSteps/unorderedSteps actions.
-  - Don't use when: You want workflow policy — use cascade_read_workflow_settings.
+  - Don't use when: You want workflow policy — use read_workflow_settings.
   - Don't use when: No workflow is in flight — expect a "no workflow" failure.
 
 Error Handling:
@@ -180,16 +180,16 @@ Error Handling:
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_perform_workflow_transition",
+    name: "perform_workflow_transition",
     title: "Perform Workflow Transition",
     description: buildCascadeToolDescription(
       `Advance an in-flight workflow to its next step (approve, reject, publish, etc.).
 
-Executes a named action against an active workflow. The workflowId and actionIdentifier come from a prior cascade_read_workflow_information call — the tool does not enumerate actions itself. A transitionComment is recommended so reviewers understand the decision. Once the final step is executed, Cascade may publish, delete, or otherwise commit the change associated with the workflow.
+Executes a named action against an active workflow. The workflowId and actionIdentifier come from a prior read_workflow_information call — the tool does not enumerate actions itself. A transitionComment is recommended so reviewers understand the decision. Once the final step is executed, Cascade may publish, delete, or otherwise commit the change associated with the workflow.
 
 Args:
   - workflowTransitionInformation (object, required):
-    - workflowId (string, required): The active workflow's id (from cascade_read_workflow_information)
+    - workflowId (string, required): The active workflow's id (from read_workflow_information)
     - actionIdentifier (string, required): The action to take (from orderedSteps[].actions[].identifier or unorderedSteps[].actions[].identifier)
     - transitionComment (string, optional): User comment explaining this transition
 
@@ -201,7 +201,7 @@ Returns:
 Examples:
   - Use when: "Approve an editor's page submission" -> { workflowTransitionInformation: { workflowId: "...", actionIdentifier: "approve", transitionComment: "Looks good." } }
   - Use when: "Reject and send back" -> { workflowTransitionInformation: { workflowId: "...", actionIdentifier: "reject", transitionComment: "Fix the headline." } }
-  - Don't use when: You don't yet know which actions are valid — call cascade_read_workflow_information first.
+  - Don't use when: You don't yet know which actions are valid — call read_workflow_information first.
   - Don't use when: No workflow exists — this only advances an in-flight one.
 
 Error Handling:

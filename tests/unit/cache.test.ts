@@ -29,11 +29,11 @@ describe("createResponseCache", () => {
   test("should return a CachedEntry with all fields populated when getting a fresh handle", () => {
     const cache = createResponseCache();
 
-    const handle = cache.put("cascade_read", "FULL-TEXT");
+    const handle = cache.put("read", "FULL-TEXT");
     const entry = cache.get(handle);
 
     expect(entry).toBeDefined();
-    expect(entry!.toolName).toBe("cascade_read");
+    expect(entry!.toolName).toBe("read");
     expect(entry!.fullText).toBe("FULL-TEXT");
     expect(typeof entry!.createdAt).toBe("number");
   });

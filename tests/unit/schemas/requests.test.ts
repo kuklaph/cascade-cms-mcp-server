@@ -1549,7 +1549,7 @@ describe("draft workflow request schemas", () => {
         steps: [
           {
             name: "open",
-            tool: "cascade_draft_open",
+            tool: "local_draft_open",
             input: {
               operation: "edit",
               asset_handle: ASSET_HANDLE,
@@ -1559,7 +1559,7 @@ describe("draft workflow request schemas", () => {
           },
           {
             name: "validate",
-            tool: "cascade_draft_validate",
+            tool: "local_draft_validate",
             input: { draft_ref: "draft" },
           },
         ],
@@ -1567,7 +1567,7 @@ describe("draft workflow request schemas", () => {
     ).toBe(true);
     expect(
       DraftMutationPlanExecuteRequestSchema.safeParse({
-        steps: [{ tool: "cascade_remove", input: {} }],
+        steps: [{ tool: "remove", input: {} }],
       }).success,
     ).toBe(false);
   });

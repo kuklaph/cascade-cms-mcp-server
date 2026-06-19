@@ -4,6 +4,12 @@ All notable changes to `cascade-cms-mcp-server` will be documented here.
 
 ## Unreleased
 
+### Breaking Changes
+
+- Removed the redundant `cascade_` prefix from public MCP tool names.
+- Renamed MCP-local draft tools from `cascade_draft_*` to `local_draft_*` to distinguish local payload drafts from Cascade browser draft state.
+- Renamed cached reference response `source_scope` from `cascade_references` to `asset_references`.
+
 ## 2.0.0-alpha.0 - 2026-06-11
 
 ### Breaking Changes

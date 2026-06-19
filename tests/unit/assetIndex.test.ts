@@ -228,7 +228,7 @@ describe("asset nodelet index", () => {
     expect(first.next_cursor).toBeDefined();
     expect(first.next_actions).toContainEqual(
       expect.objectContaining({
-        tool: "cascade_asset_list_facts",
+        tool: "asset_list_facts",
         input: expect.objectContaining({
           asset_handle: index.handle,
           fact_kind: "scalar",
@@ -465,8 +465,8 @@ describe("asset nodelet index", () => {
     expect(preview.total_fact_count).toBeGreaterThan(preview.node_count);
     expect(preview.node_count).toBe(11);
     expect("asset" in preview).toBe(false);
-    expect(preview.next_actions.map((action) => action.tool)).toContain("cascade_asset_list_facts");
-    expect(preview.next_actions.map((action) => action.tool)).toContain("cascade_asset_list_scalar_artifacts");
+    expect(preview.next_actions.map((action) => action.tool)).toContain("asset_list_facts");
+    expect(preview.next_actions.map((action) => action.tool)).toContain("asset_list_scalar_artifacts");
     expect(preview.omitted_fields).toEqual(["structuredData"]);
   });
 
@@ -539,10 +539,10 @@ describe("asset nodelet index", () => {
     expect(preview.binary_fields![0]!.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(preview.next_actions.map((action) => action.tool)).toEqual(
       expect.arrayContaining([
-        "cascade_file_data_info",
-        "cascade_file_data_read",
-        "cascade_file_data_image",
-        "cascade_file_data_export",
+        "file_data_info",
+        "file_data_read",
+        "file_data_image",
+        "file_data_export",
       ]),
     );
   });
@@ -743,7 +743,7 @@ describe("scalar artifact audit view", () => {
     expect(first.next_cursor).toBeDefined();
     expect(first.next_actions).toContainEqual(
       expect.objectContaining({
-        tool: "cascade_asset_list_scalar_artifacts",
+        tool: "asset_list_scalar_artifacts",
         input: expect.objectContaining({
           asset_handle: index.handle,
           limit: 2,

@@ -233,7 +233,7 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
       : [];
   if (omittedRoots > 0) {
     warnings.push(
-      `${omittedRoots} root nodelets omitted from root_outline. Use cascade_asset_list_nodelets with pointer "" to page through all roots.`,
+      `${omittedRoots} root nodelets omitted from root_outline. Use asset_list_nodelets with pointer "" to page through all roots.`,
     );
   }
 
@@ -257,57 +257,57 @@ export function toAssetPreview(index: IndexedAsset): AssetPreview {
     warnings,
     next_actions: [
       {
-        tool: "cascade_asset_list_facts",
-        reason: "Browse indexed raw JSON facts for audit/debug enumeration; use cascade_asset_search_values for text/content snippets.",
+        tool: "asset_list_facts",
+        reason: "Browse indexed raw JSON facts for audit/debug enumeration; use asset_search_values for text/content snippets.",
         input: { asset_handle: index.handle },
       },
       {
-        tool: "cascade_asset_search_values",
+        tool: "asset_search_values",
         reason: "Search scalar values inside this cached asset by known text/content snippet.",
         required_inputs: ["asset_handle", "value_contains"],
       },
       {
-        tool: "cascade_asset_search_keys",
+        tool: "asset_search_keys",
         reason: "Find object keys inside this cached asset.",
         input: { asset_handle: index.handle },
       },
       {
-        tool: "cascade_asset_get_value",
+        tool: "asset_get_value",
         reason: "Fetch an exact raw JSON value by pointer.",
         required_inputs: ["asset_handle", "pointer"],
       },
       {
-        tool: "cascade_asset_list_scalar_artifacts",
+        tool: "asset_list_scalar_artifacts",
         reason: "List link/path-like artifacts. Use href for HTML/XHTML href values of any path style; use site_link for non-root, non-URL Cascade *Path fields.",
         input: { asset_handle: index.handle },
       },
       {
-        tool: "cascade_asset_list_references",
+        tool: "asset_list_references",
         reason: "List Cascade-native references discovered in the cached raw response.",
         input: { asset_handle: index.handle },
       },
       {
-        tool: "cascade_asset_list_nodelets",
+        tool: "asset_list_nodelets",
         reason: "Browse structuredData nodelets from the root.",
         input: { asset_handle: index.handle, pointer: "" },
       },
       {
-        tool: "cascade_asset_get_nodelet",
+        tool: "asset_get_nodelet",
         reason: "Fetch an exact structuredData nodelet by pointer.",
         required_inputs: ["asset_handle", "pointer"],
       },
       {
-        tool: "cascade_asset_resolve_nodes",
+        tool: "asset_resolve_nodes",
         reason: "Find structuredData nodes by identifier, text, child criteria, or asset reference fields.",
         required_inputs: ["asset_handle", "selector"],
       },
       {
-        tool: "cascade_asset_assert_values",
+        tool: "asset_assert_values",
         reason: "Verify structuredData values from this cached read before editing.",
         required_inputs: ["asset_handle", "assertions"],
       },
       {
-        tool: "cascade_draft_open",
+        tool: "local_draft_open",
         reason: "Clone this read snapshot into a mutable edit draft without changing the cached read.",
         required_inputs: ["asset_handle", "expected_raw_hash"],
       },
@@ -412,7 +412,7 @@ export function searchIndexedNodes(
     if (matchesNode(node, query, fields)) {
       matches.push({
         ...toStub(node),
-        next_action: "cascade_asset_get_nodelet",
+        next_action: "asset_get_nodelet",
       });
       if (matches.length >= limit) break;
     }
@@ -493,24 +493,24 @@ function binaryNextActions(index: IndexedAsset): NextAction[] {
   if (index.binaryFields.length === 0) return [];
   const actions: NextAction[] = [
     {
-      tool: "cascade_file_data_info",
+      tool: "file_data_info",
       reason: "Inspect summarized binary file data from this cached file asset.",
       input: { asset_handle: index.handle },
     },
     {
-      tool: "cascade_file_data_read",
+      tool: "file_data_read",
       reason: "Read a bounded byte range from this cached file data without dumping the full array.",
       input: { asset_handle: index.handle },
     },
     {
-      tool: "cascade_file_data_export",
+      tool: "file_data_export",
       reason: "Export this cached file data to an explicit local output_path.",
       required_inputs: ["asset_handle", "output_path"],
     },
   ];
   if (isVerifiedImageSummary(index.binaryFields[0]!)) {
     actions.splice(2, 0, {
-      tool: "cascade_file_data_image",
+      tool: "file_data_image",
       reason: "Return image file data as image-only MCP content when the cached file has a verified image signature.",
       input: { asset_handle: index.handle },
     });
@@ -687,7 +687,7 @@ function previewText(text: string): string {
 function parseCursor(cursor: string | undefined): number {
   if (!cursor) return 0;
   const match = /^c_(\d+)$/.exec(cursor);
-  if (!match) throw new Error("Invalid cursor. Use next_cursor returned by cascade_asset_list_nodelets.");
+  if (!match) throw new Error("Invalid cursor. Use next_cursor returned by asset_list_nodelets.");
   return Number(match[1]);
 }
 

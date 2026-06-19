@@ -3,8 +3,8 @@
  *
  * Logs MUST go to stderr only (stdout is reserved for the MCP protocol
  * stream). Format:
- *   [cascade-cms-mcp-server] cascade_read: ok in 234ms
- *   [cascade-cms-mcp-server] cascade_create: error in 123ms — "Permission denied"
+ *   [cascade-cms-mcp-server] read: ok in 234ms
+ *   [cascade-cms-mcp-server] create: error in 123ms — "Permission denied"
  */
 
 import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
@@ -40,16 +40,16 @@ afterEach(() => {
 
 describe("logToolInvocation", () => {
   test("writes success line to stderr with server name, tool name, outcome, and duration", () => {
-    logToolInvocation("cascade_read", "ok", 123);
+    logToolInvocation("read", "ok", 123);
 
     expect(stderrWrites.length).toBe(1);
     const line = stderrWrites[0];
-    expect(line).toBe(`[${SERVER_NAME}] cascade_read: ok in 123ms\n`);
+    expect(line).toBe(`[${SERVER_NAME}] read: ok in 123ms\n`);
   });
 
   test("redacts secrets from error messages before writing to stderr", () => {
     logToolInvocation(
-      "cascade_read",
+      "read",
       "error",
       42,
       "auth failed with token sk-abcdef123456 for user",
@@ -63,7 +63,7 @@ describe("logToolInvocation", () => {
 
   test("redacts Bearer tokens from error messages", () => {
     logToolInvocation(
-      "cascade_edit",
+      "edit",
       "error",
       42,
       "Bearer abc123.def456 was rejected",
@@ -77,7 +77,7 @@ describe("logToolInvocation", () => {
 
   test("collapses newlines and escapes quotes so audit stays single-line", () => {
     logToolInvocation(
-      "cascade_read",
+      "read",
       "error",
       1,
       'Validation failed\nfor field "name"\r\nwith reason',
@@ -95,7 +95,7 @@ describe("logToolInvocation", () => {
 
   test("caps very long error messages to avoid log flooding", () => {
     const longMsg = "x".repeat(2000);
-    logToolInvocation("cascade_read", "error", 1, longMsg);
+    logToolInvocation("read", "error", 1, longMsg);
 
     expect(stderrWrites.length).toBe(1);
     const line = stderrWrites[0];
@@ -104,21 +104,21 @@ describe("logToolInvocation", () => {
   });
 
   test("writes error line with error message suffix in quotes", () => {
-    logToolInvocation("cascade_create", "error", 500, "Permission denied");
+    logToolInvocation("create", "error", 500, "Permission denied");
 
     expect(stderrWrites.length).toBe(1);
     const line = stderrWrites[0];
     expect(line).toBe(
-      `[${SERVER_NAME}] cascade_create: error in 500ms — "Permission denied"\n`,
+      `[${SERVER_NAME}] create: error in 500ms — "Permission denied"\n`,
     );
   });
 
   test("writes error line without suffix when errorMsg is omitted", () => {
-    logToolInvocation("cascade_remove", "error", 321);
+    logToolInvocation("remove", "error", 321);
 
     expect(stderrWrites.length).toBe(1);
     const line = stderrWrites[0];
-    expect(line).toBe(`[${SERVER_NAME}] cascade_remove: error in 321ms\n`);
+    expect(line).toBe(`[${SERVER_NAME}] remove: error in 321ms\n`);
     // No em-dash / quote suffix
     expect(line).not.toContain("—");
     expect(line).not.toContain('"');
@@ -133,8 +133,8 @@ describe("logToolInvocation", () => {
     }) as typeof process.stdout.write;
 
     try {
-      logToolInvocation("cascade_read", "ok", 10);
-      logToolInvocation("cascade_create", "error", 20, "boom");
+      logToolInvocation("read", "ok", 10);
+      logToolInvocation("create", "error", 20, "boom");
     } finally {
       process.stdout.write = originalStdoutWrite;
     }
@@ -178,7 +178,7 @@ describe("registerCascadeTool audit logging integration", () => {
     const handler = mock(async () => ({ success: true }));
 
     registerCascadeTool(server as any, {
-      name: "cascade_sample",
+      name: "sample",
       title: "Sample",
       description: "desc",
       inputSchema: SampleSchema,
@@ -195,7 +195,7 @@ describe("registerCascadeTool audit logging integration", () => {
     expect(stderrWrites.length).toBe(1);
     const line = stderrWrites[0];
     expect(line).toContain(`[${SERVER_NAME}]`);
-    expect(line).toContain("cascade_sample");
+    expect(line).toContain("sample");
     expect(line).toContain(": ok in ");
     expect(line).toContain("ms");
     expect(line).toMatch(/in \d+ms\n$/);
@@ -208,7 +208,7 @@ describe("registerCascadeTool audit logging integration", () => {
     });
 
     registerCascadeTool(server as any, {
-      name: "cascade_sample",
+      name: "sample",
       title: "Sample",
       description: "desc",
       inputSchema: SampleSchema,
@@ -224,7 +224,7 @@ describe("registerCascadeTool audit logging integration", () => {
 
     expect(stderrWrites.length).toBe(1);
     const line = stderrWrites[0];
-    expect(line).toContain("cascade_sample");
+    expect(line).toContain("sample");
     expect(line).toContain(": error in ");
     // The audit line contains the raw thrown error message
     expect(line).toContain("Upstream boom");
@@ -235,7 +235,7 @@ describe("registerCascadeTool audit logging integration", () => {
     const handler = mock(async () => ({ success: true }));
 
     registerCascadeTool(server as any, {
-      name: "cascade_sample",
+      name: "sample",
       title: "Sample",
       description: "desc",
       inputSchema: SampleSchema,

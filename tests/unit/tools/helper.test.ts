@@ -94,7 +94,7 @@ describe("registerCascadeTool", () => {
     const handler = mock(async () => ({ success: true }));
 
     registerCascadeTool(server as any, {
-      name: "cascade_site_copy",
+      name: "site_copy",
       title: "Copy Site",
       description: "desc",
       inputSchema: RefinedSchema,
@@ -112,7 +112,7 @@ describe("registerCascadeTool", () => {
       response_format: "json",
     });
 
-    expect(call[0]).toBe("cascade_site_copy");
+    expect(call[0]).toBe("site_copy");
     expect(Object.keys(advertised.properties)).toEqual([
       "originalSiteId",
       "originalSiteName",
@@ -128,7 +128,7 @@ describe("registerCascadeTool", () => {
     const handler = mock(async (input: unknown) => ({ success: true, got: input }));
 
     registerCascadeTool(server as any, {
-      name: "cascade_sample",
+      name: "sample",
       title: "Sample",
       description: "desc",
       inputSchema: SampleSchema,
@@ -157,7 +157,7 @@ describe("registerCascadeTool", () => {
     registerCascadeTool(
       server as any,
       {
-        name: "cascade_sample",
+        name: "sample",
         title: "Sample",
         description: "desc",
         inputSchema: SampleSchema,
@@ -189,7 +189,7 @@ describe("registerCascadeTool", () => {
     const handler = mock(async () => ({ success: true }));
 
     registerCascadeTool(server as any, {
-      name: "cascade_site_copy",
+      name: "site_copy",
       title: "Copy Site",
       description: "desc",
       inputSchema: RefinedSchema,
@@ -214,7 +214,7 @@ describe("registerCascadeTool", () => {
     const handler = mock(async () => ({ success: true }));
 
     registerCascadeTool(server as any, {
-      name: "cascade_sample",
+      name: "sample",
       title: "Sample",
       description: "desc",
       inputSchema: SecretMessageSchema,
@@ -243,7 +243,7 @@ describe("registerCascadeTool", () => {
       {
         type: "site",
         id: "site-123",
-        tools: ["cascade_remove"],
+        tools: ["remove"],
         reason: "Production site is protected",
       },
     ]);
@@ -251,7 +251,7 @@ describe("registerCascadeTool", () => {
     registerCascadeTool(
       server as any,
       {
-        name: "cascade_remove",
+        name: "remove",
         title: "Remove",
         description: "desc",
         inputSchema: EntitySchema,
@@ -272,7 +272,7 @@ describe("registerCascadeTool", () => {
     expect(result.isError).toBe(true);
     expect(parsedText(result)).toMatchObject({
       success: false,
-      error: { type: "tool_error", tool: "cascade_remove" },
+      error: { type: "tool_error", tool: "remove" },
     });
   });
 
@@ -285,7 +285,7 @@ describe("registerCascadeTool", () => {
     registerCascadeTool(
       server as any,
       {
-        name: "cascade_sample",
+        name: "sample",
         title: "Sample",
         description: "desc",
         inputSchema: SampleSchema,
@@ -303,7 +303,7 @@ describe("registerCascadeTool", () => {
     const sc = result.structuredContent as Record<string, any>;
 
     expect(sc._cache.handle.startsWith("h_")).toBe(true);
-    expect(sc._cache.tool).toBe("cascade_read_response");
+    expect(sc._cache.tool).toBe("read_response");
     expect(cache.size()).toBe(1);
   });
 });

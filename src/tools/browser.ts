@@ -14,14 +14,14 @@ import {
 } from "./helper.js";
 
 const browserSessionRequirement =
-  "This tool uses a cached browser session, or logs in automatically when CASCADE_BROWSER_USERNAME, CASCADE_BROWSER_PASSWORD, and CASCADE_BROWSER_SITE_ID are configured. If CASCADE_BROWSER_SITE_ID is missing, run cascade_browser_login with site_id before calling this tool. It never accepts credentials or cookies in tool input.";
+  "This tool uses a cached browser session, or logs in automatically when CASCADE_BROWSER_USERNAME, CASCADE_BROWSER_PASSWORD, and CASCADE_BROWSER_SITE_ID are configured. If CASCADE_BROWSER_SITE_ID is missing, run browser_login with site_id before calling this tool. It never accepts credentials or cookies in tool input.";
 
 export function registerBrowserTools(
   server: McpServer,
   deps?: CascadeDeps,
 ): void {
   registerCascadeTool(server, {
-    name: "cascade_browser_login",
+    name: "browser_login",
     title: "Log In To Cascade Browser UI",
     description: buildCascadeToolDescription(
       `Authenticate against Cascade's browser UI and store the resulting session in this MCP server process for later browser-backed tools.
@@ -50,7 +50,7 @@ Don't use when: the standard Cascade REST/SOAP API tool can perform the operatio
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_browser_check_draft",
+    name: "browser_check_draft",
     title: "Check Browser Draft Notification",
     description: buildCascadeToolDescription(
       `Check Cascade's browser-only editing-users notification endpoint for an asset.
@@ -83,7 +83,7 @@ Don't use when: you need to edit or submit drafts; use the MCP draft tools for l
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_browser_list_snippets",
+    name: "browser_list_snippets",
     title: "List Browser Snippets",
     description: buildCascadeToolDescription(
       `List Cascade snippets from the browser-only administration endpoint.
@@ -111,7 +111,7 @@ Don't use when: you need standard Cascade assets; use REST/SOAP tools for normal
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_browser_create_snippet",
+    name: "browser_create_snippet",
     title: "Create Browser Snippet",
     description: buildCascadeToolDescription(
       `Create a Cascade snippet through the browser-only snippets administration endpoint.
@@ -127,7 +127,7 @@ Returns:
   { success: true, status, message? }
 
 Use when: creating an administration snippet that is not exposed through the standard Cascade REST/SOAP API.
-Don't use when: updating an existing snippet; use cascade_browser_update_snippet.`,
+Don't use when: updating an existing snippet; use browser_update_snippet.`,
     ),
     inputSchema: BrowserCreateSnippetRequestSchema,
     annotations: {
@@ -140,7 +140,7 @@ Don't use when: updating an existing snippet; use cascade_browser_update_snippet
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_browser_update_snippet",
+    name: "browser_update_snippet",
     title: "Update Browser Snippet",
     description: buildCascadeToolDescription(
       `Update a Cascade snippet through the browser-only snippets administration endpoint.
@@ -148,7 +148,7 @@ Don't use when: updating an existing snippet; use cascade_browser_update_snippet
 ${browserSessionRequirement}
 
 Args:
-  - id (string, required): Snippet ID from cascade_browser_list_snippets.
+  - id (string, required): Snippet ID from browser_list_snippets.
   - title (string, required): Updated snippet title.
   - value (string, required): Updated snippet replacement value.
 
@@ -156,7 +156,7 @@ Returns:
   { success: true, status, message? }
 
 Use when: changing an existing snippet's title or value.
-Don't use when: you only know the snippet name; first call cascade_browser_list_snippets to get its ID.`,
+Don't use when: you only know the snippet name; first call browser_list_snippets to get its ID.`,
     ),
     inputSchema: BrowserUpdateSnippetRequestSchema,
     annotations: {
@@ -169,7 +169,7 @@ Don't use when: you only know the snippet name; first call cascade_browser_list_
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_browser_delete_snippets",
+    name: "browser_delete_snippets",
     title: "Delete Browser Snippets",
     description: buildCascadeToolDescription(
       `Delete one or more Cascade snippets through the browser-only snippets administration endpoint.
@@ -177,13 +177,13 @@ Don't use when: you only know the snippet name; first call cascade_browser_list_
 This is destructive. ${browserSessionRequirement}
 
 Args:
-  - ids (string[], required): One or more snippet IDs from cascade_browser_list_snippets.
+  - ids (string[], required): One or more snippet IDs from browser_list_snippets.
 
 Returns:
   { success: true, status, message?, results? }
 
 Use when: permanently removing known snippets by ID.
-Don't use when: you only know the snippet name; first call cascade_browser_list_snippets to get IDs.`,
+Don't use when: you only know the snippet name; first call browser_list_snippets to get IDs.`,
     ),
     inputSchema: BrowserDeleteSnippetsRequestSchema,
     annotations: {
@@ -199,6 +199,6 @@ Don't use when: you only know the snippet name; first call cascade_browser_list_
 function requireBrowserSession(deps: CascadeDeps | undefined) {
   if (deps?.browserSession) return deps.browserSession;
   throw new Error(
-    "Browser API login is not configured. Set CASCADE_BROWSER_USERNAME and CASCADE_BROWSER_PASSWORD to enable browser login. Set CASCADE_BROWSER_SITE_ID for startup/automatic browser login, or pass site_id to cascade_browser_login. Set CASCADE_BROWSER_URL only when the browser UI root differs from the origin derived from CASCADE_URL.",
+    "Browser API login is not configured. Set CASCADE_BROWSER_USERNAME and CASCADE_BROWSER_PASSWORD to enable browser login. Set CASCADE_BROWSER_SITE_ID for startup/automatic browser login, or pass site_id to browser_login. Set CASCADE_BROWSER_URL only when the browser UI root differs from the origin derived from CASCADE_URL.",
   );
 }

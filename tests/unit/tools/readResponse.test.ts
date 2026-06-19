@@ -10,31 +10,31 @@ function parsedText(result: { content: Array<{ type: string; text?: string }> })
 }
 
 describe("registerReadResponseTool: registration", () => {
-  test("registers cascade_read_response with read-only annotations", () => {
+  test("registers read_response with read-only annotations", () => {
     const { server, tools } = makeMockServer();
     const cache = createResponseCache();
 
     registerReadResponseTool(server as any, { cache });
 
-    const tool = findTool(tools, "cascade_read_response");
+    const tool = findTool(tools, "read_response");
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.idempotentHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.openWorldHint).toBe(false);
-    expect(tool.config.description).toContain("cascade_read_response");
+    expect(tool.config.description).toContain("read_response");
   });
 });
 
-describe("cascade_read_response handler", () => {
+describe("read_response handler", () => {
   test("returns slice_text in JSON text and structuredContent", async () => {
     const { server, tools } = makeMockServer();
     const cache = createResponseCache();
     const fullText = "abcdefghij".repeat(50);
-    const handle = cache.put("cascade_read", fullText);
+    const handle = cache.put("read", fullText);
 
     registerReadResponseTool(server as any, { cache });
 
-    const tool = findTool(tools, "cascade_read_response");
+    const tool = findTool(tools, "read_response");
     const result = await tool.handler({ handle, offset: 0, length: 100 });
     const textBody = parsedText(result);
     const sc = result.structuredContent as Record<string, unknown>;
@@ -54,11 +54,11 @@ describe("cascade_read_response handler", () => {
     const { server, tools } = makeMockServer();
     const cache = createResponseCache();
     const fullText = "X".repeat(50) + "Y".repeat(50);
-    const handle = cache.put("cascade_read", fullText);
+    const handle = cache.put("read", fullText);
 
     registerReadResponseTool(server as any, { cache });
 
-    const tool = findTool(tools, "cascade_read_response");
+    const tool = findTool(tools, "read_response");
     const result = await tool.handler({ handle, offset: 50, length: 50 });
     const sc = result.structuredContent as Record<string, unknown>;
 
@@ -72,11 +72,11 @@ describe("cascade_read_response handler", () => {
     const { server, tools } = makeMockServer();
     const cache = createResponseCache();
     const fullText = '"\\\n'.repeat(30000);
-    const handle = cache.put("cascade_read", fullText);
+    const handle = cache.put("read", fullText);
 
     registerReadResponseTool(server as any, { cache });
 
-    const tool = findTool(tools, "cascade_read_response");
+    const tool = findTool(tools, "read_response");
     const result = await tool.handler({
       handle,
       offset: 0,
@@ -94,11 +94,11 @@ describe("cascade_read_response handler", () => {
   test("offset past end returns empty slice metadata", async () => {
     const { server, tools } = makeMockServer();
     const cache = createResponseCache();
-    const handle = cache.put("cascade_read", "small");
+    const handle = cache.put("read", "small");
 
     registerReadResponseTool(server as any, { cache });
 
-    const tool = findTool(tools, "cascade_read_response");
+    const tool = findTool(tools, "read_response");
     const result = await tool.handler({ handle, offset: 100, length: 25 });
     const sc = result.structuredContent as Record<string, unknown>;
 
@@ -114,7 +114,7 @@ describe("cascade_read_response handler", () => {
 
     registerReadResponseTool(server as any, { cache });
 
-    const tool = findTool(tools, "cascade_read_response");
+    const tool = findTool(tools, "read_response");
     const result = await tool.handler({
       handle: "h_deadbeef",
       offset: 0,

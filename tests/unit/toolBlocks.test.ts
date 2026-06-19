@@ -34,7 +34,7 @@ describe("tool block store", () => {
     const rules = [
       {
         url: "https://college.cascadecms.com/entity/open.act?id=block-1&type=block",
-        tools: ["cascade_remove", "cascade_edit"],
+        tools: ["remove", "edit"],
         reason: "Protected block",
       },
     ];
@@ -56,7 +56,7 @@ describe("tool block store", () => {
     const store = createToolBlockStore(await tempFile());
 
     await expect(
-      store.write([{ id: "asset-1", tools: ["cascade_edit"] } as any]),
+      store.write([{ id: "asset-1", tools: ["edit"] } as any]),
     ).rejects.toThrow(/type is required/i);
   });
 
@@ -67,7 +67,7 @@ describe("tool block store", () => {
       store.write([
         {
           url: "https://college.cascadecms.com/entity/open.act?id=asset-1",
-          tools: ["cascade_edit"],
+          tools: ["edit"],
         },
       ]),
     ).rejects.toThrow(/url.*type/i);
@@ -80,7 +80,7 @@ describe("tool block store", () => {
       store.write([
         {
           url: "https://college.cascadecms.com/entity/open.act?type=block",
-          tools: ["cascade_edit"],
+          tools: ["edit"],
         },
       ]),
     ).rejects.toThrow(/url.*id/i);
@@ -94,7 +94,7 @@ describe("tool block store", () => {
         {
           url: "https://college.cascadecms.com/entity/open.act?id=block-1&type=block",
           id: "page-1",
-          tools: ["cascade_edit"],
+          tools: ["edit"],
         } as any,
       ]),
     ).rejects.toThrow(/type is required/i);
@@ -107,7 +107,7 @@ describe("tool block store", () => {
       store.write([
         {
           url: "https://example.edu/entity/open.act?id=block-1&type=block",
-          tools: ["cascade_edit"],
+          tools: ["edit"],
         },
       ]),
     ).rejects.toThrow(/Cascade CMS asset URL/i);
@@ -121,7 +121,7 @@ describe("tool block store", () => {
         {
           type: "connectorContainer",
           id: "container-1",
-          tools: ["cascade_edit"],
+          tools: ["edit"],
         } as any,
       ]),
     ).rejects.toThrow(/expected one of/i);
@@ -134,7 +134,7 @@ describe("tool block store", () => {
       store.write([
         {
           url: "https://college.cascadecms.com/entity/open.act?id=container-1&type=connectorContainer",
-          tools: ["cascade_edit"],
+          tools: ["edit"],
         },
       ]),
     ).rejects.toThrow(/Cascade CMS asset URL/i);
@@ -147,9 +147,9 @@ describe("tool block store", () => {
 });
 
 describe("findDeniedToolCall", () => {
-  test("matches a blocked main Cascade tool by URL-derived id and type", () => {
+  test("matches a blocked direct tool by URL-derived id and type", () => {
     const denied = findDeniedToolCall(
-      "cascade_edit",
+      "edit",
       {
         asset: {
           xhtmlDataDefinitionBlock: {
@@ -160,17 +160,39 @@ describe("findDeniedToolCall", () => {
       [
         {
           url: "https://college.cascadecms.com/entity/open.act?id=block-1&type=block",
-          tools: ["cascade_edit"],
+          tools: ["edit"],
         },
       ],
     );
 
-    expect(denied?.tools).toEqual(["cascade_edit"]);
+    expect(denied?.tools).toEqual(["edit"]);
+  });
+
+  test("matches legacy cascade-prefixed persisted tool names", () => {
+    const rules = [
+      { type: "page" as const, id: "page-1", tools: ["cascade_edit"] },
+      { type: "page" as const, id: "page-2", tools: ["cascade_draft_submit"] },
+    ];
+
+    expect(
+      findDeniedToolCall(
+        "edit",
+        { identifier: { type: "page", id: "page-1" } },
+        rules,
+      ),
+    ).toBe(rules[0]);
+    expect(
+      findDeniedToolCall(
+        "local_draft_submit",
+        { asset: { page: { id: "page-2" } } },
+        rules,
+      ),
+    ).toBe(rules[1]);
   });
 
   test("does not match a URL-only rule when the URL type differs from the payload type", () => {
     const denied = findDeniedToolCall(
-      "cascade_edit",
+      "edit",
       {
         identifier: {
           type: "page",
@@ -180,7 +202,7 @@ describe("findDeniedToolCall", () => {
       [
         {
           url: "https://college.cascadecms.com/entity/open.act?id=block-1&type=block",
-          tools: ["cascade_edit"],
+          tools: ["edit"],
         },
       ],
     );
@@ -193,26 +215,26 @@ describe("findDeniedToolCall", () => {
       url: "https://college.cascadecms.com/entity/open.act?id=block-1&type=block",
       type: "page" as const,
       id: "page-1",
-      tools: ["cascade_edit"],
+      tools: ["edit"],
     };
 
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         { asset: { xhtmlDataDefinitionBlock: { id: "block-1" } } },
         [rule],
       ),
     ).toBe(rule);
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         { identifier: { type: "page", id: "page-1" } },
         [rule],
       ),
     ).toBe(rule);
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         { identifier: { type: "folder", id: "page-1" } },
         [rule],
       ),
@@ -223,12 +245,12 @@ describe("findDeniedToolCall", () => {
     const rule = {
       type: "block_XHTML_DATADEFINITION" as const,
       id: "block-1",
-      tools: ["cascade_edit"],
+      tools: ["edit"],
     };
 
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         { asset: { xhtmlDataDefinitionBlock: { id: "block-1" } } },
         [rule],
       ),
@@ -239,12 +261,12 @@ describe("findDeniedToolCall", () => {
     const rule = {
       type: "connectorcontainer" as const,
       id: "container-1",
-      tools: ["cascade_edit"],
+      tools: ["edit"],
     };
 
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         { asset: { connectorContainer: { id: "container-1" } } },
         [rule],
       ),
@@ -255,12 +277,12 @@ describe("findDeniedToolCall", () => {
     const rule = {
       type: "pageconfiguration" as const,
       id: "config-1",
-      tools: ["cascade_edit"],
+      tools: ["edit"],
     };
 
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         {
           asset: {
             pageConfigurationSet: {
@@ -277,12 +299,12 @@ describe("findDeniedToolCall", () => {
     const rule = {
       type: "pageregion" as const,
       id: "region-1",
-      tools: ["cascade_edit"],
+      tools: ["edit"],
     };
 
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         {
           asset: {
             page: {
@@ -303,19 +325,19 @@ describe("findDeniedToolCall", () => {
     const rule = {
       type: "format" as const,
       id: "format-1",
-      tools: ["cascade_edit"],
+      tools: ["edit"],
     };
 
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         { identifier: { type: "format_XSLT", id: "format-1" } },
         [rule],
       ),
     ).toBe(rule);
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         { asset: { xsltFormat: { id: "format-1" } } },
         [rule],
       ),
@@ -326,36 +348,36 @@ describe("findDeniedToolCall", () => {
     const blockRule = {
       type: "block_XHTML_DATADEFINITION" as const,
       id: "block-1",
-      tools: ["cascade_edit"],
+      tools: ["edit"],
     };
     const formatRule = {
       type: "format_XSLT" as const,
       id: "format-1",
-      tools: ["cascade_edit"],
+      tools: ["edit"],
     };
     const transportRule = {
       type: "transport_ftp" as const,
       id: "transport-1",
-      tools: ["cascade_edit"],
+      tools: ["edit"],
     };
 
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         { identifier: { type: "block", id: "block-1" } },
         [blockRule],
       ),
     ).toBe(blockRule);
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         { identifier: { type: "format", id: "format-1" } },
         [formatRule],
       ),
     ).toBe(formatRule);
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         { identifier: { type: "transport", id: "transport-1" } },
         [transportRule],
       ),
@@ -365,12 +387,12 @@ describe("findDeniedToolCall", () => {
   test("matches generic transport URL rules against concrete transport envelopes", () => {
     const rule = {
       url: "https://college.cascadecms.com/entity/open.act?id=transport-1&type=transport",
-      tools: ["cascade_edit"],
+      tools: ["edit"],
     };
 
     expect(
       findDeniedToolCall(
-        "cascade_edit",
+        "edit",
         { asset: { ftpTransport: { id: "transport-1" } } },
         [rule],
       ),
@@ -381,12 +403,12 @@ describe("findDeniedToolCall", () => {
     const rule = {
       type: "site" as const,
       path: ["Site One", "Site Two"],
-      tools: ["cascade_remove"],
+      tools: ["remove"],
     };
 
     expect(
       findDeniedToolCall(
-        "cascade_remove",
+        "remove",
         { identifier: { type: "site", path: { path: "Site Two" } } },
         [rule],
       ),

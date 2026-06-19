@@ -109,7 +109,7 @@ class BrowserApiSession implements BrowserSession {
   }): Promise<BrowserCheckDraftResult> {
     return this.runWithSession(
       () => checkDraft(this.context(), args),
-      "Browser session expired. Run cascade_browser_login, then retry cascade_browser_check_draft.",
+      "Browser session expired. Run browser_login, then retry browser_check_draft.",
     );
   }
 
@@ -205,7 +205,7 @@ class BrowserApiSession implements BrowserSession {
   private assertConfigured(): void {
     if (this.username && this.password) return;
     throw new Error(
-      "Browser API login is not configured. Set CASCADE_BROWSER_USERNAME and CASCADE_BROWSER_PASSWORD to enable browser login. Set CASCADE_BROWSER_SITE_ID for startup/automatic browser login, or pass site_id to cascade_browser_login. Set CASCADE_BROWSER_URL only when the browser UI root differs from the origin derived from CASCADE_URL.",
+      "Browser API login is not configured. Set CASCADE_BROWSER_USERNAME and CASCADE_BROWSER_PASSWORD to enable browser login. Set CASCADE_BROWSER_SITE_ID for startup/automatic browser login, or pass site_id to browser_login. Set CASCADE_BROWSER_URL only when the browser UI root differs from the origin derived from CASCADE_URL.",
     );
   }
 
@@ -213,20 +213,20 @@ class BrowserApiSession implements BrowserSession {
     const resolved = siteId ?? this.defaultSiteId;
     if (resolved) return resolved;
     throw new Error(
-      "Browser API site ID is not configured. Set CASCADE_BROWSER_SITE_ID to the production site ID for normal browser API use. To find it, select the production site in Cascade, open Manage Site, and copy the site ID from the browser URL. As a temporary recovery path, pass site_id to cascade_browser_login.",
+      "Browser API site ID is not configured. Set CASCADE_BROWSER_SITE_ID to the production site ID for normal browser API use. To find it, select the production site in Cascade, open Manage Site, and copy the site ID from the browser URL. As a temporary recovery path, pass site_id to browser_login.",
     );
   }
 
   private async runWithSession<T>(
     operation: () => Promise<T>,
     expiredMessage =
-      "Browser session expired. Run cascade_browser_login, then retry the browser-backed tool.",
+      "Browser session expired. Run browser_login, then retry the browser-backed tool.",
   ): Promise<T> {
     if (!this.hasSession()) {
       this.assertConfigured();
       if (!this.defaultSiteId) {
         throw new Error(
-          "Browser session is not authenticated and CASCADE_BROWSER_SITE_ID is not configured. Set CASCADE_BROWSER_SITE_ID to the production site ID, then restart the MCP server. To find it, select the production site in Cascade, open Manage Site, and copy the site ID from the browser URL. As a temporary recovery path, run cascade_browser_login with site_id first.",
+          "Browser session is not authenticated and CASCADE_BROWSER_SITE_ID is not configured. Set CASCADE_BROWSER_SITE_ID to the production site ID, then restart the MCP server. To find it, select the production site in Cascade, open Manage Site, and copy the site ID from the browser URL. As a temporary recovery path, run browser_login with site_id first.",
         );
       }
       await this.login({});

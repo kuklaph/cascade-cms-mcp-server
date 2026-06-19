@@ -613,7 +613,7 @@ describe("AssetInputSchema (envelope union)", () => {
     ).toBe(false);
   });
 
-  test("should reject a flat (non-envelope) shape — regression for cascade_edit bug", () => {
+  test("should reject a flat (non-envelope) shape — regression for edit bug", () => {
     const input = {
       name: "index",
       parentFolderPath: "/",

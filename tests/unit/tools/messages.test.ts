@@ -40,10 +40,10 @@ const MESSAGES_OK = {
 } as const;
 
 // =============================================================================
-// cascade_list_subscribers
+// list_subscribers
 // =============================================================================
 
-describe("cascade_list_subscribers tool", () => {
+describe("list_subscribers tool", () => {
   test("happy path: calls client.listSubscribers with identifier and returns success response", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -52,7 +52,7 @@ describe("cascade_list_subscribers tool", () => {
 
     registerMessageTools(server as any, client);
 
-    const tool = findTool(tools, "cascade_list_subscribers");
+    const tool = findTool(tools, "list_subscribers");
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.idempotentHint).toBe(true);
@@ -82,22 +82,22 @@ describe("cascade_list_subscribers tool", () => {
     });
 
     registerMessageTools(server as any, client);
-    const tool = findTool(tools, "cascade_list_subscribers");
+    const tool = findTool(tools, "list_subscribers");
 
     const result = await tool.handler({ identifier: ID_PAGE });
 
     expect(result.isError).toBe(true);
     const text = firstText(result);
-    expect(text).toContain("cascade_list_subscribers");
+    expect(text).toContain("list_subscribers");
     expect(text).toContain("Not Found");
   });
 });
 
 // =============================================================================
-// cascade_list_messages
+// list_messages
 // =============================================================================
 
-describe("cascade_list_messages tool", () => {
+describe("list_messages tool", () => {
   test("happy path: calls client.listMessages (without pagination args) and returns paginated response", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -105,7 +105,7 @@ describe("cascade_list_messages tool", () => {
     });
 
     registerMessageTools(server as any, client);
-    const tool = findTool(tools, "cascade_list_messages");
+    const tool = findTool(tools, "list_messages");
 
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -135,7 +135,7 @@ describe("cascade_list_messages tool", () => {
     });
 
     registerMessageTools(server as any, client);
-    const tool = findTool(tools, "cascade_list_messages");
+    const tool = findTool(tools, "list_messages");
 
     const result = await tool.handler({});
 
@@ -159,7 +159,7 @@ describe("cascade_list_messages tool", () => {
     });
 
     registerMessageTools(server as any, client);
-    const tool = findTool(tools, "cascade_list_messages");
+    const tool = findTool(tools, "list_messages");
 
     const result = await tool.handler({ limit: 2, offset: 0 });
 
@@ -186,20 +186,20 @@ describe("cascade_list_messages tool", () => {
     });
 
     registerMessageTools(server as any, client);
-    const tool = findTool(tools, "cascade_list_messages");
+    const tool = findTool(tools, "list_messages");
 
     const result = await tool.handler({});
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_list_messages");
+    expect(firstText(result)).toContain("list_messages");
   });
 });
 
 // =============================================================================
-// cascade_mark_message
+// mark_message
 // =============================================================================
 
-describe("cascade_mark_message tool", () => {
+describe("mark_message tool", () => {
   test("happy path: calls client.markMessage with identifier + markType", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -207,7 +207,7 @@ describe("cascade_mark_message tool", () => {
     });
 
     registerMessageTools(server as any, client);
-    const tool = findTool(tools, "cascade_mark_message");
+    const tool = findTool(tools, "mark_message");
 
     expect(tool.config.annotations.readOnlyHint).toBe(false);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -252,7 +252,7 @@ describe("cascade_mark_message tool", () => {
     });
 
     registerMessageTools(server as any, client);
-    const tool = findTool(tools, "cascade_mark_message");
+    const tool = findTool(tools, "mark_message");
 
     const result = await tool.handler({
       identifier: ID_MESSAGE,
@@ -260,15 +260,15 @@ describe("cascade_mark_message tool", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_mark_message");
+    expect(firstText(result)).toContain("mark_message");
   });
 });
 
 // =============================================================================
-// cascade_delete_message
+// delete_message
 // =============================================================================
 
-describe("cascade_delete_message tool", () => {
+describe("delete_message tool", () => {
   test("happy path: calls client.deleteMessage with identifier", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -276,7 +276,7 @@ describe("cascade_delete_message tool", () => {
     });
 
     registerMessageTools(server as any, client);
-    const tool = findTool(tools, "cascade_delete_message");
+    const tool = findTool(tools, "delete_message");
 
     expect(tool.config.annotations.readOnlyHint).toBe(false);
     expect(tool.config.annotations.destructiveHint).toBe(true);
@@ -306,12 +306,12 @@ describe("cascade_delete_message tool", () => {
     });
 
     registerMessageTools(server as any, client);
-    const tool = findTool(tools, "cascade_delete_message");
+    const tool = findTool(tools, "delete_message");
 
     const result = await tool.handler({ identifier: ID_MESSAGE });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_delete_message");
+    expect(firstText(result)).toContain("delete_message");
   });
 });
 
@@ -320,7 +320,7 @@ describe("cascade_delete_message tool", () => {
 // =============================================================================
 
 describe("registerMessageTools coverage", () => {
-  test("registers all 4 message tools with cascade_ prefix", () => {
+  test("registers all 4 message tools", () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient();
 
@@ -328,10 +328,10 @@ describe("registerMessageTools coverage", () => {
 
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      "cascade_delete_message",
-      "cascade_list_messages",
-      "cascade_list_subscribers",
-      "cascade_mark_message",
+      "delete_message",
+      "list_messages",
+      "list_subscribers",
+      "mark_message",
     ]);
   });
 });

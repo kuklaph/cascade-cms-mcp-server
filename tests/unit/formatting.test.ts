@@ -71,7 +71,7 @@ describe("formatResponse", () => {
       })),
     };
 
-    const out = formatResponse(big, "cascade_search", { cache });
+    const out = formatResponse(big, "search", { cache });
     const textPayload = parsedText(out) as Record<string, unknown>;
     const structured = out.structuredContent as Record<string, unknown>;
     const envelope = structured._cache as Record<string, unknown>;
@@ -84,7 +84,7 @@ describe("formatResponse", () => {
     );
     expect(firstText(out).length).toBeLessThanOrEqual(CHARACTER_LIMIT);
     expect(textPayload.handle).toEqual(envelope.handle);
-    expect(textPayload.tool).toBe("cascade_read_response");
+    expect(textPayload.tool).toBe("read_response");
     expect(envelope.bytes_total).toBe(cache.get(envelope.handle as string)!.fullText.length);
     expect(structured.success).toBe(true);
     expect(structured.truncated).toBe(true);
@@ -95,7 +95,7 @@ describe("formatResponse", () => {
     const cache = createResponseCache();
     const big = { success: true, text: '"\\\n'.repeat(30000) };
 
-    const out = formatResponse(big, "cascade_read_response", { cache });
+    const out = formatResponse(big, "read_response", { cache });
     const textPayload = parsedText(out) as Record<string, unknown>;
 
     expect(firstText(out).length).toBeLessThanOrEqual(CHARACTER_LIMIT);
@@ -109,7 +109,7 @@ describe("formatResponse", () => {
       matches: Array.from({ length: 3000 }, (_, i) => ({ id: `id-${i}` })),
     };
 
-    const out = formatResponse(big, "cascade_search");
+    const out = formatResponse(big, "search");
     const textPayload = parsedText(out) as Record<string, unknown>;
     const structured = out.structuredContent as Record<string, unknown>;
 

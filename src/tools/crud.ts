@@ -1,12 +1,12 @@
 /**
  * CRUD and cached asset follow-up tools exposed to MCP clients.
  *
- *   cascade_read   — fetch an asset by identifier
- *   cascade_create — create a new asset
- *   cascade_edit   — edit an existing asset
- *   cascade_remove — delete an asset
- *   cascade_move   — move and/or rename an asset
- *   cascade_copy   — copy an asset to a new location
+ *   read   — fetch an asset by identifier
+ *   create — create a new asset
+ *   edit   — edit an existing asset
+ *   remove — delete an asset
+ *   move   — move and/or rename an asset
+ *   copy   — copy an asset to a new location
  *
  * CRUD tools delegate to the matching `CascadeClient` method. Cached follow-up
  * tools inspect local read-cache entries without calling Cascade.
@@ -85,10 +85,10 @@ function registerAssetFollowUpTools(
   deps: CascadeDeps,
 ): void {
   registerCascadeTool(server, {
-    name: "cascade_asset_list_facts",
+    name: "asset_list_facts",
     title: "List cached raw asset facts",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Browse object, array, key, and scalar facts indexed from the full cached raw Cascade response. Use this for audit/debug enumeration; when the task is to find text or content by snippet, prefer cascade_asset_search_values because list_facts can return both key facts and scalar facts for the same value. Supports pointer, key, value, scalar, and reference filters with cursor pagination. This tool never reads Cascade directly and reports complete: true only when the current filter has no remaining matches.`,
+      `Use after read. Browse object, array, key, and scalar facts indexed from the full cached raw Cascade response. Use this for audit/debug enumeration; when the task is to find text or content by snippet, prefer asset_search_values because list_facts can return both key facts and scalar facts for the same value. Supports pointer, key, value, scalar, and reference filters with cursor pagination. This tool never reads Cascade directly and reports complete: true only when the current filter has no remaining matches.`,
     ),
     inputSchema: AssetListFactsRequestSchema,
     annotations: {
@@ -101,16 +101,16 @@ function registerAssetFollowUpTools(
       const args = input as unknown as Parameters<typeof listRawFacts>[1] & {
         asset_handle: string;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_list_facts");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "asset_list_facts");
       return listRawFacts(entry, args);
     },
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_asset_search_values",
+    name: "asset_search_values",
     title: "Search cached raw asset scalar values",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Search full scalar string/number/boolean/null values across the cached raw Cascade response, not shortened previews. Best first choice for finding text/content by known snippet. Returns JSON Pointer provenance, scalar type, value length, preview, and match offsets where practical. This tool never reads Cascade directly.`,
+      `Use after read. Search full scalar string/number/boolean/null values across the cached raw Cascade response, not shortened previews. Best first choice for finding text/content by known snippet. Returns JSON Pointer provenance, scalar type, value length, preview, and match offsets where practical. This tool never reads Cascade directly.`,
     ),
     inputSchema: AssetSearchValuesRequestSchema,
     annotations: {
@@ -123,16 +123,16 @@ function registerAssetFollowUpTools(
       const args = input as unknown as Parameters<typeof searchRawValues>[1] & {
         asset_handle: string;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_search_values");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "asset_search_values");
       return searchRawValues(entry, args);
     },
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_asset_search_keys",
+    name: "asset_search_keys",
     title: "Search cached raw asset object keys",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Find object key occurrences anywhere in the cached raw Cascade response. Returns the JSON Pointer to the keyed value plus parent pointer. This tool never reads Cascade directly.`,
+      `Use after read. Find object key occurrences anywhere in the cached raw Cascade response. Returns the JSON Pointer to the keyed value plus parent pointer. This tool never reads Cascade directly.`,
     ),
     inputSchema: AssetSearchKeysRequestSchema,
     annotations: {
@@ -145,16 +145,16 @@ function registerAssetFollowUpTools(
       const args = input as unknown as Parameters<typeof searchRawKeys>[1] & {
         asset_handle: string;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_search_keys");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "asset_search_keys");
       return searchRawKeys(entry, args);
     },
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_asset_get_value",
+    name: "asset_get_value",
     title: "Get cached raw asset value",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Retrieve the exact raw cached value at a JSON Pointer. Long strings can be sliced with offset and length. This tool never reads Cascade directly.`,
+      `Use after read. Retrieve the exact raw cached value at a JSON Pointer. Long strings can be sliced with offset and length. This tool never reads Cascade directly.`,
     ),
     inputSchema: AssetGetValueRequestSchema,
     annotations: {
@@ -170,16 +170,16 @@ function registerAssetFollowUpTools(
         offset?: number;
         length?: number;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_get_value");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "asset_get_value");
       return getRawValue(entry, args.pointer, args);
     },
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_asset_list_references",
+    name: "asset_list_references",
     title: "List cached Cascade asset references",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. List Cascade-native references discovered from id/path pairs, structured asset nodes, metadata, page configurations, and page regions. This tool never reads Cascade directly.`,
+      `Use after read. List Cascade-native references discovered from id/path pairs, structured asset nodes, metadata, page configurations, and page regions. This tool never reads Cascade directly.`,
     ),
     inputSchema: AssetListReferencesRequestSchema,
     annotations: {
@@ -192,16 +192,16 @@ function registerAssetFollowUpTools(
       const args = input as unknown as Parameters<typeof listRawReferences>[1] & {
         asset_handle: string;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_list_references");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "asset_list_references");
       return listRawReferences(entry, args);
     },
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_asset_list_scalar_artifacts",
+    name: "asset_list_scalar_artifacts",
     title: "List cached raw scalar artifacts",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Enumerate derived link/path-like artifacts from cached raw string scalar facts. Use href for any value found in an HTML/XHTML href attribute, whether absolute, root-relative, relative, or site://; use site_link for non-root, non-URL Cascade *Path fields such as pagePath, filePath, blockPath, and parentFolderPath. Other artifact kinds include http_url, src, anchor, mailto, tel, and root_path. Returns JSON Pointer and offset provenance. This tool never reads Cascade directly.`,
+      `Use after read. Enumerate derived link/path-like artifacts from cached raw string scalar facts. Use href for any value found in an HTML/XHTML href attribute, whether absolute, root-relative, relative, or site://; use site_link for non-root, non-URL Cascade *Path fields such as pagePath, filePath, blockPath, and parentFolderPath. Other artifact kinds include http_url, src, anchor, mailto, tel, and root_path. Returns JSON Pointer and offset provenance. This tool never reads Cascade directly.`,
     ),
     inputSchema: AssetListScalarArtifactsRequestSchema,
     annotations: {
@@ -214,16 +214,16 @@ function registerAssetFollowUpTools(
       const args = input as unknown as Parameters<typeof listAssetScalarArtifacts>[1] & {
         asset_handle: string;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_list_scalar_artifacts");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "asset_list_scalar_artifacts");
       return listAssetScalarArtifacts(entry, args);
     },
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_asset_list_nodelets",
+    name: "asset_list_nodelets",
     title: "List cached Cascade asset nodelets",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. List child structuredData nodelets for a JSON Pointer in the cached asset_handle returned by cascade_read. Use pointer "" to list root nodelets. This is a convenience view over structuredDataNodes, not an audit-complete view. This tool never reads Cascade directly.`,
+      `Use after read. List child structuredData nodelets for a JSON Pointer in the cached asset_handle returned by read. Use pointer "" to list root nodelets. This is a convenience view over structuredDataNodes, not an audit-complete view. This tool never reads Cascade directly.`,
     ),
     inputSchema: AssetListNodeletsRequestSchema,
     annotations: {
@@ -239,7 +239,7 @@ function registerAssetFollowUpTools(
         cursor?: string;
         limit?: number;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_list_nodelets");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "asset_list_nodelets");
       const listed = listIndexedChildren(entry, args.pointer, args);
       return {
         success: true,
@@ -251,7 +251,7 @@ function registerAssetFollowUpTools(
           ...(listed.next_cursor
             ? [
                 {
-                  tool: "cascade_asset_list_nodelets",
+                  tool: "asset_list_nodelets",
                   reason: "Continue listing nodelets from the next cursor.",
                   input: {
                     asset_handle: args.asset_handle,
@@ -263,7 +263,7 @@ function registerAssetFollowUpTools(
               ]
             : []),
           ...listed.children.map((nodelet) => ({
-            tool: "cascade_asset_get_nodelet",
+            tool: "asset_get_nodelet",
             reason: "Fetch this nodelet or a bounded subtree.",
             input: {
               asset_handle: args.asset_handle,
@@ -276,10 +276,10 @@ function registerAssetFollowUpTools(
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_asset_get_nodelet",
+    name: "asset_get_nodelet",
     title: "Get cached Cascade asset nodelet",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Fetch the exact structuredData nodelet or bounded subtree at a JSON Pointer in the cached asset_handle returned by cascade_read. This is a convenience view over structuredDataNodes, not an audit-complete view. This tool never reads Cascade directly.`,
+      `Use after read. Fetch the exact structuredData nodelet or bounded subtree at a JSON Pointer in the cached asset_handle returned by read. This is a convenience view over structuredDataNodes, not an audit-complete view. This tool never reads Cascade directly.`,
     ),
     inputSchema: AssetGetNodeletRequestSchema,
     annotations: {
@@ -295,7 +295,7 @@ function registerAssetFollowUpTools(
         depth?: number;
         include_text?: boolean;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_get_nodelet");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "asset_get_nodelet");
       return {
         success: true,
         asset_handle: args.asset_handle,
@@ -305,10 +305,10 @@ function registerAssetFollowUpTools(
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_asset_resolve_nodes",
+    name: "asset_resolve_nodes",
     title: "Resolve cached structured data nodes",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Resolve structuredData nodes from the cached asset_handle by node type, identifier, text, direct child criteria, or field values. This tool never reads Cascade directly.`,
+      `Use after read. Resolve structuredData nodes from the cached asset_handle by node type, identifier, text, direct child criteria, or field values. This tool never reads Cascade directly.`,
     ),
     inputSchema: AssetResolveNodesRequestSchema,
     annotations: {
@@ -322,7 +322,7 @@ function registerAssetFollowUpTools(
         asset_handle: string;
         selector: StructuredDataSelector;
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_resolve_nodes");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "asset_resolve_nodes");
       return {
         success: true,
         asset_handle: args.asset_handle,
@@ -332,10 +332,10 @@ function registerAssetFollowUpTools(
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_asset_assert_values",
+    name: "asset_assert_values",
     title: "Assert cached structured data values",
     description: buildCascadeToolDescription(
-      `Use after cascade_read. Assert structuredData values from the cached asset_handle by semantic node selector and target field. This tool never reads Cascade directly.`,
+      `Use after read. Assert structuredData values from the cached asset_handle by semantic node selector and target field. This tool never reads Cascade directly.`,
     ),
     inputSchema: AssetAssertValuesRequestSchema,
     annotations: {
@@ -349,7 +349,7 @@ function registerAssetFollowUpTools(
         asset_handle: string;
         assertions: StructuredDataAssertion[];
       };
-      const entry = getAssetEntry(assetCache, args.asset_handle, "cascade_asset_assert_values");
+      const entry = getAssetEntry(assetCache, args.asset_handle, "asset_assert_values");
       return {
         success: true,
         asset_handle: args.asset_handle,
@@ -359,10 +359,10 @@ function registerAssetFollowUpTools(
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_file_data_info",
+    name: "file_data_info",
     title: "Inspect Cascade file data",
     description: buildCascadeToolDescription(
-      `Inspect binary data for a Cascade file asset without dumping the raw byte array. Use asset_handle after cascade_read preview, or identifier for a direct file read that creates a fresh asset_handle for follow-up calls.`,
+      `Inspect binary data for a Cascade file asset without dumping the raw byte array. Use asset_handle after read preview, or identifier for a direct file read that creates a fresh asset_handle for follow-up calls.`,
     ),
     inputSchema: FileDataInfoRequestSchema,
     annotations: {
@@ -376,18 +376,18 @@ function registerAssetFollowUpTools(
         client,
         assetCache,
         input as FileDataSourceInput,
-        "cascade_file_data_info",
+        "file_data_info",
       );
-      const { summary } = fileDataFromEntry(entry, "cascade_file_data_info");
+      const { summary } = fileDataFromEntry(entry, "file_data_info");
       return fileDataInfoResult(entry, summary);
     },
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_file_data_read",
+    name: "file_data_read",
     title: "Read Cascade file data range",
     description: buildCascadeToolDescription(
-      `Read a bounded byte range from binary data for a Cascade file asset. Use this instead of reading file.data directly when the file may be large. Accepts asset_handle after cascade_read preview, or identifier for a direct file read that creates a fresh asset_handle.`,
+      `Read a bounded byte range from binary data for a Cascade file asset. Use this instead of reading file.data directly when the file may be large. Accepts asset_handle after read preview, or identifier for a direct file read that creates a fresh asset_handle.`,
     ),
     inputSchema: FileDataReadRequestSchema,
     annotations: {
@@ -406,9 +406,9 @@ function registerAssetFollowUpTools(
         client,
         assetCache,
         args,
-        "cascade_file_data_read",
+        "file_data_read",
       );
-      const { data, summary } = fileDataFromEntry(entry, "cascade_file_data_read");
+      const { data, summary } = fileDataFromEntry(entry, "file_data_read");
       return {
         ...fileDataInfoResult(entry, summary),
         ...readFileDataRange(data, args),
@@ -417,10 +417,10 @@ function registerAssetFollowUpTools(
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_file_data_image",
+    name: "file_data_image",
     title: "Return Cascade file data as image-only content",
     description: buildCascadeToolDescription(
-      `Return binary data for a Cascade image file as MCP image content only, with no JSON text metadata. Use cascade_file_data_info separately when metadata is needed. Accepts asset_handle after cascade_read preview, or identifier for a direct file read that creates a fresh asset_handle.`,
+      `Return binary data for a Cascade image file as MCP image content only, with no JSON text metadata. Use file_data_info separately when metadata is needed. Accepts asset_handle after read preview, or identifier for a direct file read that creates a fresh asset_handle.`,
     ),
     inputSchema: FileDataImageRequestSchema,
     annotations: {
@@ -434,17 +434,17 @@ function registerAssetFollowUpTools(
         client,
         assetCache,
         input as FileDataSourceInput,
-        "cascade_file_data_image",
+        "file_data_image",
       );
-      const { data, summary } = fileDataFromEntry(entry, "cascade_file_data_image");
+      const { data, summary } = fileDataFromEntry(entry, "file_data_image");
       if (!isVerifiedImageSummary(summary)) {
         throw new Error(
-          `cascade_file_data_image: cached file asset ${entry.handle} is ${summary.mime_type} from ${summary.mime_source}, not a magic-byte verified image.`,
+          `file_data_image: cached file asset ${entry.handle} is ${summary.mime_type} from ${summary.mime_source}, not a magic-byte verified image.`,
         );
       }
       if (summary.bytes_total > MAX_INLINE_IMAGE_BYTES) {
         throw new Error(
-          `cascade_file_data_image: image is too large for inline MCP image content (${summary.bytes_total} bytes, max ${MAX_INLINE_IMAGE_BYTES}). Use cascade_file_data_export instead.`,
+          `file_data_image: image is too large for inline MCP image content (${summary.bytes_total} bytes, max ${MAX_INLINE_IMAGE_BYTES}). Use file_data_export instead.`,
         );
       }
       const bytes = toUnsignedBytes(data);
@@ -462,7 +462,7 @@ function registerAssetFollowUpTools(
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_file_data_export",
+    name: "file_data_export",
     title: "Export Cascade file data",
     description: buildCascadeToolDescription(
       `Export binary data for a Cascade file asset to an explicit local output_path. This writes to the local filesystem but does not mutate Cascade. Parent directories must already exist; overwrite defaults to false.`,
@@ -484,20 +484,20 @@ function registerAssetFollowUpTools(
         client,
         assetCache,
         args,
-        "cascade_file_data_export",
+        "file_data_export",
       );
-      const { data, summary } = fileDataFromEntry(entry, "cascade_file_data_export");
+      const { data, summary } = fileDataFromEntry(entry, "file_data_export");
       if (
         args.expected_sha256 &&
         args.expected_sha256.toLowerCase() !== summary.sha256.toLowerCase()
       ) {
         throw new Error(
-          `cascade_file_data_export: expected_sha256 mismatch for ${entry.handle}. Expected ${args.expected_sha256}, actual ${summary.sha256}.`,
+          `file_data_export: expected_sha256 mismatch for ${entry.handle}. Expected ${args.expected_sha256}, actual ${summary.sha256}.`,
         );
       }
       if (summary.bytes_total > FILE_DATA_MAX_BYTES) {
         throw new Error(
-          `cascade_file_data_export: file.data is too large to export (${summary.bytes_total} bytes, max ${FILE_DATA_MAX_BYTES}).`,
+          `file_data_export: file.data is too large to export (${summary.bytes_total} bytes, max ${FILE_DATA_MAX_BYTES}).`,
         );
       }
 
@@ -575,19 +575,19 @@ function fileDataNextActions(
 ): Array<Record<string, unknown>> {
   const actions: Array<Record<string, unknown>> = [
     {
-      tool: "cascade_file_data_read",
+      tool: "file_data_read",
       reason: "Read a bounded byte range from this cached file data.",
       input: { asset_handle: assetHandle },
     },
     {
-      tool: "cascade_file_data_export",
+      tool: "file_data_export",
       reason: "Export this file data to an explicit local output_path.",
       required_inputs: ["asset_handle", "output_path"],
     },
   ];
   if (isVerifiedImageSummary(summary)) {
     actions.splice(1, 0, {
-      tool: "cascade_file_data_image",
+      tool: "file_data_image",
       reason: "Return this cached file data as image-only MCP content.",
       input: { asset_handle: assetHandle },
     });
@@ -601,10 +601,10 @@ async function assertExportParentDirectory(outputPath: string): Promise<void> {
   try {
     parentStat = await stat(parent);
   } catch {
-    throw new Error(`cascade_file_data_export: Parent directory does not exist: ${parent}`);
+    throw new Error(`file_data_export: Parent directory does not exist: ${parent}`);
   }
   if (!parentStat.isDirectory()) {
-    throw new Error(`cascade_file_data_export: Parent path is not a directory: ${parent}`);
+    throw new Error(`file_data_export: Parent path is not a directory: ${parent}`);
   }
 }
 
@@ -616,7 +616,7 @@ async function writeFileData(
   const file = await open(outputPath, overwrite ? "w" : "wx").catch((err: unknown) => {
     if (isFileExistsError(err)) {
       throw new Error(
-        `cascade_file_data_export: output_path already exists. Set overwrite: true to replace it.`,
+        `file_data_export: output_path already exists. Set overwrite: true to replace it.`,
       );
     }
     throw err;
@@ -648,7 +648,7 @@ function getAssetEntry(
   const entry = assetCache.get(handle);
   if (!entry) {
     throw new Error(
-      `${toolName}: asset handle ${handle} not found. Re-run cascade_read to create a fresh asset_handle.`,
+      `${toolName}: asset handle ${handle} not found. Re-run read to create a fresh asset_handle.`,
     );
   }
   return entry;
@@ -663,12 +663,12 @@ export function registerCrudTools(
   const assetCache = resolved.assetCache ?? createAssetCache();
 
   registerCascadeTool(server, {
-    name: "cascade_read",
+    name: "read",
     title: "Read Cascade Asset",
     description: buildCascadeToolDescription(
       `Read an asset from Cascade CMS by identifier.
 
-Default preview mode returns a compact browse-oriented asset_handle, asset identity, raw_hash, index_version, fact/reference counts, node counts, root nodelet outline, and raw_resource_uri. Preview is not audit-complete; use cascade_asset_list_facts, cascade_asset_search_values, cascade_asset_search_keys, cascade_asset_get_value, cascade_asset_list_scalar_artifacts, cascade_asset_list_references, cascade_asset_list_nodelets, cascade_asset_get_nodelet, cascade_asset_resolve_nodes, and cascade_asset_assert_values with the returned asset_handle for follow-up inspection. Use read_mode: "raw" only when the full REST payload is required.
+Default preview mode returns a compact browse-oriented asset_handle, asset identity, raw_hash, index_version, fact/reference counts, node counts, root nodelet outline, and raw_resource_uri. Preview is not audit-complete; use asset_list_facts, asset_search_values, asset_search_keys, asset_get_value, asset_list_scalar_artifacts, asset_list_references, asset_list_nodelets, asset_get_nodelet, asset_resolve_nodes, and asset_assert_values with the returned asset_handle for follow-up inspection. Use read_mode: "raw" only when the full REST payload is required.
 
 Args:
   - identifier (object, required): The asset to read
@@ -691,9 +691,9 @@ Examples:
   - Use when: "Read the homepage" -> { identifier: { type: "page", path: { path: "/", siteName: "www" } } }
   - Use when: "Get file by ID" -> { identifier: { type: "file", id: "abc123..." } }
   - Use when: "Load folder config" -> { identifier: { type: "folder", path: { path: "/about", siteName: "www" } } }
-  - Don't use when: You already have a complete edit payload — use cascade_edit instead.
-  - Use when: You need a cached starting point for draft editing — read preview, then use cascade_draft_open.
-  - Don't use when: You want to check access rights — use cascade_read_access_rights.
+  - Don't use when: You already have a complete edit payload — use edit instead.
+  - Use when: You need a cached starting point for draft editing — read preview, then use local_draft_open.
+  - Don't use when: You want to check access rights — use read_access_rights.
 
 Error Handling:
   - "Asset not found" when the identifier doesn't resolve
@@ -723,7 +723,7 @@ Error Handling:
             type: "resource_link" as const,
             uri: preview.raw_resource_uri,
             name: "Cascade raw asset JSON",
-            description: "Exact raw JSON cached from this cascade_read call.",
+            description: "Exact raw JSON cached from this read call.",
             mimeType: "application/json",
           },
         ],
@@ -735,7 +735,7 @@ Error Handling:
   registerAssetFollowUpTools(server, client, assetCache, resolved);
 
   registerCascadeTool(server, {
-    name: "cascade_create",
+    name: "create",
     title: "Create Cascade Asset",
     description: buildCascadeToolDescription(
       `Create a new asset in Cascade CMS.
@@ -744,7 +744,7 @@ The request body wraps a typed concrete asset envelope under \`asset\` — one c
 
 Payload conventions (apply to every create call):
   - Send ONLY the fields you actually need to set. Every optional field should be omitted unless you have a real value to provide — Cascade applies its own defaults server-side. Do not pad payloads with "reasonable defaults" like \`reviewOnSchedule: false\` or \`shouldBePublished: true\` when you do not need to override them.
-  - For every \`<thing>Id\` / \`<thing>Path\` pair (parentFolderId vs parentFolderPath, siteId vs siteName, contentTypeId vs contentTypePath, metadataSetId vs metadataSetPath, ...), prefer the id form when you know the id. Path is a valid fallback and Cascade resolves it server-side — don't round-trip through cascade_read just to look up an id.
+  - For every \`<thing>Id\` / \`<thing>Path\` pair (parentFolderId vs parentFolderPath, siteId vs siteName, contentTypeId vs contentTypePath, metadataSetId vs metadataSetPath, ...), prefer the id form when you know the id. Path is a valid fallback and Cascade resolves it server-side — don't round-trip through read just to look up an id.
   - File uploads: \`asset.file.data\` accepts signed Java bytes (-128..127) or unsigned file bytes (0..255); this MCP sends Cascade signed bytes. Cascade file assets may carry text, data, or both depending on file type.
   - Text encoding: rich-text fields (xhtml, WYSIWYG structuredData text, xmlBlock xml) must be well-formed XML — named HTML entities like \`&nbsp;\` and astral-plane Unicode (including emoji) crash the render. See resource \`cascade://text-encoding\` for the per-field-category rules.
 
@@ -768,8 +768,8 @@ Examples:
   - Use when: "Create a page under /about" -> { asset: { page: { name: "team", parentFolderPath: "/about", siteName: "www", contentTypePath: "/standard-page", xhtml: "<p>Team</p>" } } }
   - Use when: "Upload a text file" -> { asset: { file: { name: "robots.txt", parentFolderPath: "/", siteName: "www", text: "User-agent: *" } } }
   - Use when: "Create a text block" -> { asset: { textBlock: { name: "greeting", parentFolderPath: "/blocks", siteName: "www", text: "Hello" } } }
-  - Don't use when: The asset already exists — use cascade_edit.
-  - Don't use when: You want to duplicate an existing asset — use cascade_copy.
+  - Don't use when: The asset already exists — use edit.
+  - Don't use when: You want to duplicate an existing asset — use copy.
 
 Error Handling:
   - "Parent folder not found" when parentFolderId/parentFolderPath is invalid
@@ -788,22 +788,22 @@ Error Handling:
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_edit",
+    name: "edit",
     title: "Edit Cascade Asset",
     description: buildCascadeToolDescription(
       `Edit an existing Cascade CMS asset.
 
-Accepts the full asset body using the same envelope wrapper as cascade_create, with edit-specific validation. The workflow is symmetric when cascade_read is called with read_mode: "raw": remove read-only inner type fields from the raw asset envelope, modify the envelope, and pass it back to cascade_edit. Some asset types require a prior cascade_check_out.
+Accepts the full asset body using the same envelope wrapper as create, with edit-specific validation. The workflow is symmetric when read is called with read_mode: "raw": remove read-only inner type fields from the raw asset envelope, modify the envelope, and pass it back to edit. Some asset types require a prior check_out.
 
 Payload conventions:
   - Edit replaces the asset body, so send the full object as read — do not try to send only the fields you are changing.
   - When constructing an edit payload from scratch (not round-tripping a read), still omit optional fields you have no intention of setting; don't invent defaults.
   - Prefer id over path on every id/path pair (metadataSetId over metadataSetPath, etc.). Cascade resolves paths server-side.
   - File uploads: \`asset.file.data\` accepts signed Java bytes (-128..127) or unsigned file bytes (0..255); this MCP sends Cascade signed bytes. Preserve existing \`asset.file.text\` when that file type uses both text and data.
-  - Text encoding: same rules as cascade_create — rich-text fields must be well-formed XML with only the five XML built-in entities (\`&amp;\`, \`&lt;\`, \`&gt;\`, \`&quot;\`, \`&apos;\`). See resource \`cascade://text-encoding\`.
+  - Text encoding: same rules as create — rich-text fields must be well-formed XML with only the five XML built-in entities (\`&amp;\`, \`&lt;\`, \`&gt;\`, \`&quot;\`, \`&apos;\`). See resource \`cascade://text-encoding\`.
 
 Args:
-  - asset (object, required): One concrete asset envelope using the same wrapper as cascade_create, with edit-specific validation and optional workflowConfiguration alongside it. Include \`id\` when available/preferred. If workflowConfiguration is supplied, include workflowName, workflowComments, and workflowDefinitionId or workflowDefinitionPath.
+  - asset (object, required): One concrete asset envelope using the same wrapper as create, with edit-specific validation and optional workflowConfiguration alongside it. Include \`id\` when available/preferred. If workflowConfiguration is supplied, include workflowName, workflowComments, and workflowDefinitionId or workflowDefinitionPath.
 
 Returns:
   Cascade OperationResult:
@@ -811,10 +811,10 @@ Returns:
   On failure: { success: false, message: "<error>" }
 
 Examples:
-  - Use when: "Update a page's metadata" -> Read first with cascade_read using read_mode: "raw"; remove read-only inner type fields; modify \`asset.page.metadata\`; pass { asset: raw.asset } back.
+  - Use when: "Update a page's metadata" -> Read first with read using read_mode: "raw"; remove read-only inner type fields; modify \`asset.page.metadata\`; pass { asset: raw.asset } back.
   - Use when: "Change a block's structured data" -> Read raw first; remove read-only inner type fields; modify the full xhtmlDataDefinitionBlock envelope; pass { asset: raw.asset }.
   - Use when: "Rewrite a symlink's target" -> Read raw first; remove read-only inner type fields; modify asset.symlink.linkURL on the full envelope; pass { asset: raw.asset }.
-  - Don't use when: The asset doesn't exist — use cascade_create.
+  - Don't use when: The asset doesn't exist — use create.
   - Don't use when: You want a partial patch — Cascade's edit replaces the asset body; always send the full object.
 
 Error Handling:
@@ -834,7 +834,7 @@ Error Handling:
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_remove",
+    name: "remove",
     title: "Remove (Delete) Cascade Asset",
     description: buildCascadeToolDescription(
       `Delete an asset from Cascade CMS.
@@ -861,8 +861,8 @@ Returns:
 Examples:
   - Use when: "Delete a page" -> { identifier: { type: "page", id: "..." } }
   - Use when: "Unpublish then delete" -> { identifier: { type: "page", id: "..." }, deleteParameters: { doWorkflow: false, unpublish: true } }
-  - Don't use when: You just want to move/rename — use cascade_move.
-  - Don't use when: You want to unpublish without deleting — use cascade_publish_unpublish with unpublish: true.
+  - Don't use when: You just want to move/rename — use move.
+  - Don't use when: You want to unpublish without deleting — use publish_unpublish with unpublish: true.
 
 Error Handling:
   - "Asset not found" when the identifier doesn't resolve
@@ -881,7 +881,7 @@ Error Handling:
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_move",
+    name: "move",
     title: "Move or Rename Cascade Asset",
     description: buildCascadeToolDescription(
       `Move an asset to a new container and/or rename it.
@@ -908,7 +908,7 @@ Returns:
 Examples:
   - Use when: "Rename /about/teem to /about/team" -> { identifier: { type: "page", id: "..." }, moveParameters: { doWorkflow: false, newName: "team" } }
   - Use when: "Move page to /archive" -> { identifier: { type: "page", id: "..." }, moveParameters: { doWorkflow: false, destinationContainerIdentifier: { type: "folder", path: { path: "/archive", siteName: "www" } } } }
-  - Don't use when: You want to duplicate — use cascade_copy.
+  - Don't use when: You want to duplicate — use copy.
 
 Error Handling:
   - "Asset not found" when the source identifier doesn't resolve
@@ -927,12 +927,12 @@ Error Handling:
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_copy",
+    name: "copy",
     title: "Copy Cascade Asset",
     description: buildCascadeToolDescription(
       `Copy an asset to a new container with a new name.
 
-Creates a fresh, independent copy of an asset. Unlike cascade_move, the original stays in place and the copy gets its own ID. destinationContainerIdentifier and newName are both required. For copying an entire site, use cascade_site_copy instead.
+Creates a fresh, independent copy of an asset. Unlike move, the original stays in place and the copy gets its own ID. destinationContainerIdentifier and newName are both required. For copying an entire site, use site_copy instead.
 
 Args:
   - identifier (object, required): The source asset to copy
@@ -953,8 +953,8 @@ Returns:
 
 Examples:
   - Use when: "Duplicate /templates/basic as /templates/basic-v2" -> { identifier: { type: "page", path: { path: "/templates/basic", siteName: "www" } }, copyParameters: { destinationContainerIdentifier: { type: "folder", path: { path: "/templates", siteName: "www" } }, newName: "basic-v2", doWorkflow: false } }
-  - Don't use when: You want to rename in place — use cascade_move.
-  - Don't use when: You want to copy an entire site — use cascade_site_copy.
+  - Don't use when: You want to rename in place — use move.
+  - Don't use when: You want to copy an entire site — use site_copy.
 
 Error Handling:
   - "Asset not found" when the source identifier doesn't resolve

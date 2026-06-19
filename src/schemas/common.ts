@@ -5,7 +5,7 @@
  *   - EntityTypeSchema: the EntityTypeString union used in identifier.type
  *   - PathSchema: an asset path with optional site id/name
  *   - IdentifierSchema: an asset identifier (id-or-path + required type)
- *   - ReadModeSchema: "preview" | "raw" (defaults to "preview"; cascade_read only)
+ *   - ReadModeSchema: "preview" | "raw" (defaults to "preview"; read only)
  */
 
 import { z } from "zod";
@@ -182,7 +182,7 @@ export const ReadModeSchema = z
   .enum(["preview", "raw"])
   .default("preview")
   .describe(
-    "Read mode for cascade_read. 'preview' (default) returns a compact asset_handle plus nodelet outline for structured assets. 'raw' returns the full Cascade REST payload and can be expensive for pages or data-definition blocks.",
+    "Read mode for read. 'preview' (default) returns a compact asset_handle plus nodelet outline for structured assets. 'raw' returns the full Cascade REST payload and can be expensive for pages or data-definition blocks.",
   );
 
 export type ReadMode = z.infer<typeof ReadModeSchema>;

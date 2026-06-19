@@ -16,7 +16,7 @@ import {
   makeMockServer,
 } from "../../fixtures/mock-server.js";
 
-describe("cascade_browser_login tool", () => {
+describe("browser_login tool", () => {
   test("calls the browser session login without accepting credentials in tool input", async () => {
     const { server, tools } = makeMockServer();
     const browserSession = {
@@ -35,7 +35,7 @@ describe("cascade_browser_login tool", () => {
       browserSession: browserSession as any,
     });
 
-    const tool = findTool(tools, "cascade_browser_login");
+    const tool = findTool(tools, "browser_login");
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.openWorldHint).toBe(true);
     expect(Object.keys(inputJsonSchema(tool.config.inputSchema).properties)).toEqual([
@@ -72,7 +72,7 @@ describe("cascade_browser_login tool", () => {
       browserSession: browserSession as any,
     });
 
-    const result = await findTool(tools, "cascade_browser_login").handler({});
+    const result = await findTool(tools, "browser_login").handler({});
 
     expect(browserSession.login).toHaveBeenCalledWith({});
     expect(result.isError).not.toBe(true);
@@ -87,7 +87,7 @@ describe("cascade_browser_login tool", () => {
 
     registerBrowserTools(server as any, { cache: createResponseCache() });
 
-    const result = await findTool(tools, "cascade_browser_login").handler({
+    const result = await findTool(tools, "browser_login").handler({
       site_id: "site-123",
     });
 
@@ -111,7 +111,7 @@ describe("cascade_browser_login tool", () => {
   });
 });
 
-describe("cascade_browser_check_draft tool", () => {
+describe("browser_check_draft tool", () => {
   test("calls the browser session checkDraft with asset id and type", async () => {
     const { server, tools } = makeMockServer();
     const browserSession = {
@@ -132,7 +132,7 @@ describe("cascade_browser_check_draft tool", () => {
       browserSession: browserSession as any,
     });
 
-    const tool = findTool(tools, "cascade_browser_check_draft");
+    const tool = findTool(tools, "browser_check_draft");
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(Object.keys(inputJsonSchema(tool.config.inputSchema).properties)).toEqual([
@@ -163,7 +163,7 @@ describe("cascade_browser_check_draft tool", () => {
 
     registerBrowserTools(server as any, { cache: createResponseCache() });
 
-    const result = await findTool(tools, "cascade_browser_check_draft").handler({
+    const result = await findTool(tools, "browser_check_draft").handler({
       asset_id: "asset-123",
       asset_type: "page",
     });
@@ -181,7 +181,7 @@ describe("cascade_browser_check_draft tool", () => {
     const browserSession = {
       checkDraft: mock(async () => {
         throw new Error(
-          "Browser session expired. Run cascade_browser_login, then retry cascade_browser_check_draft.",
+          "Browser session expired. Run browser_login, then retry browser_check_draft.",
         );
       }),
     };
@@ -191,14 +191,14 @@ describe("cascade_browser_check_draft tool", () => {
       browserSession: browserSession as any,
     });
 
-    const result = await findTool(tools, "cascade_browser_check_draft").handler({
+    const result = await findTool(tools, "browser_check_draft").handler({
       asset_id: "asset-123",
       asset_type: "page",
     });
 
     expect(result.isError).toBe(true);
     expect((result.structuredContent as any).error).toMatchObject({
-      suggested_tool: "cascade_browser_login",
+      suggested_tool: "browser_login",
     });
   });
 
@@ -236,7 +236,7 @@ describe("browser snippet tools", () => {
       browserSession: browserSession as any,
     });
 
-    const tool = findTool(tools, "cascade_browser_list_snippets");
+    const tool = findTool(tools, "browser_list_snippets");
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
 
@@ -269,7 +269,7 @@ describe("browser snippet tools", () => {
       browserSession: browserSession as any,
     });
 
-    const result = await findTool(tools, "cascade_browser_create_snippet").handler({
+    const result = await findTool(tools, "browser_create_snippet").handler({
       title: "Catalog ID",
       name: "catalog-id",
       value: "81",
@@ -302,7 +302,7 @@ describe("browser snippet tools", () => {
       browserSession: browserSession as any,
     });
 
-    const result = await findTool(tools, "cascade_browser_update_snippet").handler({
+    const result = await findTool(tools, "browser_update_snippet").handler({
       id: "snippet-id",
       title: "Catalog ID",
       value: "82",
@@ -332,7 +332,7 @@ describe("browser snippet tools", () => {
       browserSession: browserSession as any,
     });
 
-    const tool = findTool(tools, "cascade_browser_delete_snippets");
+    const tool = findTool(tools, "browser_delete_snippets");
     expect(tool.config.annotations.destructiveHint).toBe(true);
     expect(tool.config.annotations.idempotentHint).toBe(true);
 

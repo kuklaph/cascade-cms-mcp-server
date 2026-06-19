@@ -139,38 +139,38 @@ describe("draft tools", () => {
     });
 
     expect(tools.map((tool) => tool.name).sort()).toEqual([
-      "cascade_draft_apply_patch",
-      "cascade_draft_apply_semantic_patch",
-      "cascade_draft_assert_values",
-      "cascade_draft_get_nodelet",
-      "cascade_draft_get_value",
-      "cascade_draft_list_facts",
-      "cascade_draft_list_nodelets",
-      "cascade_draft_list_references",
-      "cascade_draft_list_scalar_artifacts",
-      "cascade_draft_mutation_plan_execute",
-      "cascade_draft_open",
-      "cascade_draft_resolve_nodes",
-      "cascade_draft_scaffold_create",
-      "cascade_draft_scaffold_from_asset",
-      "cascade_draft_search_keys",
-      "cascade_draft_search_values",
-      "cascade_draft_set_file_data",
-      "cascade_draft_submit",
-      "cascade_draft_validate",
+      "local_draft_apply_patch",
+      "local_draft_apply_semantic_patch",
+      "local_draft_assert_values",
+      "local_draft_get_nodelet",
+      "local_draft_get_value",
+      "local_draft_list_facts",
+      "local_draft_list_nodelets",
+      "local_draft_list_references",
+      "local_draft_list_scalar_artifacts",
+      "local_draft_mutation_plan_execute",
+      "local_draft_open",
+      "local_draft_resolve_nodes",
+      "local_draft_scaffold_create",
+      "local_draft_scaffold_from_asset",
+      "local_draft_search_keys",
+      "local_draft_search_values",
+      "local_draft_set_file_data",
+      "local_draft_submit",
+      "local_draft_validate",
     ]);
-    expect(findTool(tools, "cascade_draft_get_value").config.annotations.readOnlyHint).toBe(true);
-    expect(findTool(tools, "cascade_draft_apply_patch").config.annotations.readOnlyHint).toBe(false);
-    expect(findTool(tools, "cascade_draft_open").config.annotations.destructiveHint).toBe(true);
-    expect(findTool(tools, "cascade_draft_scaffold_create").config.annotations.destructiveHint).toBe(true);
-    expect(findTool(tools, "cascade_draft_scaffold_from_asset").config.annotations.destructiveHint).toBe(true);
-    expect(findTool(tools, "cascade_draft_apply_patch").config.annotations.destructiveHint).toBe(true);
-    expect(findTool(tools, "cascade_draft_apply_semantic_patch").config.annotations.destructiveHint).toBe(true);
-    expect(findTool(tools, "cascade_draft_mutation_plan_execute").config.annotations.destructiveHint).toBe(true);
-    expect(findTool(tools, "cascade_draft_set_file_data").config.annotations.destructiveHint).toBe(true);
-    expect(findTool(tools, "cascade_draft_set_file_data").config.annotations.openWorldHint).toBe(true);
-    expect(findTool(tools, "cascade_draft_submit").config.annotations.destructiveHint).toBe(true);
-    expect(findTool(tools, "cascade_draft_submit").config.annotations.openWorldHint).toBe(true);
+    expect(findTool(tools, "local_draft_get_value").config.annotations.readOnlyHint).toBe(true);
+    expect(findTool(tools, "local_draft_apply_patch").config.annotations.readOnlyHint).toBe(false);
+    expect(findTool(tools, "local_draft_open").config.annotations.destructiveHint).toBe(true);
+    expect(findTool(tools, "local_draft_scaffold_create").config.annotations.destructiveHint).toBe(true);
+    expect(findTool(tools, "local_draft_scaffold_from_asset").config.annotations.destructiveHint).toBe(true);
+    expect(findTool(tools, "local_draft_apply_patch").config.annotations.destructiveHint).toBe(true);
+    expect(findTool(tools, "local_draft_apply_semantic_patch").config.annotations.destructiveHint).toBe(true);
+    expect(findTool(tools, "local_draft_mutation_plan_execute").config.annotations.destructiveHint).toBe(true);
+    expect(findTool(tools, "local_draft_set_file_data").config.annotations.destructiveHint).toBe(true);
+    expect(findTool(tools, "local_draft_set_file_data").config.annotations.openWorldHint).toBe(true);
+    expect(findTool(tools, "local_draft_submit").config.annotations.destructiveHint).toBe(true);
+    expect(findTool(tools, "local_draft_submit").config.annotations.openWorldHint).toBe(true);
   });
 
   test("draft read helper descriptions guide scalar search and artifact selection", () => {
@@ -183,13 +183,13 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    expect(findTool(tools, "cascade_draft_list_facts").config.description).toContain(
-      "prefer cascade_draft_search_values",
+    expect(findTool(tools, "local_draft_list_facts").config.description).toContain(
+      "prefer local_draft_search_values",
     );
-    expect(findTool(tools, "cascade_draft_search_values").config.description).toContain(
+    expect(findTool(tools, "local_draft_search_values").config.description).toContain(
       "Best first choice for finding text/content by known snippet",
     );
-    const artifacts = findTool(tools, "cascade_draft_list_scalar_artifacts");
+    const artifacts = findTool(tools, "local_draft_list_scalar_artifacts");
     expect(artifacts.config.description).toContain("Use href for any value found in an HTML/XHTML href attribute");
     expect(artifacts.config.description).toContain("use site_link for non-root, non-URL Cascade *Path fields");
     expect(
@@ -216,7 +216,7 @@ describe("draft tools", () => {
       draftCache,
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "edit",
       asset_handle: readEntry.handle,
       expected_raw_hash: readEntry.rawHash,
@@ -228,13 +228,13 @@ describe("draft tools", () => {
       identifier: "card",
       where_child: { node_type: "text", identifier: "title", text_equals: "Beta" },
     };
-    const resolved = await findTool(tools, "cascade_draft_resolve_nodes").handler({
+    const resolved = await findTool(tools, "local_draft_resolve_nodes").handler({
       draft_handle: draftHandle,
       selector: match,
     });
     expect((resolved.structuredContent as Record<string, any>).matched_count).toBe(1);
 
-    const patched = await findTool(tools, "cascade_draft_apply_semantic_patch").handler({
+    const patched = await findTool(tools, "local_draft_apply_semantic_patch").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
       match,
@@ -247,7 +247,7 @@ describe("draft tools", () => {
     expect((patched.structuredContent as Record<string, any>).before).toBe("Second card");
     expect((patched.structuredContent as Record<string, any>).after).toBe("Updated second card");
 
-    const asserted = await findTool(tools, "cascade_draft_assert_values").handler({
+    const asserted = await findTool(tools, "local_draft_assert_values").handler({
       draft_handle: draftHandle,
       assertions: [
         {
@@ -273,7 +273,7 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "edit",
       asset_handle: readEntry.handle,
       expected_raw_hash: readEntry.rawHash,
@@ -285,7 +285,7 @@ describe("draft tools", () => {
       identifier: "card",
       where_child: { node_type: "text", identifier: "title", text_equals: "Beta" },
     };
-    const inserted = await findTool(tools, "cascade_draft_apply_semantic_patch").handler({
+    const inserted = await findTool(tools, "local_draft_apply_semantic_patch").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
       match: beta,
@@ -299,7 +299,7 @@ describe("draft tools", () => {
     });
     expect((inserted.structuredContent as Record<string, any>).revision).toBe(2);
 
-    const removed = await findTool(tools, "cascade_draft_apply_semantic_patch").handler({
+    const removed = await findTool(tools, "local_draft_apply_semantic_patch").handler({
       draft_handle: draftHandle,
       expected_revision: 2,
       match: {
@@ -327,10 +327,10 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const open = findTool(tools, "cascade_draft_open");
-    const patch = findTool(tools, "cascade_draft_apply_patch");
-    const getValue = findTool(tools, "cascade_draft_get_value");
-    const submit = findTool(tools, "cascade_draft_submit");
+    const open = findTool(tools, "local_draft_open");
+    const patch = findTool(tools, "local_draft_apply_patch");
+    const getValue = findTool(tools, "local_draft_get_value");
+    const submit = findTool(tools, "local_draft_submit");
 
     const opened = await open.handler({
       operation: "edit",
@@ -404,14 +404,14 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "edit",
       asset_handle: readEntry.handle,
       expected_raw_hash: readEntry.rawHash,
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    const submitted = await findTool(tools, "cascade_draft_submit").handler({
+    const submitted = await findTool(tools, "local_draft_submit").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
     });
@@ -436,14 +436,14 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "edit",
       asset_handle: readEntry.handle,
       expected_raw_hash: readEntry.rawHash,
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    await findTool(tools, "cascade_draft_apply_patch").handler({
+    await findTool(tools, "local_draft_apply_patch").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
       operations: [
@@ -451,7 +451,7 @@ describe("draft tools", () => {
       ],
     });
 
-    const submitted = await findTool(tools, "cascade_draft_submit").handler({
+    const submitted = await findTool(tools, "local_draft_submit").handler({
       draft_handle: draftHandle,
       expected_revision: 2,
     });
@@ -468,8 +468,8 @@ describe("draft tools", () => {
     const draftCache = createDraftCache();
     const client = createMockClient();
     const toolBlockStore = makeStore([
-      { type: "page", id: "page-001", tools: ["cascade_draft_open"] },
-      { type: "page", id: "blocked-page", tools: ["cascade_draft_apply_patch"] },
+      { type: "page", id: "page-001", tools: ["local_draft_open"] },
+      { type: "page", id: "blocked-page", tools: ["local_draft_apply_patch"] },
     ]);
 
     registerDraftTools(server as any, client, {
@@ -479,7 +479,7 @@ describe("draft tools", () => {
       toolBlockStore,
     });
 
-    const blockedOpen = await findTool(tools, "cascade_draft_open").handler({
+    const blockedOpen = await findTool(tools, "local_draft_open").handler({
       operation: "edit",
       asset_handle: readEntry.handle,
       expected_raw_hash: readEntry.rawHash,
@@ -487,13 +487,13 @@ describe("draft tools", () => {
     expect(blockedOpen.isError).toBe(true);
     expect(draftCache.size()).toBe(0);
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: CREATE_ASSET,
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    const blockedPatch = await findTool(tools, "cascade_draft_apply_patch").handler({
+    const blockedPatch = await findTool(tools, "local_draft_apply_patch").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
       operations: [
@@ -510,8 +510,8 @@ describe("draft tools", () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient();
     const toolBlockStore = makeStore([
-      { type: "page", id: "blocked-read", tools: ["cascade_draft_get_value"] },
-      { type: "page", id: "blocked-validate", tools: ["cascade_draft_validate"] },
+      { type: "page", id: "blocked-read", tools: ["local_draft_get_value"] },
+      { type: "page", id: "blocked-validate", tools: ["local_draft_validate"] },
     ]);
 
     registerDraftTools(server as any, client, {
@@ -521,7 +521,7 @@ describe("draft tools", () => {
       toolBlockStore,
     });
 
-    const readBlockedDraft = await findTool(tools, "cascade_draft_open").handler({
+    const readBlockedDraft = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: {
         page: {
@@ -530,14 +530,14 @@ describe("draft tools", () => {
         },
       },
     });
-    const readBlocked = await findTool(tools, "cascade_draft_get_value").handler({
+    const readBlocked = await findTool(tools, "local_draft_get_value").handler({
       draft_handle: (readBlockedDraft.structuredContent as Record<string, any>).draft_handle,
       pointer: "/asset/page/name",
     });
     expect(readBlocked.isError).toBe(true);
     expect(firstText(readBlocked)).toContain("Tool call denied");
 
-    const validateBlockedDraft = await findTool(tools, "cascade_draft_open").handler({
+    const validateBlockedDraft = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: {
         page: {
@@ -546,11 +546,11 @@ describe("draft tools", () => {
         },
       },
     });
-    const validateBlocked = await findTool(tools, "cascade_draft_validate").handler({
+    const validateBlocked = await findTool(tools, "local_draft_validate").handler({
       draft_handle: (validateBlockedDraft.structuredContent as Record<string, any>).draft_handle,
     });
     expect(validateBlocked.isError).toBe(true);
-    expect(firstText(validateBlocked)).toContain("cascade_draft_validate");
+    expect(firstText(validateBlocked)).toContain("local_draft_validate");
   });
 
   test("direct scaffold create fails closed when tool-block rules cannot be read", async () => {
@@ -571,7 +571,7 @@ describe("draft tools", () => {
       toolBlockStore,
     });
 
-    const result = await findTool(tools, "cascade_draft_scaffold_create").handler({
+    const result = await findTool(tools, "local_draft_scaffold_create").handler({
       asset_type: "page",
     });
 
@@ -591,14 +591,14 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "edit",
       asset_handle: readEntry.handle,
       expected_raw_hash: readEntry.rawHash,
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    const listed = await findTool(tools, "cascade_draft_list_nodelets").handler({
+    const listed = await findTool(tools, "local_draft_list_nodelets").handler({
       draft_handle: draftHandle,
       pointer: "",
       limit: 1,
@@ -612,11 +612,11 @@ describe("draft tools", () => {
     expect(body.children).toBeUndefined();
     expect(body.next_cursor).toMatch(/^c_[0-9]+$/);
     expect(body.next_actions[0]).toMatchObject({
-      tool: "cascade_draft_list_nodelets",
+      tool: "local_draft_list_nodelets",
       input: { draft_handle: draftHandle, pointer: "", cursor: body.next_cursor, limit: 1 },
     });
     expect(body.next_actions[1]).toMatchObject({
-      tool: "cascade_draft_get_nodelet",
+      tool: "local_draft_get_nodelet",
       input: { draft_handle: draftHandle, pointer: body.nodelets[0].pointer },
     });
   });
@@ -631,13 +631,13 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: CREATE_ASSET,
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    await findTool(tools, "cascade_draft_apply_patch").handler({
+    await findTool(tools, "local_draft_apply_patch").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
       operations: [
@@ -645,21 +645,21 @@ describe("draft tools", () => {
       ],
     });
 
-    const validation = await findTool(tools, "cascade_draft_validate").handler({
+    const validation = await findTool(tools, "local_draft_validate").handler({
       draft_handle: draftHandle,
     });
     expect((validation.structuredContent as Record<string, any>).valid).toBe(true);
 
-    const facts = await findTool(tools, "cascade_draft_list_facts").handler({
+    const facts = await findTool(tools, "local_draft_list_facts").handler({
       draft_handle: draftHandle,
       limit: 1,
     });
     const nextActions = (facts.structuredContent as Record<string, any>).next_actions;
-    expect(nextActions.every((action: any) => action.tool.startsWith("cascade_draft_"))).toBe(true);
+    expect(nextActions.every((action: any) => action.tool.startsWith("local_draft_"))).toBe(true);
     expect(nextActions.every((action: any) => action.input?.draft_handle === draftHandle)).toBe(true);
     expect(nextActions.some((action: any) => "asset_handle" in action.input)).toBe(false);
 
-    const submitted = await findTool(tools, "cascade_draft_submit").handler({
+    const submitted = await findTool(tools, "local_draft_submit").handler({
       draft_handle: draftHandle,
       expected_revision: 2,
     });
@@ -680,7 +680,7 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: {
         file: {
@@ -692,7 +692,7 @@ describe("draft tools", () => {
       },
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
-    const setData = await findTool(tools, "cascade_draft_set_file_data").handler({
+    const setData = await findTool(tools, "local_draft_set_file_data").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
       base64_data: "/9j/4Q==",
@@ -709,11 +709,11 @@ describe("draft tools", () => {
       }),
     );
 
-    const data = await findTool(tools, "cascade_draft_get_value").handler({
+    const data = await findTool(tools, "local_draft_get_value").handler({
       draft_handle: draftHandle,
       pointer: "/asset/file/data",
     });
-    const text = await findTool(tools, "cascade_draft_get_value").handler({
+    const text = await findTool(tools, "local_draft_get_value").handler({
       draft_handle: draftHandle,
       pointer: "/asset/file/text",
     });
@@ -728,7 +728,7 @@ describe("draft tools", () => {
     expect((data.structuredContent as Record<string, any>).value).toBeUndefined();
     expect((text.structuredContent as Record<string, any>).value).toBe("metadata text");
 
-    const submitted = await findTool(tools, "cascade_draft_submit").handler({
+    const submitted = await findTool(tools, "local_draft_submit").handler({
       draft_handle: draftHandle,
       expected_revision: 2,
     });
@@ -760,7 +760,7 @@ describe("draft tools", () => {
         draftCache: createDraftCache(),
       });
 
-      const opened = await findTool(tools, "cascade_draft_open").handler({
+      const opened = await findTool(tools, "local_draft_open").handler({
         operation: "create",
         asset: {
           file: {
@@ -772,12 +772,12 @@ describe("draft tools", () => {
         },
       });
       const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
-      const setData = await findTool(tools, "cascade_draft_set_file_data").handler({
+      const setData = await findTool(tools, "local_draft_set_file_data").handler({
         draft_handle: draftHandle,
         expected_revision: 1,
         input_path: inputPath,
       });
-      const text = await findTool(tools, "cascade_draft_get_value").handler({
+      const text = await findTool(tools, "local_draft_get_value").handler({
         draft_handle: draftHandle,
         pointer: "/asset/file/text",
       });
@@ -801,7 +801,7 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: {
         file: {
@@ -812,15 +812,15 @@ describe("draft tools", () => {
       },
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
-    const setData = await findTool(tools, "cascade_draft_set_file_data").handler({
+    const setData = await findTool(tools, "local_draft_set_file_data").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
       base64_data: bytes.toString("base64"),
     });
-    const validate = await findTool(tools, "cascade_draft_validate").handler({
+    const validate = await findTool(tools, "local_draft_validate").handler({
       draft_handle: draftHandle,
     });
-    const data = await findTool(tools, "cascade_draft_get_value").handler({
+    const data = await findTool(tools, "local_draft_get_value").handler({
       draft_handle: draftHandle,
       pointer: "/asset/file/data",
     });
@@ -851,7 +851,7 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: {
         file: {
@@ -861,7 +861,7 @@ describe("draft tools", () => {
         },
       },
     });
-    const result = await findTool(tools, "cascade_draft_set_file_data").handler({
+    const result = await findTool(tools, "local_draft_set_file_data").handler({
       draft_handle: (opened.structuredContent as Record<string, any>).draft_handle,
       expected_revision: 2,
       input_path: "C:\\tmp\\does-not-exist.jpg",
@@ -882,7 +882,7 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: {
         file: {
@@ -894,7 +894,7 @@ describe("draft tools", () => {
       },
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
-    const submitted = await findTool(tools, "cascade_draft_submit").handler({
+    const submitted = await findTool(tools, "local_draft_submit").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
     });
@@ -922,7 +922,7 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_scaffold_create").handler({
+    const opened = await findTool(tools, "local_draft_scaffold_create").handler({
       asset_type: "page",
     });
     const body = opened.structuredContent as Record<string, any>;
@@ -945,7 +945,7 @@ describe("draft tools", () => {
       ]),
     );
     const patchAction = body.next_actions.find(
-      (action: Record<string, any>) => action.tool === "cascade_draft_apply_patch",
+      (action: Record<string, any>) => action.tool === "local_draft_apply_patch",
     );
     expect(patchAction.input).toMatchObject({
       draft_handle: body.draft_handle,
@@ -954,12 +954,12 @@ describe("draft tools", () => {
     expect(patchAction.input.placeholder_paths).toBeUndefined();
     expect(patchAction.placeholder_paths).toEqual(body.required_value_pointers);
 
-    const invalid = await findTool(tools, "cascade_draft_validate").handler({
+    const invalid = await findTool(tools, "local_draft_validate").handler({
       draft_handle: body.draft_handle,
     });
     expect((invalid.structuredContent as Record<string, any>).valid).toBe(false);
 
-    await findTool(tools, "cascade_draft_apply_patch").handler({
+    await findTool(tools, "local_draft_apply_patch").handler({
       draft_handle: body.draft_handle,
       expected_revision: body.revision,
       operations: [
@@ -971,7 +971,7 @@ describe("draft tools", () => {
       ],
     });
 
-    const validation = await findTool(tools, "cascade_draft_validate").handler({
+    const validation = await findTool(tools, "local_draft_validate").handler({
       draft_handle: body.draft_handle,
     });
     expect((validation.structuredContent as Record<string, any>).valid).toBe(true);
@@ -986,13 +986,13 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: SECRET_USER_ASSET,
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    const validation = await findTool(tools, "cascade_draft_validate").handler({
+    const validation = await findTool(tools, "local_draft_validate").handler({
       draft_handle: draftHandle,
     });
     const validationBody = validation.structuredContent as Record<string, any>;
@@ -1000,15 +1000,15 @@ describe("draft tools", () => {
     expect(validationBody.request).toBeUndefined();
     expect(firstText(validation)).not.toContain("user-password-secret");
 
-    const plan = await findTool(tools, "cascade_draft_mutation_plan_execute").handler({
+    const plan = await findTool(tools, "local_draft_mutation_plan_execute").handler({
       steps: [
         {
-          tool: "cascade_draft_open",
+          tool: "local_draft_open",
           input: { operation: "create", asset: SECRET_USER_ASSET },
           save_as: "draft",
         },
         {
-          tool: "cascade_draft_validate",
+          tool: "local_draft_validate",
           input: { draft_ref: "draft" },
         },
       ],
@@ -1032,7 +1032,7 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_scaffold_from_asset").handler({
+    const opened = await findTool(tools, "local_draft_scaffold_from_asset").handler({
       asset_handle: readEntry.handle,
       expected_raw_hash: readEntry.rawHash,
     });
@@ -1074,11 +1074,11 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const result = await findTool(tools, "cascade_draft_mutation_plan_execute").handler({
+    const result = await findTool(tools, "local_draft_mutation_plan_execute").handler({
       steps: [
         {
           name: "open",
-          tool: "cascade_draft_open",
+          tool: "local_draft_open",
           input: {
             operation: "edit",
             asset_handle: readEntry.handle,
@@ -1088,7 +1088,7 @@ describe("draft tools", () => {
         },
         {
           name: "bad assert",
-          tool: "cascade_draft_assert_values",
+          tool: "local_draft_assert_values",
           input: {
             draft_ref: "draft",
             assertions: [
@@ -1107,7 +1107,7 @@ describe("draft tools", () => {
         },
         {
           name: "validate should not run",
-          tool: "cascade_draft_validate",
+          tool: "local_draft_validate",
           input: { draft_ref: "draft" },
         },
       ],
@@ -1131,10 +1131,10 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const result = await findTool(tools, "cascade_draft_mutation_plan_execute").handler({
+    const result = await findTool(tools, "local_draft_mutation_plan_execute").handler({
       steps: [
         {
-          tool: "cascade_draft_open",
+          tool: "local_draft_open",
           input: {
             operation: "create",
             asset: {
@@ -1148,14 +1148,14 @@ describe("draft tools", () => {
           save_as: "draft",
         },
         {
-          tool: "cascade_draft_set_file_data",
+          tool: "local_draft_set_file_data",
           input: {
             draft_ref: "draft",
             base64_data: "/9j/4Q==",
           },
         },
         {
-          tool: "cascade_draft_validate",
+          tool: "local_draft_validate",
           input: { draft_ref: "draft" },
         },
       ],
@@ -1178,10 +1178,10 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const result = await findTool(tools, "cascade_draft_mutation_plan_execute").handler({
+    const result = await findTool(tools, "local_draft_mutation_plan_execute").handler({
       steps: [
         {
-          tool: "cascade_draft_open",
+          tool: "local_draft_open",
           input: {
             operation: "edit",
             asset_handle: readEntry.handle,
@@ -1190,7 +1190,7 @@ describe("draft tools", () => {
           save_as: "draft",
         },
         {
-          tool: "cascade_draft_apply_semantic_patch",
+          tool: "local_draft_apply_semantic_patch",
           input: {
             draft_ref: "draft",
             match: { node_type: "group", identifier: "card" },
@@ -1206,7 +1206,7 @@ describe("draft tools", () => {
     expect(body.completed_steps).toHaveLength(1);
     expect(body.failed_step.index).toBe(1);
     expect(body.failed_step.error).toContain(
-      "cascade_draft_apply_semantic_patch input validation failed",
+      "local_draft_apply_semantic_patch input validation failed",
     );
   });
 
@@ -1219,7 +1219,7 @@ describe("draft tools", () => {
       {
         type: "block_XHTML_DATADEFINITION",
         id: "block-001",
-        tools: ["cascade_draft_mutation_plan_execute"],
+        tools: ["local_draft_mutation_plan_execute"],
         reason: "Plan edits are blocked token=super-secret",
       },
     ]);
@@ -1231,11 +1231,11 @@ describe("draft tools", () => {
       toolBlockStore,
     });
 
-    const result = await findTool(tools, "cascade_draft_mutation_plan_execute").handler({
+    const result = await findTool(tools, "local_draft_mutation_plan_execute").handler({
       steps: [
         {
           name: "open blocked edit",
-          tool: "cascade_draft_open",
+          tool: "local_draft_open",
           input: {
             operation: "edit",
             asset_handle: readEntry.handle,
@@ -1250,7 +1250,7 @@ describe("draft tools", () => {
     expect(body.success).toBe(false);
     expect(body.completed_steps).toHaveLength(0);
     expect(body.failed_step.index).toBe(0);
-    expect(body.failed_step.error).toContain("cascade_draft_mutation_plan_execute");
+    expect(body.failed_step.error).toContain("local_draft_mutation_plan_execute");
     expect(body.failed_step.error).toContain("Plan edits are blocked");
     expect(body.failed_step.error).not.toContain("super-secret");
   });
@@ -1270,10 +1270,10 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const result = await findTool(tools, "cascade_draft_mutation_plan_execute").handler({
+    const result = await findTool(tools, "local_draft_mutation_plan_execute").handler({
       steps: [
         {
-          tool: "cascade_draft_open",
+          tool: "local_draft_open",
           input: {
             operation: "edit",
             asset_handle: readEntry.handle,
@@ -1282,11 +1282,11 @@ describe("draft tools", () => {
           save_as: "draft",
         },
         {
-          tool: "cascade_draft_submit",
+          tool: "local_draft_submit",
           input: { draft_ref: "draft" },
         },
         {
-          tool: "cascade_draft_validate",
+          tool: "local_draft_validate",
           input: { draft_ref: "draft" },
         },
       ],
@@ -1309,15 +1309,15 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const result = await findTool(tools, "cascade_draft_mutation_plan_execute").handler({
+    const result = await findTool(tools, "local_draft_mutation_plan_execute").handler({
       steps: [
         {
-          tool: "cascade_draft_open",
+          tool: "local_draft_open",
           input: { operation: "create", asset: CREATE_ASSET },
           save_as: "draft",
         },
         {
-          tool: "cascade_draft_submit",
+          tool: "local_draft_submit",
           input: { draft_ref: "draft", discard_on_success: true },
         },
       ],
@@ -1350,16 +1350,16 @@ describe("draft tools", () => {
       draftCache,
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: CREATE_ASSET,
     });
     draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    const result = await findTool(tools, "cascade_draft_mutation_plan_execute").handler({
+    const result = await findTool(tools, "local_draft_mutation_plan_execute").handler({
       steps: [
         {
-          tool: "cascade_draft_submit",
+          tool: "local_draft_submit",
           input: {
             draft_handle: draftHandle,
             expected_revision: 1,
@@ -1390,19 +1390,19 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: { page: { name: "missing-placement" } },
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    const submitted = await findTool(tools, "cascade_draft_submit").handler({
+    const submitted = await findTool(tools, "local_draft_submit").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
     });
 
     expect(submitted.isError).toBe(true);
-    expect(firstText(submitted)).toContain("cascade_draft_submit");
+    expect(firstText(submitted)).toContain("local_draft_submit");
     expect(client.create).not.toHaveBeenCalled();
   });
 
@@ -1435,14 +1435,14 @@ describe("draft tools", () => {
       draftCache,
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "edit",
       asset_handle: readEntry.handle,
       expected_raw_hash: readEntry.rawHash,
     });
     draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    const submitted = await findTool(tools, "cascade_draft_submit").handler({
+    const submitted = await findTool(tools, "local_draft_submit").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
     });
@@ -1458,8 +1458,8 @@ describe("draft tools", () => {
     const readEntry = assetCache.put(EDIT_READ_PAGE);
     const client = createMockClient();
     const toolBlockStore = makeStore([
-      { type: "page", id: "page-001", tools: ["cascade_edit"] },
-      { type: "page", id: "page-002", tools: ["cascade_draft_submit"] },
+      { type: "page", id: "page-001", tools: ["edit"] },
+      { type: "page", id: "page-002", tools: ["local_draft_submit"] },
     ]);
 
     registerDraftTools(server as any, client, {
@@ -1469,13 +1469,13 @@ describe("draft tools", () => {
       toolBlockStore,
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "edit",
       asset_handle: readEntry.handle,
       expected_raw_hash: readEntry.rawHash,
     });
 
-    const result = await findTool(tools, "cascade_draft_submit").handler({
+    const result = await findTool(tools, "local_draft_submit").handler({
       draft_handle: (opened.structuredContent as Record<string, any>).draft_handle,
       expected_revision: 1,
     });
@@ -1493,19 +1493,19 @@ describe("draft tools", () => {
         },
       },
     });
-    const openedForDraftSubmitBlock = await findTool(tools, "cascade_draft_open").handler({
+    const openedForDraftSubmitBlock = await findTool(tools, "local_draft_open").handler({
       operation: "edit",
       asset_handle: readEntryForDraftSubmitBlock.handle,
       expected_raw_hash: readEntryForDraftSubmitBlock.rawHash,
     });
 
-    const draftSubmitBlocked = await findTool(tools, "cascade_draft_submit").handler({
+    const draftSubmitBlocked = await findTool(tools, "local_draft_submit").handler({
       draft_handle: (openedForDraftSubmitBlock.structuredContent as Record<string, any>).draft_handle,
       expected_revision: 1,
     });
 
     expect(draftSubmitBlocked.isError).toBe(true);
-    expect(firstText(draftSubmitBlocked)).toContain("cascade_draft_submit");
+    expect(firstText(draftSubmitBlocked)).toContain("local_draft_submit");
     expect(client.edit).not.toHaveBeenCalled();
   });
 
@@ -1521,13 +1521,13 @@ describe("draft tools", () => {
       draftCache: createDraftCache(),
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: CREATE_ASSET,
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    const submitted = await findTool(tools, "cascade_draft_submit").handler({
+    const submitted = await findTool(tools, "local_draft_submit").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
       discard_on_success: true,
@@ -1538,7 +1538,7 @@ describe("draft tools", () => {
     expect((submitted.structuredContent as Record<string, any>).cascade_result).toMatchObject({
       success: false,
     });
-    const stillPresent = await findTool(tools, "cascade_draft_get_value").handler({
+    const stillPresent = await findTool(tools, "local_draft_get_value").handler({
       draft_handle: draftHandle,
       pointer: "/asset/page/name",
     });
@@ -1567,13 +1567,13 @@ describe("draft tools", () => {
       draftCache,
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: CREATE_ASSET,
     });
     draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    const submitted = await findTool(tools, "cascade_draft_submit").handler({
+    const submitted = await findTool(tools, "local_draft_submit").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
       discard_on_success: true,
@@ -1585,7 +1585,7 @@ describe("draft tools", () => {
       "Draft changed while submit was in flight",
     );
 
-    const stillPresent = await findTool(tools, "cascade_draft_get_value").handler({
+    const stillPresent = await findTool(tools, "local_draft_get_value").handler({
       draft_handle: draftHandle,
       pointer: "/asset/page/name",
     });
@@ -1618,18 +1618,18 @@ describe("draft tools", () => {
       });
     });
 
-    const opened = await findTool(tools, "cascade_draft_open").handler({
+    const opened = await findTool(tools, "local_draft_open").handler({
       operation: "create",
       asset: CREATE_ASSET,
     });
     const draftHandle = (opened.structuredContent as Record<string, any>).draft_handle;
 
-    const first = findTool(tools, "cascade_draft_submit").handler({
+    const first = findTool(tools, "local_draft_submit").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
     });
     await createStarted;
-    const second = await findTool(tools, "cascade_draft_submit").handler({
+    const second = await findTool(tools, "local_draft_submit").handler({
       draft_handle: draftHandle,
       expected_revision: 1,
     });

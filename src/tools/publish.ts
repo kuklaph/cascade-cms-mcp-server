@@ -1,7 +1,7 @@
 /**
  * Publishing tools: 1 combined publish/unpublish operation.
  *
- *   cascade_publish_unpublish — publish or unpublish an asset to its destinations
+ *   publish_unpublish — publish or unpublish an asset to its destinations
  *
  * The tool is a thin `registerCascadeTool` call delegating to the
  * `CascadeClient.publishUnpublish` method.
@@ -23,7 +23,7 @@ export function registerPublishTools(
   deps?: CascadeDeps,
 ): void {
   registerCascadeTool(server, {
-    name: "cascade_publish_unpublish",
+    name: "publish_unpublish",
     title: "Publish or Unpublish Asset",
     description: buildCascadeToolDescription(
       `Publish a Cascade asset to its configured destinations, or unpublish it from those destinations.
@@ -52,7 +52,7 @@ Examples:
   - Use when: "Publish a page now" -> { identifier: { type: "page", id: "..." }, publishInformation: {} }
   - Use when: "Unpublish a page" -> { identifier: { type: "page", id: "..." }, publishInformation: { unpublish: true } }
   - Use when: "Schedule publish for next week" -> { identifier: { ... }, publishInformation: { scheduledDate: "2026-04-20T12:00:00Z" } }
-  - Don't use when: You want to delete entirely — use cascade_remove (which can unpublish too).
+  - Don't use when: You want to delete entirely — use remove (which can unpublish too).
   - Don't use when: You haven't yet committed edits — Cascade publishes the last committed version.
 
 Error Handling:

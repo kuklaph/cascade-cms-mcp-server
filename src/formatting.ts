@@ -180,11 +180,11 @@ function createOversizeEnvelope(
     preview: fullText.slice(0, previewLength),
     bytes_total: fullText.length,
     bytes_returned: previewLength,
-    ...(handle ? { handle, tool: "cascade_read_response" as const } : {}),
+    ...(handle ? { handle, tool: "read_response" as const } : {}),
     next_actions: handle
       ? [
           {
-            tool: "cascade_read_response",
+            tool: "read_response",
             reason: "Retrieve additional bytes from this cached JSON response.",
             input: { handle, offset: previewLength },
           },

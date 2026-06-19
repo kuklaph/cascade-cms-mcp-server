@@ -1,7 +1,7 @@
 /**
  * Server factory for the Cascade CMS MCP server.
  *
- * Instantiates a single `McpServer` and registers Cascade tools, handle-based
+ * Instantiates a single `McpServer` and registers API-backed tools, handle-based
  * asset inspection tools, draft workflow tools, local MCP utility tools, and
  * MCP resources/templates.
  *
@@ -36,7 +36,7 @@ import { registerServerVersionTool } from "./tools/version.js";
 import { registerCascadeResources } from "./resources.js";
 
 /**
- * Build an `McpServer` with all Cascade tools registered.
+ * Build an `McpServer` with all tools registered.
  *
  * The server is returned unconnected; the caller must attach a transport
  * (e.g., `StdioServerTransport`) and invoke `server.connect(transport)`.
@@ -44,7 +44,7 @@ import { registerCascadeResources } from "./resources.js";
  * @param client - The Cascade API client.
  * @param deps   - Optional shared dependencies. When omitted, a fresh in-memory
  *                 response cache is built so oversize tool results can mint
- *                 handles consumable by `cascade_read_response`.
+ *                 handles consumable by `read_response`.
  */
 export function createServer(
   client: CascadeClient,

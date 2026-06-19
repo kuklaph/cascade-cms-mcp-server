@@ -12,7 +12,7 @@ function firstText(r: CallToolResult): string {
 }
 
 describe("translateError", () => {
-  const opName = "cascade_read";
+  const opName = "read";
 
   test("should strip 'Request Failed. Request Response: ' prefix and surface clean Cascade message", () => {
     const err = new Error("Request Failed. Request Response: Asset not found");

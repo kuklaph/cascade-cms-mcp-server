@@ -30,12 +30,12 @@ export function registerReadResponseTool(
   registerCascadeTool(
     server,
     {
-      name: "cascade_read_response",
+      name: "read_response",
       title: "Read cached MCP response slice",
       description: buildCascadeToolDescription(
-        `Retrieve a slice of a cached MCP response by handle (cascade_read_response).
+        `Retrieve a slice of a cached MCP response by handle (read_response).
 
-When a Cascade tool response exceeds the MCP character budget, the server caches the complete payload and returns a handle in structuredContent._cache.handle plus a preview in the text block. Use cascade_read_response to fetch the rest — either the remainder in chunks, or a targeted byte range if you know the structure.
+When an MCP tool response exceeds the MCP character budget, the server caches the complete payload and returns a handle in structuredContent._cache.handle plus a preview in the text block. Use read_response to fetch the rest — either the remainder in chunks, or a targeted byte range if you know the structure.
 
 Args:
   - handle (string, required): The handle returned by a prior tool call's structuredContent._cache.handle (e.g. "h_550e8400-...").
@@ -152,7 +152,7 @@ function sliceResponse(
     next_actions: has_more
       ? [
           {
-            tool: "cascade_read_response",
+            tool: "read_response",
             reason: "Retrieve the next cached response slice.",
             input: {
               handle,

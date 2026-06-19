@@ -150,7 +150,7 @@ export function createDraftCache(opts?: DraftCacheOptions): DraftCache {
   ): DraftCacheEntry {
     if (readEntry.rawHash !== expectedRawHash) {
       throw new Error(
-        `expected_raw_hash mismatch for asset handle ${readEntry.handle}. Re-run cascade_read or use the current raw_hash.`,
+        `expected_raw_hash mismatch for asset handle ${readEntry.handle}. Re-run read or use the current raw_hash.`,
       );
     }
     const readRoot = asRecord(readEntry.raw);

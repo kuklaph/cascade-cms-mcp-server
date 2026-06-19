@@ -12,18 +12,18 @@ function parsedText(result: { content: Array<{ type: string; text?: string }> })
   return JSON.parse(firstText(result as any));
 }
 
-describe("cascade_server_version tool", () => {
+describe("server_version tool", () => {
   test("registers as a read-only local utility tool", () => {
     const { server, tools } = makeMockServer();
 
     registerServerVersionTool(server as any);
 
-    const tool = findTool(tools, "cascade_server_version");
+    const tool = findTool(tools, "server_version");
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.idempotentHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.openWorldHint).toBe(false);
-    expect(tool.config.description).toContain("cascade_server_version");
+    expect(tool.config.description).toContain("server_version");
   });
 
   test("returns the MCP server name and version", async () => {
@@ -31,7 +31,7 @@ describe("cascade_server_version tool", () => {
 
     registerServerVersionTool(server as any);
 
-    const tool = findTool(tools, "cascade_server_version");
+    const tool = findTool(tools, "server_version");
     const result = await tool.handler({});
     const body = parsedText(result);
 

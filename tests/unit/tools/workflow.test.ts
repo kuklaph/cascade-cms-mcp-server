@@ -45,10 +45,10 @@ const WORKFLOW_INFO_OK = {
 } as const;
 
 // =============================================================================
-// cascade_read_workflow_settings
+// read_workflow_settings
 // =============================================================================
 
-describe("cascade_read_workflow_settings tool", () => {
+describe("read_workflow_settings tool", () => {
   test("happy path: calls client.readWorkflowSettings with identifier", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -56,7 +56,7 @@ describe("cascade_read_workflow_settings tool", () => {
     });
 
     registerWorkflowTools(server as any, client);
-    const tool = findTool(tools, "cascade_read_workflow_settings");
+    const tool = findTool(tools, "read_workflow_settings");
 
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -89,20 +89,20 @@ describe("cascade_read_workflow_settings tool", () => {
     });
 
     registerWorkflowTools(server as any, client);
-    const tool = findTool(tools, "cascade_read_workflow_settings");
+    const tool = findTool(tools, "read_workflow_settings");
 
     const result = await tool.handler({ identifier: ID_FOLDER });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_read_workflow_settings");
+    expect(firstText(result)).toContain("read_workflow_settings");
   });
 });
 
 // =============================================================================
-// cascade_edit_workflow_settings
+// edit_workflow_settings
 // =============================================================================
 
-describe("cascade_edit_workflow_settings tool", () => {
+describe("edit_workflow_settings tool", () => {
   test("happy path: calls client.editWorkflowSettings with settings", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -110,7 +110,7 @@ describe("cascade_edit_workflow_settings tool", () => {
     });
 
     registerWorkflowTools(server as any, client);
-    const tool = findTool(tools, "cascade_edit_workflow_settings");
+    const tool = findTool(tools, "edit_workflow_settings");
 
     expect(tool.config.annotations.readOnlyHint).toBe(false);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -155,7 +155,7 @@ describe("cascade_edit_workflow_settings tool", () => {
     });
 
     registerWorkflowTools(server as any, client);
-    const tool = findTool(tools, "cascade_edit_workflow_settings");
+    const tool = findTool(tools, "edit_workflow_settings");
 
     const result = await tool.handler({
       identifier: ID_FOLDER,
@@ -163,15 +163,15 @@ describe("cascade_edit_workflow_settings tool", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_edit_workflow_settings");
+    expect(firstText(result)).toContain("edit_workflow_settings");
   });
 });
 
 // =============================================================================
-// cascade_read_workflow_information
+// read_workflow_information
 // =============================================================================
 
-describe("cascade_read_workflow_information tool", () => {
+describe("read_workflow_information tool", () => {
   test("happy path: calls client.readWorkflowInformation with identifier", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -179,7 +179,7 @@ describe("cascade_read_workflow_information tool", () => {
     });
 
     registerWorkflowTools(server as any, client);
-    const tool = findTool(tools, "cascade_read_workflow_information");
+    const tool = findTool(tools, "read_workflow_information");
 
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -212,20 +212,20 @@ describe("cascade_read_workflow_information tool", () => {
     });
 
     registerWorkflowTools(server as any, client);
-    const tool = findTool(tools, "cascade_read_workflow_information");
+    const tool = findTool(tools, "read_workflow_information");
 
     const result = await tool.handler({ identifier: ID_PAGE });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_read_workflow_information");
+    expect(firstText(result)).toContain("read_workflow_information");
   });
 });
 
 // =============================================================================
-// cascade_perform_workflow_transition
+// perform_workflow_transition
 // =============================================================================
 
-describe("cascade_perform_workflow_transition tool", () => {
+describe("perform_workflow_transition tool", () => {
   test("happy path: calls client.performWorkflowTransition with wrapped workflowTransitionInformation", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -233,7 +233,7 @@ describe("cascade_perform_workflow_transition tool", () => {
     });
 
     registerWorkflowTools(server as any, client);
-    const tool = findTool(tools, "cascade_perform_workflow_transition");
+    const tool = findTool(tools, "perform_workflow_transition");
 
     expect(tool.config.annotations.readOnlyHint).toBe(false);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -277,7 +277,7 @@ describe("cascade_perform_workflow_transition tool", () => {
     });
 
     registerWorkflowTools(server as any, client);
-    const tool = findTool(tools, "cascade_perform_workflow_transition");
+    const tool = findTool(tools, "perform_workflow_transition");
 
     const result = await tool.handler({
       workflowTransitionInformation: {
@@ -287,7 +287,7 @@ describe("cascade_perform_workflow_transition tool", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_perform_workflow_transition");
+    expect(firstText(result)).toContain("perform_workflow_transition");
   });
 });
 
@@ -296,7 +296,7 @@ describe("cascade_perform_workflow_transition tool", () => {
 // =============================================================================
 
 describe("registerWorkflowTools coverage", () => {
-  test("registers all 4 workflow tools with cascade_ prefix", () => {
+  test("registers all 4 workflow tools", () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient();
 
@@ -304,10 +304,10 @@ describe("registerWorkflowTools coverage", () => {
 
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
-      "cascade_edit_workflow_settings",
-      "cascade_perform_workflow_transition",
-      "cascade_read_workflow_information",
-      "cascade_read_workflow_settings",
+      "edit_workflow_settings",
+      "perform_workflow_transition",
+      "read_workflow_information",
+      "read_workflow_settings",
     ]);
   });
 });

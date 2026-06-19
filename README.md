@@ -77,7 +77,7 @@ For UI-based clients, enter the same values:
 | Arguments   | `cascade-cms-mcp-server`                                        | `-y`, `cascade-cms-mcp-server` |
 | Environment | `CASCADE_API_KEY`, `CASCADE_URL`, browser env values when using browser-backed tools, optional `CASCADE_TIMEOUT_MS` | Same                           |
 
-Restart the client after config changes. Call `cascade_server_version` to confirm the server is running.
+Restart the client after config changes. Call `server_version` to confirm the server is running.
 
 #### Client-Specific Examples
 
@@ -166,9 +166,9 @@ Browser-backed requests start at most once every 3 seconds per MCP session to av
 3. Open Manage Site.
 4. Copy the site ID from the browser URL into `CASCADE_BROWSER_SITE_ID`.
 
-If `CASCADE_API_KEY` and `CASCADE_URL` are already configured, you can ask your MCP agent to list Cascade sites. The agent can call the `cascade_list_sites` tool and use the production site's ID from that response. This depends on the API user's permissions and may not show the intended production site.
+If `CASCADE_API_KEY` and `CASCADE_URL` are already configured, you can ask your MCP agent to list Cascade sites. The agent can call the `list_sites` tool and use the production site's ID from that response. This depends on the API user's permissions and may not show the intended production site.
 
-When all three browser values are present, startup attempts browser login and caches the session. If startup login fails, the MCP server still starts and standard API tools remain available. Without `CASCADE_BROWSER_SITE_ID`, call `cascade_browser_login` with `site_id` before other browser-backed tools in the same MCP session.
+When all three browser values are present, startup attempts browser login and caches the session. If startup login fails, the MCP server still starts and standard API tools remain available. Without `CASCADE_BROWSER_SITE_ID`, call `browser_login` with `site_id` before other browser-backed tools in the same MCP session.
 
 ## What It Can Do
 
@@ -189,10 +189,10 @@ Use this section to decide whether this MCP covers the job. Your MCP client or a
 | Inspect binary `file.data`, read bounded byte ranges, return image content, and export files locally    | Yes       |
 | Build, inspect, patch, validate, and submit complete create/edit asset drafts                           | Yes       |
 | Authenticate to the Cascade browser UI and cache a browser session                                      | Yes       |
-| Check the browser-only active editing draft notification for an asset                                   | Yes; requires browser API config or prior `cascade_browser_login`, plus `asset_id` and `asset_type` |
-| List, create, update, and delete browser-admin snippets                                                 | Yes; requires browser API config or prior `cascade_browser_login` |
+| Check the browser-only active editing draft notification for an asset                                   | Yes; requires browser API config or prior `browser_login`, plus `asset_id` and `asset_type` |
+| List, create, update, and delete browser-admin snippets                                                 | Yes; requires browser API config or prior `browser_login` |
 | Fetch additional bytes from large/truncated responses                                                   | Yes       |
-| Persist blocked-call rules that prevent matching Cascade tool calls from running                        | Yes       |
+| Persist blocked-call rules that prevent matching MCP tool calls from running                            | Yes       |
 | Generate site and root-folder removal safeguards                                                        | Yes       |
 
 Use your MCP client's tool list or inspector for exact request schemas.
@@ -205,11 +205,11 @@ These sections are mainly for agents and users configuring MCP approvals. They c
 
 Most tool responses put JSON text in `content[0]`. When present, `structuredContent` is the authoritative machine-readable result.
 
-Oversized responses return bounded `_cache` metadata. Use `cascade_read_response` with that handle to page through the full serialized response. Handles are process-scoped and may be evicted after later calls.
+Oversized responses return bounded `_cache` metadata. Use `read_response` with that handle to page through the full serialized response. Handles are process-scoped and may be evicted after later calls.
 
-`cascade_read` returns a compact preview plus an `asset_handle` by default. Use `read_mode: "raw"` only when you need the full Cascade payload immediately. Follow-up tools inspect cached data and do not call Cascade again.
+`read` returns a compact preview plus an `asset_handle` by default. Use `read_mode: "raw"` only when you need the full Cascade payload immediately. Follow-up tools inspect cached data and do not call Cascade again.
 
-`cascade_file_data_image` returns image-only MCP content. Call `cascade_file_data_info` separately for JSON metadata.
+`file_data_image` returns image-only MCP content. Call `file_data_info` separately for JSON metadata.
 
 ### Tool Permissions
 
@@ -219,115 +219,115 @@ Read-only tools:
 
 | Tool                                | Purpose                                            |
 | ----------------------------------- | -------------------------------------------------- |
-| `cascade_read`                      | Read an asset and return a preview or raw response |
-| `cascade_search`                    | Search Cascade assets                              |
-| `cascade_list_sites`                | List Cascade sites                                 |
-| `cascade_read_access_rights`        | Read access rights for an asset                    |
-| `cascade_read_workflow_settings`    | Read workflow settings for a folder                |
-| `cascade_read_workflow_information` | Read workflow information for an asset             |
-| `cascade_list_subscribers`          | List subscribers for an asset                      |
-| `cascade_list_messages`             | List Cascade messages                              |
-| `cascade_read_audits`               | Read audit log entries                             |
-| `cascade_read_preferences`          | Read system preferences                            |
-| `cascade_server_version`            | Read this MCP server's name and version            |
-| `cascade_read_response`             | Fetch more text from a cached oversized response   |
-| `cascade_file_data_info`            | Inspect binary metadata for a Cascade file         |
-| `cascade_file_data_read`            | Read a bounded range from binary file data         |
-| `cascade_file_data_image`           | Return verified image data as image-only MCP content |
-| `cascade_draft_get_value`           | Fetch one JSON value from a draft                  |
-| `cascade_draft_list_facts`          | List indexed JSON facts from a draft               |
-| `cascade_draft_search_values`       | Search scalar values in a draft                    |
-| `cascade_draft_search_keys`         | Search object keys in a draft                      |
-| `cascade_draft_list_references`     | List references in a draft                         |
-| `cascade_draft_list_scalar_artifacts` | List links, paths, and similar artifacts in a draft |
-| `cascade_draft_list_nodelets`       | List structured-data nodelets in a draft           |
-| `cascade_draft_get_nodelet`         | Fetch one structured-data nodelet from a draft     |
-| `cascade_draft_resolve_nodes`       | Resolve structured-data nodes by semantic criteria |
-| `cascade_draft_assert_values`       | Assert structured-data field values in a draft     |
-| `cascade_draft_validate`            | Validate a draft without calling Cascade           |
-| `cascade_browser_check_draft`       | Check browser-only active editing draft notification for an asset |
-| `cascade_browser_list_snippets`     | List browser-admin snippets with pagination        |
+| `read`                      | Read an asset and return a preview or raw response |
+| `search`                    | Search Cascade assets                              |
+| `list_sites`                | List Cascade sites                                 |
+| `read_access_rights`        | Read access rights for an asset                    |
+| `read_workflow_settings`    | Read workflow settings for a folder                |
+| `read_workflow_information` | Read workflow information for an asset             |
+| `list_subscribers`          | List subscribers for an asset                      |
+| `list_messages`             | List Cascade messages                              |
+| `read_audits`               | Read audit log entries                             |
+| `read_preferences`          | Read system preferences                            |
+| `server_version`            | Read this MCP server's name and version            |
+| `read_response`             | Fetch more text from a cached oversized response   |
+| `file_data_info`            | Inspect binary metadata for a Cascade file         |
+| `file_data_read`            | Read a bounded range from binary file data         |
+| `file_data_image`           | Return verified image data as image-only MCP content |
+| `local_draft_get_value`           | Fetch one JSON value from a draft                  |
+| `local_draft_list_facts`          | List indexed JSON facts from a draft               |
+| `local_draft_search_values`       | Search scalar values in a draft                    |
+| `local_draft_search_keys`         | Search object keys in a draft                      |
+| `local_draft_list_references`     | List references in a draft                         |
+| `local_draft_list_scalar_artifacts` | List links, paths, and similar artifacts in a draft |
+| `local_draft_list_nodelets`       | List structured-data nodelets in a draft           |
+| `local_draft_get_nodelet`         | Fetch one structured-data nodelet from a draft     |
+| `local_draft_resolve_nodes`       | Resolve structured-data nodes by semantic criteria |
+| `local_draft_assert_values`       | Assert structured-data field values in a draft     |
+| `local_draft_validate`            | Validate a draft without calling Cascade           |
+| `browser_check_draft`       | Check browser-only active editing draft notification for an asset |
+| `browser_list_snippets`     | List browser-admin snippets with pagination        |
 
-`cascade_read` helper tools:
+`read` helper tools:
 
-These tools do not call Cascade directly. They inspect the in-memory `asset_handle` created by a prior `cascade_read` preview response.
+These tools do not call Cascade directly. They inspect the in-memory `asset_handle` created by a prior `read` preview response.
 
 | Tool                                  | Purpose                                                            |
 | ------------------------------------- | ------------------------------------------------------------------ |
-| `cascade_asset_list_facts`            | List indexed raw JSON facts from a cached read                     |
-| `cascade_asset_search_values`         | Search scalar values in a cached read                              |
-| `cascade_asset_search_keys`           | Search object keys in a cached read                                |
-| `cascade_asset_get_value`             | Fetch one raw JSON value from a cached read                        |
-| `cascade_asset_list_scalar_artifacts` | List links, paths, and similar scalar artifacts from a cached read |
-| `cascade_asset_list_references`       | List Cascade references found in a cached read                     |
-| `cascade_asset_list_nodelets`         | List structured-data nodelets from a cached read                   |
-| `cascade_asset_get_nodelet`           | Fetch one structured-data nodelet from a cached read               |
-| `cascade_asset_resolve_nodes`         | Resolve structured-data nodes by semantic criteria                 |
-| `cascade_asset_assert_values`         | Assert structured-data field values from a cached read             |
+| `asset_list_facts`            | List indexed raw JSON facts from a cached read                     |
+| `asset_search_values`         | Search scalar values in a cached read                              |
+| `asset_search_keys`           | Search object keys in a cached read                                |
+| `asset_get_value`             | Fetch one raw JSON value from a cached read                        |
+| `asset_list_scalar_artifacts` | List links, paths, and similar scalar artifacts from a cached read |
+| `asset_list_references`       | List Cascade references found in a cached read                     |
+| `asset_list_nodelets`         | List structured-data nodelets from a cached read                   |
+| `asset_get_nodelet`           | Fetch one structured-data nodelet from a cached read               |
+| `asset_resolve_nodes`         | Resolve structured-data nodes by semantic criteria                 |
+| `asset_assert_values`         | Assert structured-data field values from a cached read             |
 
 Structured-data selectors support `expected_matches` to assert exact match counts.
 
 File data tools:
 
-Use these for Cascade `file` assets whose binary content is stored in `file.data`. Each tool accepts an `asset_handle` from `cascade_read` or a direct file `identifier`.
+Use these for Cascade `file` assets whose binary content is stored in `file.data`. Each tool accepts an `asset_handle` from `read` or a direct file `identifier`.
 
 | Tool                         | Purpose                                                                 |
 | ---------------------------- | ----------------------------------------------------------------------- |
-| `cascade_file_data_info`     | Return byte count, SHA-256, detected MIME/kind, and a short hex preview |
-| `cascade_file_data_read`     | Return a bounded byte range as `hex` or `base64`                        |
-| `cascade_file_data_image`    | Return magic-byte verified image files as image-only MCP content        |
-| `cascade_file_data_export`   | Write exact bytes to an explicit local `output_path`                    |
+| `file_data_info`     | Return byte count, SHA-256, detected MIME/kind, and a short hex preview |
+| `file_data_read`     | Return a bounded byte range as `hex` or `base64`                        |
+| `file_data_image`    | Return magic-byte verified image files as image-only MCP content        |
+| `file_data_export`   | Write exact bytes to an explicit local `output_path`                    |
 
-`cascade_create`, `cascade_edit`, and `cascade_draft_submit` accept `file.data` as signed Java bytes (`-128..127`) or unsigned file bytes (`0..255`) and send Cascade signed bytes. `cascade_file_data_export` writes to an explicit local path, refuses overwrites unless `overwrite: true`, and can verify `expected_sha256`.
+`create`, `edit`, and `local_draft_submit` accept `file.data` as signed Java bytes (`-128..127`) or unsigned file bytes (`0..255`) and send Cascade signed bytes. `file_data_export` writes to an explicit local path, refuses overwrites unless `overwrite: true`, and can verify `expected_sha256`.
 
 Draft workflow tools:
 
-Drafts are mutable, in-memory payloads for `cascade_create` or `cascade_edit`.
+Drafts are mutable, in-memory payloads for `create` or `edit`.
 
 - Edit drafts start from a cached `asset_handle`; create drafts start from an asset envelope or scaffold.
 - Patch tools mutate only the local draft addressed by `draft_handle`.
-- `cascade_draft_set_file_data` reads exactly one of `input_path` or `base64_data`, normalizes bytes to signed `file.data`, and keeps bytes outside draft JSON until submit.
-- `cascade_draft_submit` validates the final payload, checks tool-block rules, re-reads edit sources to reject stale drafts, and then calls Cascade.
+- `local_draft_set_file_data` reads exactly one of `input_path` or `base64_data`, normalizes bytes to signed `file.data`, and keeps bytes outside draft JSON until submit.
+- `local_draft_submit` validates the final payload, checks tool-block rules, re-reads edit sources to reject stale drafts, and then calls Cascade.
 
 Approval recommended:
 
 | Tool                                  | State change                                                                              |
 | ------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `cascade_create`                      | Creates an asset                                                                          |
-| `cascade_edit`                        | Edits an asset                                                                            |
-| `cascade_draft_open`                  | Creates a mutable local draft from a read snapshot or initial asset payload               |
-| `cascade_draft_scaffold_create`       | Creates a mutable local create draft with required placeholders for one asset type        |
-| `cascade_draft_scaffold_from_asset`   | Creates a mutable local create draft from a cached asset shape                            |
-| `cascade_draft_apply_patch`           | Mutates a local draft with JSON Pointer patch operations                                  |
-| `cascade_draft_apply_semantic_patch`  | Mutates a local draft after resolving structured-data nodes semantically                  |
-| `cascade_draft_mutation_plan_execute` | Runs local draft workflow steps sequentially and stops on first failure                   |
-| `cascade_draft_set_file_data`         | Sets signed Cascade file bytes on a local file draft from exactly one path or base64 payload |
-| `cascade_draft_submit`                | Creates or edits an asset from the complete validated draft payload                       |
-| `cascade_file_data_export`            | Writes Cascade file bytes to an explicit local filesystem path                            |
-| `cascade_browser_login`               | Authenticates to the browser UI and stores a local browser session for later browser tools |
-| `cascade_browser_create_snippet`      | Creates a browser-admin snippet                                                        |
-| `cascade_browser_update_snippet`      | Updates a browser-admin snippet by ID                                                   |
-| `cascade_browser_delete_snippets`     | Deletes one or more browser-admin snippets by ID                                        |
-| `cascade_move`                        | Moves or renames an asset                                                                 |
-| `cascade_copy`                        | Copies an asset                                                                           |
-| `cascade_site_copy`                   | Copies a site                                                                             |
-| `cascade_edit_access_rights`          | Changes asset access rights                                                               |
-| `cascade_edit_workflow_settings`      | Changes workflow settings                                                                 |
-| `cascade_perform_workflow_transition` | Performs a workflow transition                                                            |
-| `cascade_mark_message`                | Marks a message                                                                           |
-| `cascade_check_out`                   | Checks out an asset                                                                       |
-| `cascade_check_in`                    | Checks in an asset                                                                        |
-| `cascade_edit_preference`             | Changes a system preference                                                               |
-| `cascade_tool_blocks`                 | Changes the local blocked-call repository                                                 |
-| `cascade_protect_site_removal`        | Changes the local blocked-call repository after reading accessible sites and root folders |
+| `create`                      | Creates an asset                                                                          |
+| `edit`                        | Edits an asset                                                                            |
+| `local_draft_open`                  | Creates a mutable local draft from a read snapshot or initial asset payload               |
+| `local_draft_scaffold_create`       | Creates a mutable local create draft with required placeholders for one asset type        |
+| `local_draft_scaffold_from_asset`   | Creates a mutable local create draft from a cached asset shape                            |
+| `local_draft_apply_patch`           | Mutates a local draft with JSON Pointer patch operations                                  |
+| `local_draft_apply_semantic_patch`  | Mutates a local draft after resolving structured-data nodes semantically                  |
+| `local_draft_mutation_plan_execute` | Runs local draft workflow steps sequentially and stops on first failure                   |
+| `local_draft_set_file_data`         | Sets signed Cascade file bytes on a local file draft from exactly one path or base64 payload |
+| `local_draft_submit`                | Creates or edits an asset from the complete validated draft payload                       |
+| `file_data_export`            | Writes Cascade file bytes to an explicit local filesystem path                            |
+| `browser_login`               | Authenticates to the browser UI and stores a local browser session for later browser tools |
+| `browser_create_snippet`      | Creates a browser-admin snippet                                                        |
+| `browser_update_snippet`      | Updates a browser-admin snippet by ID                                                   |
+| `browser_delete_snippets`     | Deletes one or more browser-admin snippets by ID                                        |
+| `move`                        | Moves or renames an asset                                                                 |
+| `copy`                        | Copies an asset                                                                           |
+| `site_copy`                   | Copies a site                                                                             |
+| `edit_access_rights`          | Changes asset access rights                                                               |
+| `edit_workflow_settings`      | Changes workflow settings                                                                 |
+| `perform_workflow_transition` | Performs a workflow transition                                                            |
+| `mark_message`                | Marks a message                                                                           |
+| `check_out`                   | Checks out an asset                                                                       |
+| `check_in`                    | Checks in an asset                                                                        |
+| `edit_preference`             | Changes a system preference                                                               |
+| `tool_blocks`                 | Changes the local blocked-call repository                                                 |
+| `protect_site_removal`        | Changes the local blocked-call repository after reading accessible sites and root folders |
 
 High-impact approval recommended:
 
 | Tool                        | State change                      |
 | --------------------------- | --------------------------------- |
-| `cascade_remove`            | Deletes an asset, except sites and root-folder path `/` requests |
-| `cascade_delete_message`    | Deletes a message                 |
-| `cascade_publish_unpublish` | Publishes or unpublishes an asset |
+| `remove`            | Deletes an asset, except sites and root-folder path `/` requests |
+| `delete_message`    | Deletes a message                 |
+| `publish_unpublish` | Publishes or unpublishes an asset |
 
 ### Workflow Examples
 
@@ -335,7 +335,7 @@ Read a page by id:
 
 ```json
 {
-  "tool": "cascade_read",
+  "tool": "read",
   "arguments": {
     "identifier": {
       "id": "d3631e59ac1easd2434bd70be3fbfe8148abc",
@@ -349,7 +349,7 @@ Read a folder by path:
 
 ```json
 {
-  "tool": "cascade_read",
+  "tool": "read",
   "arguments": {
     "identifier": {
       "path": { "path": "/about/team", "siteName": "www" },
@@ -363,7 +363,7 @@ Inspect cached read data after a preview:
 
 ```json
 {
-  "tool": "cascade_asset_search_values",
+  "tool": "asset_search_values",
   "arguments": {
     "asset_handle": "a_550e8400-e29b-41d4-a716-446655440000",
     "value_contains": "admissions"
@@ -371,13 +371,13 @@ Inspect cached read data after a preview:
 }
 ```
 
-Use the `asset_handle` returned by `cascade_read`; `cascade_asset_*` tools are follow-ups, not first-step Cascade reads.
+Use the `asset_handle` returned by `read`; `asset_*` tools are follow-ups, not first-step reads.
 
 Edit from a cached read without reconstructing the full payload in chat:
 
 ```json
 {
-  "tool": "cascade_draft_open",
+  "tool": "local_draft_open",
   "arguments": {
     "operation": "edit",
     "asset_handle": "a_550e8400-e29b-41d4-a716-446655440000",
@@ -388,7 +388,7 @@ Edit from a cached read without reconstructing the full payload in chat:
 
 ```json
 {
-  "tool": "cascade_draft_apply_patch",
+  "tool": "local_draft_apply_patch",
   "arguments": {
     "draft_handle": "d_550e8400-e29b-41d4-a716-446655440001",
     "expected_revision": 1,
@@ -405,7 +405,7 @@ Edit from a cached read without reconstructing the full payload in chat:
 
 ```json
 {
-  "tool": "cascade_draft_submit",
+  "tool": "local_draft_submit",
   "arguments": {
     "draft_handle": "d_550e8400-e29b-41d4-a716-446655440001",
     "expected_revision": 2,
@@ -414,13 +414,13 @@ Edit from a cached read without reconstructing the full payload in chat:
 }
 ```
 
-Rules meant to block submitted drafts may target `cascade_draft_submit`. Use `cascade_create` and/or `cascade_edit` when the same rule should also block direct create/edit calls.
+Rules meant to block submitted drafts may target `local_draft_submit`. Use `create` and/or `edit` when the same rule should also block direct create/edit calls.
 
 Scaffold a create draft when starting from an asset type instead of a read:
 
 ```json
 {
-  "tool": "cascade_draft_scaffold_create",
+  "tool": "local_draft_scaffold_create",
   "arguments": {
     "asset_type": "page",
     "relationship_style": "path"
@@ -428,13 +428,13 @@ Scaffold a create draft when starting from an asset type instead of a read:
 }
 ```
 
-The response includes the draft handle, scaffolded asset envelope, and required placeholders to patch before validation or submit. To scaffold from a cached asset, use `cascade_draft_scaffold_from_asset` with the `asset_handle` and `raw_hash` from `cascade_read`.
+The response includes the draft handle, scaffolded asset envelope, and required placeholders to patch before validation or submit. To scaffold from a cached asset, use `local_draft_scaffold_from_asset` with the `asset_handle` and `raw_hash` from `read`.
 
 Set binary file data on a file draft before submit:
 
 ```json
 {
-  "tool": "cascade_draft_set_file_data",
+  "tool": "local_draft_set_file_data",
   "arguments": {
     "draft_handle": "d_550e8400-e29b-41d4-a716-446655440001",
     "expected_revision": 1,
@@ -449,7 +449,7 @@ Search for pages:
 
 ```json
 {
-  "tool": "cascade_search",
+  "tool": "search",
   "arguments": {
     "searchInformation": {
       "searchTerms": "admissions",
@@ -465,20 +465,20 @@ Search for pages:
 
 ### Guardrails: Blocked Tool Calls
 
-Use `cascade_tool_blocks` to list or add local rules that block matching tool calls before they reach Cascade. Rules live at `~/.cascade-cms-mcp-server/tool-blocks.json`.
+Use `tool_blocks` to list or add local rules that block matching tool calls before they reach Cascade. Rules live at `~/.cascade-cms-mcp-server/tool-blocks.json`.
 
 Each rule needs `tools` plus at least one selector: `url`, `id`, or `path`. Explicit `id` and `path` selectors also need `type`. `reason` is optional and appears in the blocked-call error.
 
-Use `cascade_protect_site_removal` to generate removal safeguards for accessible sites and their root folders. It replaces its previous generated rules and preserves unrelated rules.
+Use `protect_site_removal` to generate removal safeguards for accessible sites and their root folders. It replaces its previous generated rules and preserves unrelated rules.
 
 ```json
 {
-  "tool": "cascade_tool_blocks",
+  "tool": "tool_blocks",
   "arguments": {
     "action": "add",
     "rule": {
       "url": "https://college.cascadecms.com/entity/open.act?id=block-1&type=block",
-      "tools": ["cascade_remove", "cascade_edit"],
+      "tools": ["remove", "edit"],
       "reason": "Protected block"
     }
   }
@@ -492,17 +492,17 @@ Use `cascade_protect_site_removal` to generate removal safeguards for accessible
 | `cascade://entity-types`       |  Static  | Cascade entity type strings with short descriptions       |
 | `cascade://sites`              | Dynamic  | Live `listSites()` result                                 |
 | `cascade://text-encoding`      |  Static  | Text, rich text, XML, format, and template encoding rules |
-| `cascade://asset/{handle}/raw` | Template | Exact raw JSON cached from a prior `cascade_read` preview |
+| `cascade://asset/{handle}/raw` | Template | Exact raw JSON cached from a prior `read` preview |
 | `cascade://draft/{handle}/raw` | Template | Exact draft JSON unless blocked by draft read tool-block rules, the tool-block repository cannot be read, or the handle is invalid/missing |
 
 ## Troubleshooting
 
 - If tools appear unavailable, verify the MCP client can start the server and that `CASCADE_API_KEY` and `CASCADE_URL` are set in the environment used by that client.
 - If a cached handle is missing, rerun the originating tool. Handles are in-memory and process-scoped.
-- If `cascade_draft_open` reports an `expected_raw_hash` mismatch, rerun `cascade_read` and use the current `raw_hash`.
-- If `cascade_draft_submit` reports that the source asset changed, rerun `cascade_read` and open a fresh draft.
+- If `local_draft_open` reports an `expected_raw_hash` mismatch, rerun `read` and use the current `raw_hash`.
+- If `local_draft_submit` reports that the source asset changed, rerun `read` and open a fresh draft.
 - If a draft patch or submit reports an `expected_revision` mismatch, inspect the draft and retry with the current revision.
-- If a rendered response is truncated, call `cascade_read_response` with the returned handle, offset, and length.
+- If a rendered response is truncated, call `read_response` with the returned handle, offset, and length.
 - Most MCP clients write server stderr to client logs. This server keeps stdout reserved for MCP JSON-RPC.
 
 ## Security Notes

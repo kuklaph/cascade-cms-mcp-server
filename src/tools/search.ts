@@ -1,7 +1,7 @@
 /**
  * Search tool: 1 discovery operation exposed to MCP clients.
  *
- *   cascade_search — search for assets across Cascade by term/field/type
+ *   search — search for assets across Cascade by term/field/type
  *
  * A thin `registerCascadeTool` call delegating to `client.search`. The
  * helper handles the validate → call → format → error-translate pipeline.
@@ -24,7 +24,7 @@ export function registerSearchTools(
   deps?: CascadeDeps,
 ): void {
   registerCascadeTool(server, {
-    name: "cascade_search",
+    name: "search",
     title: "Search Cascade",
     description: buildCascadeToolDescription(
       `Search for assets across Cascade CMS by search terms, optional field subset, and asset type filter.
@@ -73,8 +73,8 @@ Examples:
   - Phrase search: { searchInformation: { searchTerms: '"financial aid"', siteName: "www" } }
   - Narrowed page search: { searchInformation: { searchTerms: "financial aid", siteName: "www", searchTypes: ["page"] } }
   - Field-focused search: { searchInformation: { searchTerms: '"financial aid"', searchFields: ["title", "summary"] } }
-  - Don't use when: You already know the id/path — use cascade_read directly.
-  - Don't use when: You want audit events — use cascade_read_audits.
+  - Don't use when: You already know the id/path — use read directly.
+  - Don't use when: You want audit events — use read_audits.
 
 Pagination:
   - Default limit of 50 works for most queries. Increase up to 500 for larger pages.

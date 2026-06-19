@@ -1,9 +1,9 @@
 /**
- * In-memory LRU response cache for oversize Cascade MCP tool responses.
+ * In-memory LRU response cache for oversize MCP tool responses.
  *
  * When a tool's rendered text exceeds the MCP content limit, the full
  * rendered payload is stored here under a handle. The matching companion
- * tool (`cascade_read_response`) retrieves slices by handle.
+ * tool (`read_response`) retrieves slices by handle.
  *
  * Design: closure over `Map<string, CachedEntry>` — insertion order is
  * LRU order. `get` refreshes recency by re-inserting the entry.

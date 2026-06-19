@@ -1,8 +1,8 @@
 /**
  * Site tools: 2 site-level operations exposed to MCP clients.
  *
- *   cascade_list_sites — list sites accessible to the API credentials
- *   cascade_site_copy  — duplicate an entire site under a new name
+ *   list_sites — list sites accessible to the API credentials
+ *   site_copy  — duplicate an entire site under a new name
  *
  * Each tool is a thin `registerCascadeTool` call delegating to the
  * matching `CascadeClient` method. The helper handles the
@@ -28,12 +28,12 @@ export function registerSiteTools(
   deps?: CascadeDeps,
 ): void {
   registerCascadeTool(server, {
-    name: "cascade_list_sites",
+    name: "list_sites",
     title: "List Cascade Sites",
     description: buildCascadeToolDescription(
       `List all sites accessible with the current API credentials.
 
-Returns site Identifier objects for every site the authenticated user can see. Site names appear in identifier.path.path, not in a top-level name field. This is typically the first call an agent makes to discover which sites exist before reading or editing assets inside them. The response contains only identifiers — call cascade_read with { identifier: <site identifier returned by cascade_list_sites> } to fetch a site's full configuration.
+Returns site Identifier objects for every site the authenticated user can see. Site names appear in identifier.path.path, not in a top-level name field. This is typically the first call an agent makes to discover which sites exist before reading or editing assets inside them. The response contains only identifiers — call read with { identifier: <site identifier returned by list_sites> } to fetch a site's full configuration.
 
 Args:
   (none)
@@ -46,8 +46,8 @@ Returns:
 Examples:
   - Use when: "What sites do I have access to?" -> {}
   - Use when: "I need to find a siteId before reading a page" -> call this, then match by id or path.path.
-  - Don't use when: You already know the site name/id — skip straight to cascade_read.
-  - Don't use when: You need a site's full config — use cascade_read with { identifier: <site identifier> }.
+  - Don't use when: You already know the site name/id — skip straight to read.
+  - Don't use when: You need a site's full config — use read with { identifier: <site identifier> }.
 
 Error Handling:
   - "Permission denied" when credentials are invalid
@@ -64,12 +64,12 @@ Error Handling:
   }, deps);
 
   registerCascadeTool(server, {
-    name: "cascade_site_copy",
+    name: "site_copy",
     title: "Copy Cascade Site",
     description: buildCascadeToolDescription(
       `Copy an entire site to a new site with a new name.
 
-Duplicates all assets, folders, templates, and configuration from an existing site into a brand-new site. This is a LONG-RUNNING operation — Cascade returns once the copy has started but finishes asynchronously. Poll cascade_list_sites to confirm completion. Either originalSiteId or originalSiteName must be provided; if both are given, originalSiteId wins.
+Duplicates all assets, folders, templates, and configuration from an existing site into a brand-new site. This is a LONG-RUNNING operation — Cascade returns once the copy has started but finishes asynchronously. Poll list_sites to confirm completion. Either originalSiteId or originalSiteName must be provided; if both are given, originalSiteId wins.
 
 Args:
   - originalSiteId (string, optional): Source site ID. Preferred when known.
@@ -86,7 +86,7 @@ Returns:
 Examples:
   - Use when: "Duplicate the 'staging' site as 'staging-2026'" -> { originalSiteName: "staging", newSiteName: "staging-2026" }
   - Use when: "Copy site by id for a new campaign" -> { originalSiteId: "abc123...", newSiteName: "campaign-fall" }
-  - Don't use when: You want to copy a single asset — use cascade_copy.
+  - Don't use when: You want to copy a single asset — use copy.
   - Don't use when: The site already exists under newSiteName — no merge behavior is supported.
 
 Error Handling:

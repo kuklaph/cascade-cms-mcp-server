@@ -309,7 +309,7 @@ const AssetHandleField = {
       "asset_handle must look like 'a_<hex-uuid>'",
     )
     .describe(
-      "REQUIRED: Asset handle returned by cascade_read structuredContent.asset_handle.",
+      "REQUIRED: Asset handle returned by read structuredContent.asset_handle.",
     ),
 };
 
@@ -653,7 +653,7 @@ export const AssetGetNodeletRequestSchema = z
   .object({
     ...AssetHandleField,
     pointer: z.string().describe(
-      "JSON Pointer returned by cascade_read preview root_outline or cascade_asset_list_nodelets.",
+      "JSON Pointer returned by read preview root_outline or asset_list_nodelets.",
     ),
     depth: z
       .number()
@@ -696,15 +696,15 @@ export const DraftOpenRequestSchema = z
       .describe("REQUIRED: Use edit to clone an asset_handle, or create to start a create draft."),
     asset_handle: AssetHandleField.asset_handle
       .optional()
-      .describe("REQUIRED when operation is edit. Asset handle returned by cascade_read preview."),
+      .describe("REQUIRED when operation is edit. Asset handle returned by read preview."),
     expected_raw_hash: RawHashSchema.optional().describe(
-      "REQUIRED when operation is edit. raw_hash returned by the cascade_read preview that produced asset_handle.",
+      "REQUIRED when operation is edit. raw_hash returned by the read preview that produced asset_handle.",
     ),
     asset: z
       .record(z.string(), z.unknown())
       .optional()
       .describe(
-        "Optional initial create asset envelope. Only valid when operation is create. Drafts may be incomplete until cascade_draft_validate or cascade_draft_submit.",
+        "Optional initial create asset envelope. Only valid when operation is create. Drafts may be incomplete until local_draft_validate or local_draft_submit.",
       ),
   })
   .strict()
@@ -778,7 +778,7 @@ export const DraftScaffoldFromAssetRequestSchema = z
   .object({
     ...AssetHandleField,
     expected_raw_hash: RawHashSchema.describe(
-      "REQUIRED: raw_hash returned by the cascade_read preview that produced asset_handle.",
+      "REQUIRED: raw_hash returned by the read preview that produced asset_handle.",
     ),
     clear_values: z
       .boolean()
@@ -914,7 +914,7 @@ export const DraftGetNodeletRequestSchema = z
   .object({
     ...DraftHandleField,
     pointer: z.string().describe(
-      "JSON Pointer returned by cascade_draft_list_nodelets.",
+      "JSON Pointer returned by local_draft_list_nodelets.",
     ),
     depth: z
       .number()
@@ -1161,16 +1161,16 @@ const MutationPlanStepSchema = z
   .object({
     name: z.string().min(1).max(120).optional(),
     tool: z.enum([
-      "cascade_draft_open",
-      "cascade_draft_scaffold_create",
-      "cascade_draft_scaffold_from_asset",
-      "cascade_draft_resolve_nodes",
-      "cascade_draft_apply_patch",
-      "cascade_draft_apply_semantic_patch",
-      "cascade_draft_assert_values",
-      "cascade_draft_set_file_data",
-      "cascade_draft_validate",
-      "cascade_draft_submit",
+      "local_draft_open",
+      "local_draft_scaffold_create",
+      "local_draft_scaffold_from_asset",
+      "local_draft_resolve_nodes",
+      "local_draft_apply_patch",
+      "local_draft_apply_semantic_patch",
+      "local_draft_assert_values",
+      "local_draft_set_file_data",
+      "local_draft_validate",
+      "local_draft_submit",
     ]),
     input: z.record(z.string(), z.unknown()).default({}),
     save_as: z.string().min(1).max(64).optional(),
@@ -1234,14 +1234,14 @@ export const RemoveRequestSchema = z
   })
   .strict()
   .refine((v) => v.identifier.type !== "site", {
-    message: "Cascade sites cannot be removed with cascade_remove",
+    message: "Cascade sites cannot be removed with remove",
     path: ["identifier", "type"],
   })
   .refine(
     (v) =>
       v.identifier.type !== "folder" || v.identifier.path?.path !== "/",
     {
-      message: "Cascade site root folder path '/' requests cannot be removed with cascade_remove",
+      message: "Cascade site root folder path '/' requests cannot be removed with remove",
       path: ["identifier", "path", "path"],
     },
   );
@@ -1791,7 +1791,7 @@ export const BrowserUpdateSnippetRequestSchema = z
     id: z
       .string()
       .min(1, "id must not be empty")
-      .describe("REQUIRED: Snippet ID from cascade_browser_list_snippets."),
+      .describe("REQUIRED: Snippet ID from browser_list_snippets."),
     title: z
       .string()
       .min(1, "title must not be empty")
@@ -1813,7 +1813,7 @@ export const BrowserDeleteSnippetsRequestSchema = z
       .array(z.string().min(1, "snippet id must not be empty"))
       .min(1, "ids must include at least one snippet id")
       .describe(
-        "REQUIRED: One or more snippet IDs from cascade_browser_list_snippets.",
+        "REQUIRED: One or more snippet IDs from browser_list_snippets.",
       ),
   })
   .strict();

@@ -137,8 +137,12 @@ function handleStdoutLine(line) {
 function assertToolsList(result) {
   assert(Array.isArray(result?.tools), "tools/list returned tools array");
   assert(
-    result.tools.some((tool) => tool.name === "cascade_server_version"),
-    "tools/list included cascade_server_version",
+    result.tools.some((tool) => tool.name === "server_version"),
+    "tools/list included server_version",
+  );
+  assert(
+    result.tools.every((tool) => !String(tool.name).startsWith("cascade_")),
+    "tools/list omitted cascade_ tool prefixes",
   );
 }
 

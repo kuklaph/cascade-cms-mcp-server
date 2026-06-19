@@ -24,10 +24,10 @@ const LIST_SITES_OK = {
 } as const;
 
 // =============================================================================
-// cascade_list_sites
+// list_sites
 // =============================================================================
 
-describe("cascade_list_sites tool", () => {
+describe("list_sites tool", () => {
   test("happy path: calls client.listSites and returns success response", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -36,7 +36,7 @@ describe("cascade_list_sites tool", () => {
 
     registerSiteTools(server as any, client);
 
-    const tool = findTool(tools, "cascade_list_sites");
+    const tool = findTool(tools, "list_sites");
     expect(tool.config.annotations.readOnlyHint).toBe(true);
     expect(tool.config.annotations.destructiveHint).toBe(false);
     expect(tool.config.annotations.idempotentHint).toBe(true);
@@ -62,20 +62,20 @@ describe("cascade_list_sites tool", () => {
     });
 
     registerSiteTools(server as any, client);
-    const tool = findTool(tools, "cascade_list_sites");
+    const tool = findTool(tools, "list_sites");
 
     const result = await tool.handler({});
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_list_sites");
+    expect(firstText(result)).toContain("list_sites");
   });
 });
 
 // =============================================================================
-// cascade_site_copy
+// site_copy
 // =============================================================================
 
-describe("cascade_site_copy tool", () => {
+describe("site_copy tool", () => {
   test("happy path: calls client.siteCopy with correct args", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient({
@@ -83,7 +83,7 @@ describe("cascade_site_copy tool", () => {
     });
 
     registerSiteTools(server as any, client);
-    const tool = findTool(tools, "cascade_site_copy");
+    const tool = findTool(tools, "site_copy");
 
     expect(tool.config.annotations.readOnlyHint).toBe(false);
     expect(tool.config.annotations.destructiveHint).toBe(false);
@@ -115,7 +115,7 @@ describe("cascade_site_copy tool", () => {
     });
 
     registerSiteTools(server as any, client);
-    const tool = findTool(tools, "cascade_site_copy");
+    const tool = findTool(tools, "site_copy");
 
     const result = await tool.handler({
       originalSiteName: "existing",
@@ -123,7 +123,7 @@ describe("cascade_site_copy tool", () => {
     });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain("cascade_site_copy");
+    expect(firstText(result)).toContain("site_copy");
   });
 
   test("boundary check: rejects payload missing both originalSiteId and originalSiteName", async () => {
@@ -133,7 +133,7 @@ describe("cascade_site_copy tool", () => {
     });
 
     registerSiteTools(server as any, client);
-    const tool = findTool(tools, "cascade_site_copy");
+    const tool = findTool(tools, "site_copy");
 
     const result = await tool.handler({ newSiteName: "copy-only" });
 
@@ -156,6 +156,6 @@ describe("registerSiteTools coverage", () => {
     registerSiteTools(server as any, client);
 
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(["cascade_list_sites", "cascade_site_copy"]);
+    expect(names).toEqual(["list_sites", "site_copy"]);
   });
 });
