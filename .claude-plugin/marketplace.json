@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Marketplace hosting the Cascade CMS MCP server plugin for Claude Code",
-    "version": "2.0.0-alpha.0"
+    "version": "2.0.0-alpha.1"
   },
   "plugins": [
     {
       "name": "cascade-cms",
       "source": "./",
       "description": "Cascade CMS MCP server with 68 tools for reading, editing, searching, auditing, publishing, and managing Cascade CMS content.",
-      "version": "2.0.0-alpha.0",
+      "version": "2.0.0-alpha.1",
       "author": {
         "name": "kuklaph"
       },
