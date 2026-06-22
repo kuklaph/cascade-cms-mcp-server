@@ -4,11 +4,21 @@ All notable changes to `cascade-cms-mcp-server` will be documented here.
 
 ## Unreleased
 
+## 2.0.0 - 2026-06-22
+
 ### Breaking Changes
 
+- Migrated the MCP server runtime from `@modelcontextprotocol/sdk` v1 to `@modelcontextprotocol/server@2.0.0-alpha.2`.
+- Raised the supported Node.js runtime to Node 20 or newer.
 - Removed the redundant `cascade_` prefix from public MCP tool names.
 - Renamed MCP-local draft tools from `cascade_draft_*` to `local_draft_*` to distinguish local payload drafts from Cascade browser draft state.
 - Renamed cached reference response `source_scope` from `cascade_references` to `asset_references`.
+
+### Changed
+
+- Browser-backed requests now start at most once every 3 seconds per MCP session to reduce pressure on Cascade browser UI endpoints.
+- Added `@cfworker/json-schema` as a direct runtime dependency required by `@modelcontextprotocol/server`.
+- Clarified `search` guidance for pass-through Cascade search syntax, quoted phrase searches, wildcard searches, and optional `searchFields` / `searchTypes` narrowing filters.
 
 ## 2.0.0-alpha.0 - 2026-06-11
 
