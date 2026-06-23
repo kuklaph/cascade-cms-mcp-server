@@ -172,6 +172,8 @@ describe("findDeniedToolCall", () => {
     const rules = [
       { type: "page" as const, id: "page-1", tools: ["cascade_edit"] },
       { type: "page" as const, id: "page-2", tools: ["cascade_draft_submit"] },
+      { type: "page" as const, id: "page-3", tools: ["cascade_draft_open"] },
+      { type: "page" as const, id: "page-4", tools: ["cascade_draft_scaffold_create"] },
     ];
 
     expect(
@@ -188,6 +190,20 @@ describe("findDeniedToolCall", () => {
         rules,
       ),
     ).toBe(rules[1]);
+    expect(
+      findDeniedToolCall(
+        "local_draft_open",
+        { asset: { page: { id: "page-3" } } },
+        rules,
+      ),
+    ).toBe(rules[2]);
+    expect(
+      findDeniedToolCall(
+        "local_draft_scaffold_create",
+        { asset: { page: { id: "page-4" } } },
+        rules,
+      ),
+    ).toBe(rules[3]);
   });
 
   test("does not match a URL-only rule when the URL type differs from the payload type", () => {
@@ -237,6 +253,65 @@ describe("findDeniedToolCall", () => {
         "edit",
         { identifier: { type: "folder", id: "page-1" } },
         [rule],
+      ),
+    ).toBeUndefined();
+  });
+
+  test("matches create payloads by derived parent path and name", () => {
+    const pageRule = {
+      type: "page" as const,
+      path: "/about/new-page",
+      tools: ["create"],
+    };
+    const blockRule = {
+      type: "block_XHTML_DATADEFINITION" as const,
+      path: "/blocks/cards",
+      tools: ["create"],
+    };
+
+    expect(
+      findDeniedToolCall(
+        "create",
+        {
+          asset: {
+            page: {
+              name: "new-page",
+              parentFolderPath: "/about",
+              siteName: "www",
+            },
+          },
+        },
+        [pageRule],
+      ),
+    ).toBe(pageRule);
+    expect(
+      findDeniedToolCall(
+        "create",
+        {
+          asset: {
+            xhtmlDataDefinitionBlock: {
+              name: "cards",
+              parentFolderPath: "/blocks/",
+              siteName: "www",
+            },
+          },
+        },
+        [blockRule],
+      ),
+    ).toBe(blockRule);
+    expect(
+      findDeniedToolCall(
+        "create",
+        {
+          asset: {
+            page: {
+              name: "new-page",
+              parentFolderPath: "/other",
+              siteName: "www",
+            },
+          },
+        },
+        [pageRule],
       ),
     ).toBeUndefined();
   });

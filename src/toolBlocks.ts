@@ -198,10 +198,19 @@ function objectMatchesRule(
 
   if (rule.type && objectTypeMatches(rule.type, obj, impliedType)) {
     if (rule.id && selectorIncludes(rule.id, obj.id)) return true;
-    if (rule.path && pathMatches(obj.path, rule.path)) return true;
+    if (rule.path && objectPathMatches(obj, rule.path)) return true;
   }
 
   return false;
+}
+
+function objectPathMatches(
+  obj: Record<string, unknown>,
+  expected: string | string[],
+): boolean {
+  if (pathMatches(obj.path, expected)) return true;
+  const targetPath = createTargetPath(obj);
+  return targetPath ? selectorIncludes(expected, targetPath) : false;
 }
 
 function objectTypeMatches(
@@ -347,6 +356,21 @@ function isTransportType(value: string): boolean {
 function pathMatches(value: unknown, expected: string | string[]): boolean {
   if (selectorIncludes(expected, value)) return true;
   return isRecord(value) && selectorIncludes(expected, value.path);
+}
+
+function createTargetPath(obj: Record<string, unknown>): string | undefined {
+  if (typeof obj.name !== "string") return undefined;
+  const parentPath =
+    typeof obj.parentFolderPath === "string"
+      ? obj.parentFolderPath
+      : typeof obj.parentContainerPath === "string"
+        ? obj.parentContainerPath
+        : undefined;
+  if (!parentPath) return undefined;
+  const parent = parentPath.endsWith("/") && parentPath !== "/"
+    ? parentPath.slice(0, -1)
+    : parentPath;
+  return parent === "/" ? `/${obj.name}` : `${parent}/${obj.name}`;
 }
 
 function urlMatches(

@@ -506,6 +506,182 @@ describe("draft tools", () => {
     expect(draft.root).toMatchObject({ asset: CREATE_ASSET });
   });
 
+  test("final create and edit tool blocks reject local draft open before creating drafts", async () => {
+    const { server, tools } = makeMockServer();
+    const assetCache = createAssetCache();
+    const readEntry = assetCache.put(EDIT_READ_PAGE);
+    const draftCache = createDraftCache();
+    const client = createMockClient();
+    const toolBlockStore = makeStore([
+      { type: "page", id: "page-001", tools: ["edit"] },
+      { type: "page", path: "/new-page", tools: ["create"] },
+    ]);
+
+    registerDraftTools(server as any, client, {
+      cache: createResponseCache(),
+      assetCache,
+      draftCache,
+      toolBlockStore,
+    });
+
+    const blockedEdit = await findTool(tools, "local_draft_open").handler({
+      operation: "edit",
+      asset_handle: readEntry.handle,
+      expected_raw_hash: readEntry.rawHash,
+    });
+
+    expect(blockedEdit.isError).toBe(true);
+    expect(firstText(blockedEdit)).toContain("edit page");
+    expect(draftCache.size()).toBe(0);
+
+    const blockedCreate = await findTool(tools, "local_draft_open").handler({
+      operation: "create",
+      asset: CREATE_ASSET,
+    });
+
+    expect(blockedCreate.isError).toBe(true);
+    expect(firstText(blockedCreate)).toContain("create page");
+    expect(draftCache.size()).toBe(0);
+  });
+
+  test("direct scaffold create fails closed when generated-payload rules cannot be read", async () => {
+    const { server, tools } = makeMockServer();
+    const draftCache = createDraftCache();
+    const read = mock(async () => {
+      if (read.mock.calls.length === 1) return [];
+      throw new Error("generated payload blocked");
+    });
+    const toolBlockStore: ToolBlockStore = {
+      path: "C:\\tmp\\tool-blocks.json",
+      read,
+      write: mock(async () => {}),
+    };
+
+    registerDraftTools(server as any, createMockClient(), {
+      cache: createResponseCache(),
+      assetCache: createAssetCache(),
+      draftCache,
+      toolBlockStore,
+    });
+
+    const result = await findTool(tools, "local_draft_scaffold_create").handler({
+      asset_type: "page",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(firstText(result)).toContain("generated payload blocked");
+    expect(draftCache.size()).toBe(0);
+    expect(read).toHaveBeenCalledTimes(2);
+  });
+
+  test("create path tool blocks reject scaffold patches before mutating local draft state", async () => {
+    const { server, tools } = makeMockServer();
+    const draftCache = createDraftCache();
+    const toolBlockStore = makeStore([
+      { type: "page", path: "/blocked-page", tools: ["create"] },
+    ]);
+
+    registerDraftTools(server as any, createMockClient(), {
+      cache: createResponseCache(),
+      assetCache: createAssetCache(),
+      draftCache,
+      toolBlockStore,
+    });
+
+    const opened = await findTool(tools, "local_draft_scaffold_create").handler({
+      asset_type: "page",
+    });
+    const body = opened.structuredContent as Record<string, any>;
+
+    const blockedPatch = await findTool(tools, "local_draft_apply_patch").handler({
+      draft_handle: body.draft_handle,
+      expected_revision: body.revision,
+      operations: [
+        { op: "replace", path: "/asset/page/name", value: "blocked-page" },
+        { op: "replace", path: "/asset/page/parentFolderPath", value: "/" },
+        { op: "replace", path: "/asset/page/siteName", value: "my-site" },
+      ],
+    });
+
+    expect(blockedPatch.isError).toBe(true);
+    expect(firstText(blockedPatch)).toContain("create page");
+    const draft = draftCache.get(body.draft_handle)!;
+    expect(draft.revision).toBe(body.revision);
+    expect(draft.root).toMatchObject({
+      asset: {
+        page: {
+          name: null,
+          parentFolderPath: null,
+        },
+      },
+    });
+  });
+
+  test("create path tool blocks reject scaffold-from-asset before creating drafts", async () => {
+    const { server, tools } = makeMockServer();
+    const assetCache = createAssetCache();
+    const readEntry = assetCache.put(STRUCTURED_BLOCK_READ);
+    const draftCache = createDraftCache();
+    const toolBlockStore = makeStore([
+      { type: "block_XHTML_DATADEFINITION", path: "/components/cards", tools: ["create"] },
+    ]);
+
+    registerDraftTools(server as any, createMockClient(), {
+      cache: createResponseCache(),
+      assetCache,
+      draftCache,
+      toolBlockStore,
+    });
+
+    const blocked = await findTool(tools, "local_draft_scaffold_from_asset").handler({
+      asset_handle: readEntry.handle,
+      expected_raw_hash: readEntry.rawHash,
+    });
+
+    expect(blocked.isError).toBe(true);
+    expect(firstText(blocked)).toContain("create block_XHTML_DATADEFINITION");
+    expect(draftCache.size()).toBe(0);
+  });
+
+  test("final create tool blocks reject draft file data before reading local input", async () => {
+    const { server, tools } = makeMockServer();
+    const draftCache = createDraftCache();
+    const rules: Array<{ type: "file"; path: string; tools: string[] }> = [];
+    const toolBlockStore = makeStore(rules);
+
+    registerDraftTools(server as any, createMockClient(), {
+      cache: createResponseCache(),
+      assetCache: createAssetCache(),
+      draftCache,
+      toolBlockStore,
+    });
+
+    const opened = await findTool(tools, "local_draft_open").handler({
+      operation: "create",
+      asset: {
+        file: {
+          name: "hero.jpg",
+          parentFolderPath: "/assets",
+          siteName: "my-site",
+        },
+      },
+    });
+    const body = opened.structuredContent as Record<string, any>;
+
+    rules.push({ type: "file", path: "/assets/hero.jpg", tools: ["create"] });
+    const blocked = await findTool(tools, "local_draft_set_file_data").handler({
+      draft_handle: body.draft_handle,
+      expected_revision: body.revision,
+      input_path: "C:\\tmp\\missing-hero.jpg",
+    });
+
+    expect(blocked.isError).toBe(true);
+    expect(firstText(blocked)).toContain("create file");
+    const draft = draftCache.get(body.draft_handle)!;
+    expect(draft.revision).toBe(body.revision);
+    expect(draft.fileData).toBeUndefined();
+  });
+
   test("draft read and validate tools check resolved draft payloads against tool blocks", async () => {
     const { server, tools } = makeMockServer();
     const client = createMockClient();
@@ -1255,6 +1431,44 @@ describe("draft tools", () => {
     expect(body.failed_step.error).not.toContain("super-secret");
   });
 
+  test("mutation plan open steps stop before saving drafts blocked for final edit", async () => {
+    const { server, tools } = makeMockServer();
+    const assetCache = createAssetCache();
+    const readEntry = assetCache.put(EDIT_READ_PAGE);
+    const draftCache = createDraftCache();
+    const toolBlockStore = makeStore([
+      { type: "page", id: "page-001", tools: ["edit"] },
+    ]);
+
+    registerDraftTools(server as any, createMockClient(), {
+      cache: createResponseCache(),
+      assetCache,
+      draftCache,
+      toolBlockStore,
+    });
+
+    const result = await findTool(tools, "local_draft_mutation_plan_execute").handler({
+      steps: [
+        {
+          tool: "local_draft_open",
+          input: {
+            operation: "edit",
+            asset_handle: readEntry.handle,
+            expected_raw_hash: readEntry.rawHash,
+          },
+          save_as: "draft",
+        },
+      ],
+    });
+    const body = result.structuredContent as Record<string, any>;
+
+    expect(body.success).toBe(false);
+    expect(body.completed_steps).toHaveLength(0);
+    expect(body.failed_step.index).toBe(0);
+    expect(body.failed_step.error).toContain("edit page");
+    expect(draftCache.size()).toBe(0);
+  });
+
   test("mutation plans stop when Cascade submit returns success false", async () => {
     const { server, tools } = makeMockServer();
     const assetCache = createAssetCache();
@@ -1457,10 +1671,10 @@ describe("draft tools", () => {
     const assetCache = createAssetCache();
     const readEntry = assetCache.put(EDIT_READ_PAGE);
     const client = createMockClient();
-    const toolBlockStore = makeStore([
-      { type: "page", id: "page-001", tools: ["edit"] },
+    const rules = [
       { type: "page", id: "page-002", tools: ["local_draft_submit"] },
-    ]);
+    ];
+    const toolBlockStore = makeStore(rules);
 
     registerDraftTools(server as any, client, {
       cache: createResponseCache(),
@@ -1475,6 +1689,7 @@ describe("draft tools", () => {
       expected_raw_hash: readEntry.rawHash,
     });
 
+    rules.push({ type: "page", id: "page-001", tools: ["edit"] });
     const result = await findTool(tools, "local_draft_submit").handler({
       draft_handle: (opened.structuredContent as Record<string, any>).draft_handle,
       expected_revision: 1,

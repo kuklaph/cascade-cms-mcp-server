@@ -146,11 +146,14 @@ export function registerDraftTools(
         "local_draft_open",
       );
       await assertToolBlockAllowed("local_draft_open", entry.raw, resolved);
+      await assertToolBlockAllowed("edit", entry.raw, resolved);
       draft = draftCache.createFromRead(entry, args.expected_raw_hash ?? "");
     } else {
+      const request = { asset: args.asset ?? {} };
+      await assertToolBlockAllowed("local_draft_open", request, resolved);
       await assertToolBlockAllowed(
-        "local_draft_open",
-        { asset: args.asset ?? {} },
+        "create",
+        request,
         resolved,
       );
       draft = draftCache.createFromAsset("create", args.asset ?? {});
@@ -172,6 +175,11 @@ export function registerDraftTools(
       relationshipStyle: args.relationship_style,
       roleType: args.role_type,
     });
+    await assertToolBlockAllowed(
+      "local_draft_scaffold_create",
+      { asset: scaffold.asset },
+      resolved,
+    );
     const draft = draftCache.createFromAsset("create", scaffold.asset);
     return {
       success: true,
@@ -211,6 +219,7 @@ export function registerDraftTools(
       { asset: scaffold.asset },
       resolved,
     );
+    await assertToolBlockAllowed("create", { asset: scaffold.asset }, resolved);
     const draft = draftCache.createFromAsset("create", scaffold.asset);
 
     return {
@@ -242,6 +251,7 @@ export function registerDraftTools(
       preview.nextRoot,
       resolved,
     );
+    await assertDraftFinalToolAllowed(draft, preview.nextRoot);
     return {
       success: true,
       ...draftCache.commitPatch(preview),
@@ -261,6 +271,7 @@ export function registerDraftTools(
       preview.nextRoot,
       resolved,
     );
+    await assertDraftFinalToolAllowed(draft, preview.nextRoot);
     return {
       success: true,
       ...draftCache.commitPatch(preview),
@@ -280,11 +291,13 @@ export function registerDraftTools(
   }): Promise<Record<string, unknown>> {
     const draft = getDraftEntry(draftCache, args.draft_handle);
     assertExpectedDraftRevision(draft, args.expected_revision);
+    const currentRoot = materializeDraftRoot(draft, "placeholder");
     await assertToolBlockAllowed(
       "local_draft_set_file_data",
-      materializeDraftRoot(draft, "placeholder"),
+      currentRoot,
       resolved,
     );
+    await assertDraftFinalToolAllowed(draft, currentRoot);
     const file = fileBodyFromDraft(draft);
     const bytes = await readFileDataInput(args);
     const summary = summarizeFileData(
@@ -302,11 +315,13 @@ export function registerDraftTools(
     }
 
     const textRemoved = file.text === null;
+    const nextRoot = draftRootWithFileDataPlaceholder(draft, textRemoved);
     await assertToolBlockAllowed(
       "local_draft_set_file_data",
-      draftRootWithFileDataPlaceholder(draft, textRemoved),
+      nextRoot,
       resolved,
     );
+    await assertDraftFinalToolAllowed(draft, nextRoot);
     return {
       success: true,
       ...draftCache.setFileData(args.draft_handle, {
@@ -319,6 +334,14 @@ export function registerDraftTools(
       file_data_attached: true,
       text_removed: textRemoved,
     };
+  }
+
+  async function assertDraftFinalToolAllowed(
+    draft: DraftCacheEntry,
+    root: unknown,
+  ): Promise<void> {
+    const finalTool = draft.operation === "create" ? "create" : "edit";
+    await assertToolBlockAllowed(finalTool, root, resolved);
   }
 
   async function submitDraft(args: {
