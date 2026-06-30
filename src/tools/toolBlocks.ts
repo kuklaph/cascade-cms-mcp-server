@@ -22,6 +22,7 @@ const SITE_REMOVAL_SOURCE = "protect_site_removal:site";
 const ROOT_FOLDER_REMOVAL_SOURCE = "protect_site_removal:root-folder";
 const LEGACY_SITE_REMOVAL_SOURCE = "cascade_protect_site_removal:site";
 const LEGACY_ROOT_FOLDER_REMOVAL_SOURCE = "cascade_protect_site_removal:root-folder";
+const SITE_PROTECTION_TOOLS = ["remove", "move"];
 
 const ToolBlocksRequestSchema = z
   .object({
@@ -83,11 +84,11 @@ export function registerSiteRemovalProtectionTool(
     server,
     {
       name: "protect_site_removal",
-      title: "Protect Cascade Sites From Removal",
+      title: "Protect Cascade Sites From Removal Or Move",
       description: buildCascadeToolDescription(
-        `Persist generated blocked-call rules that prevent removal of accessible Cascade sites and their root folders.
+        `Persist generated blocked-call rules that prevent removal or movement of accessible Cascade sites and their root folders.
 
-The tool lists accessible sites, blocks remove by site id and site name/path, then tries to read each site's root folder at "/". Readable root folders are blocked by id, and path "/" is always included to block path-based root-folder removal. Existing generated rules from this tool are replaced instead of duplicated; unrelated rules are preserved.
+The tool lists accessible sites, blocks remove and move by site id and site name/path, then tries to read each site's root folder at "/". Readable root folders are blocked by id, and path "/" is always included to block path-based root-folder removal or movement. Existing generated rules from this tool are replaced instead of duplicated; unrelated rules are preserved.
 
 Returns a report with protected site count, protected root-folder id count, unreadable root folders, the block-store path, and final rule count.`,
       ),
@@ -221,7 +222,7 @@ function generatedRules(
       type: "site",
       id: sites.map((site) => site.id),
       path: sites.map((site) => site.siteName),
-      tools: ["remove"],
+      tools: SITE_PROTECTION_TOOLS,
       reason: SITE_REMOVAL_REASON,
       source: SITE_REMOVAL_SOURCE,
     });
@@ -230,7 +231,7 @@ function generatedRules(
     type: "folder",
     ...(rootFolderIds.length > 0 ? { id: rootFolderIds } : {}),
     path: "/",
-    tools: ["remove"],
+    tools: SITE_PROTECTION_TOOLS,
     reason: ROOT_FOLDER_REMOVAL_REASON,
     source: ROOT_FOLDER_REMOVAL_SOURCE,
   });

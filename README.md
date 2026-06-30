@@ -487,7 +487,7 @@ The safest access control is still Cascade/API permissions. Tool blocks are an a
 
 Each rule needs `tools` plus at least one selector: `url`, `id`, or `path`. Explicit `id` and `path` selectors also need `type`. `reason` is optional and appears in the blocked-call error.
 
-Use `protect_site_removal` to generate removal safeguards for accessible sites and their root folders. It replaces its previous generated rules and preserves unrelated rules.
+Use `protect_site_removal` to generate remove and move safeguards for accessible sites and their root folders. It replaces its previous generated rules and preserves unrelated rules.
 
 ```json
 {

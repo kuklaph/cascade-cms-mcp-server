@@ -4,10 +4,13 @@ All notable changes to `cascade-cms-mcp-server` will be documented here.
 
 ## Unreleased
 
+## 2.0.1 - 2026-06-30
+
 ### Changed
 
 - Tool-block `create` rules now match create payloads by intended parent path plus asset name, letting matching local draft workflows fail before local draft work continues.
 - Local draft initiation and scaffold workflows now check final or generated tool-block payloads before creating or committing local draft state when the target is known.
+- Generated site/root-folder protection rules now block both `remove` and `move`.
 
 ## 2.0.0 - 2026-06-22
 

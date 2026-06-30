@@ -489,4 +489,21 @@ describe("findDeniedToolCall", () => {
       ),
     ).toBe(rule);
   });
+
+  test("matches root-folder move against generated path-only rules", () => {
+    const rule = {
+      type: "folder" as const,
+      path: "/",
+      tools: ["remove", "move"],
+      source: "protect_site_removal:root-folder",
+    };
+
+    expect(
+      findDeniedToolCall(
+        "move",
+        { identifier: { type: "folder", path: { path: "/", siteName: "Site One" } } },
+        [rule],
+      ),
+    ).toBe(rule);
+  });
 });
