@@ -1172,8 +1172,20 @@ const MutationPlanStepSchema = z
       "local_draft_validate",
       "local_draft_submit",
     ]),
-    input: z.record(z.string(), z.unknown()).default({}),
-    save_as: z.string().min(1).max(64).optional(),
+    input: z
+      .record(z.string(), z.unknown())
+      .default({})
+      .describe(
+        "Input passed to the selected local draft tool. To use a saved draft from an earlier step, include draft_ref here, for example {\"draft_ref\":\"draft\"}; do not put draft_ref beside tool/save_as.",
+      ),
+    save_as: z
+      .string()
+      .min(1)
+      .max(64)
+      .optional()
+      .describe(
+        "Optional name that saves this step result for later steps to reference with input.draft_ref.",
+      ),
   })
   .strict();
 

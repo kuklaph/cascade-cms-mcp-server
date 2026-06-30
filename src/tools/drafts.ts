@@ -896,7 +896,7 @@ export function registerDraftTools(
     name: "local_draft_mutation_plan_execute",
     title: "Execute draft mutation plan",
     description: buildCascadeToolDescription(
-      `Execute a small sequence of draft workflow steps locally, passing saved draft handles between steps with draft_ref. Steps run sequentially and stop on the first tool error, failed assertion, failed validation, or a step/Cascade result with success: false. Tool-block rules targeting local_draft_mutation_plan_execute are checked against hydrated/resolved step payloads before each step runs. This is local orchestration, not a Cascade batch request.`,
+      `Execute a small sequence of draft workflow steps locally. Save an earlier step result with save_as, then pass that saved draft to later steps by setting input.draft_ref; draft_ref is not a top-level step field. Steps run sequentially and stop on the first tool error, failed assertion, failed validation, or a step/Cascade result with success: false. Tool-block rules targeting local_draft_mutation_plan_execute are checked against hydrated/resolved step payloads before each step runs. This is local orchestration, not a Cascade batch request.`,
     ),
     inputSchema: DraftMutationPlanExecuteRequestSchema,
     annotations: {
